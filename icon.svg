@@ -1,0 +1,56 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256">
+  <defs>
+    <linearGradient id="gold" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#d4a857"/>
+      <stop offset="50%" style="stop-color:#c9a227"/>
+      <stop offset="100%" style="stop-color:#a8860c"/>
+    </linearGradient>
+    <linearGradient id="cover" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#2a2a3a"/>
+      <stop offset="100%" style="stop-color:#1a1a24"/>
+    </linearGradient>
+    <linearGradient id="pages" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#f5f0e6"/>
+      <stop offset="100%" style="stop-color:#e8e0d0"/>
+    </linearGradient>
+  </defs>
+  
+  <!-- Shadow -->
+  <ellipse cx="128" cy="240" rx="70" ry="12" fill="rgba(0,0,0,0.3)"/>
+  
+  <!-- Book cover back -->
+  <rect x="45" y="28" width="166" height="195" rx="8" fill="url(#cover)"/>
+  
+  <!-- Pages -->
+  <rect x="55" y="35" width="150" height="180" rx="4" fill="url(#pages)"/>
+  <rect x="58" y="38" width="144" height="174" rx="3" fill="#faf8f3"/>
+  
+  <!-- Page lines -->
+  <g stroke="#d4c8b0" stroke-width="1.5" opacity="0.6">
+    <line x1="75" y1="70" x2="185" y2="70"/>
+    <line x1="75" y1="90" x2="185" y2="90"/>
+    <line x1="75" y1="110" x2="185" y2="110"/>
+    <line x1="75" y1="130" x2="185" y2="130"/>
+    <line x1="75" y1="150" x2="185" y2="150"/>
+    <line x1="75" y1="170" x2="160" y2="170"/>
+  </g>
+  
+  <!-- Book spine -->
+  <rect x="45" y="28" width="18" height="195" rx="4" fill="url(#cover)"/>
+  <rect x="48" y="32" width="3" height="187" fill="url(#gold)" opacity="0.8"/>
+  
+  <!-- Gold corner decoration top -->
+  <path d="M195 28 L211 28 L211 55 L205 55 L205 34 L195 34 Z" fill="url(#gold)"/>
+  
+  <!-- Gold corner decoration bottom -->
+  <path d="M195 223 L211 223 L211 196 L205 196 L205 217 L195 217 Z" fill="url(#gold)"/>
+  
+  <!-- Pen/quill -->
+  <g transform="translate(145, 85) rotate(35)">
+    <path d="M0 0 L8 75 L12 75 L20 0 L10 8 Z" fill="url(#gold)"/>
+    <path d="M8 75 L10 95 L12 75" fill="#1a1510" stroke="#1a1510" stroke-width="1"/>
+  </g>
+  
+  <!-- "J" monogram -->
+  <text x="95" y="95" font-family="Georgia, serif" font-size="48" font-style="italic" font-weight="bold" fill="url(#gold)">J</text>
+</svg>
