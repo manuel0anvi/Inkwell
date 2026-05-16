@@ -18,7 +18,7 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;display:flex;align-items:cen
 .nav-right{display:flex;align-items:center;gap:16px}
 .nav-dl{background:transparent;border:0.5px solid var(--gold);color:var(--gold-light);padding:7px 18px;font-family:'Jost',sans-serif;font-size:11px;letter-spacing:0.14em;text-transform:uppercase;text-decoration:none;transition:background .2s}
 .nav-dl:hover{background:var(--gold-dim)}
-.lang-sw{display:flex;align-items:center;gap:1px;border:0.5px solid var(--navy-border);padding:2px}
+.lang-sw">display:flex;align-items:center;gap:1px;border:0.5px solid var(--navy-border);padding:2px}
 .lb{background:transparent;border:none;color:var(--text-muted);font-family:'Jost',sans-serif;font-size:10px;letter-spacing:0.1em;padding:5px 8px;cursor:pointer;transition:color .2s,background .2s;text-transform:uppercase}
 .lb:hover{color:var(--gold-light)}
 .lb.active{background:var(--gold-dim);color:var(--gold-light)}
@@ -117,7 +117,6 @@ footer a:hover{color:var(--gold-light)}
     Inkwell
   </a>
   <div class="nav-right">
-    <!-- Keine Navigationsreiter mehr, nur Download-Button -->
     <a href="#download" class="nav-dl" data-i18n="nav_dl_btn">Herunterladen</a>
     <div class="lang-sw">
       <button class="lb active" onclick="setLang('de')">DE</button>
@@ -247,7 +246,6 @@ const T = {
     ver_loading:'Versionen werden geladen…',
     ver_error:'Versionen konnten nicht geladen werden.',
     ver_latest:'Neueste',
-    /* Hier ist dein neuer deutscher Text */
     ver_warn:'⚠ Ältere Version — Der Update-Hinweis in der App kann einfach ignoriert werden.',
     ver_dl:'Herunterladen',
     ver_noexe:'Keine .exe verfügbar'
@@ -284,7 +282,6 @@ const T = {
     ver_loading:'Loading versions…',
     ver_error:'Could not load versions.',
     ver_latest:'Latest',
-    /* Englische Anpassung */
     ver_warn:'⚠ Older version — The update notice in the app can be safely ignored.',
     ver_dl:'Download',
     ver_noexe:'No .exe available'
@@ -321,7 +318,6 @@ const T = {
     ver_loading:'Caricamento versioni…',
     ver_error:'Impossibile caricare le versioni.',
     ver_latest:'Ultima',
-    /* Italienische Anpassung */
     ver_warn:"⚠ Versione precedente — L'avviso di aggiornamento nell'app può essere semplicemente ignorato.",
     ver_dl:'Scarica',
     ver_noexe:'Nessun .exe disponibile'
@@ -340,7 +336,6 @@ function setLang(l){
   });
   document.documentElement.lang = l;
   
-  // Aktualisiere den Button-Text dynamisch, wenn eine Release geladen ist
   updateDownloadButtonText();
   renderVersions();
 }
@@ -351,7 +346,6 @@ function updateDownloadButtonText() {
     if (asset) {
       const btnSpan = document.querySelector('#main-dl span');
       if (btnSpan) {
-        // Verbindet den dynamischen Dateinamen mit dem übersetzten Wort (z.B. "Inkwell Setup 1.0.1.exe herunterladen")
         btnSpan.textContent = `${asset.name} ${t('dl_btn')}`;
       }
     }
@@ -374,7 +368,6 @@ function renderVersions(){
       <span class="v-date">${fmtDate(r.published_at)}</span>
       ${isNew ? `<span class="v-new">${t('ver_latest')}</span>` : `<span class="v-warn">${t('ver_warn')}</span>`}
       ${url
-        /* Hier wird das download-Attribut auf den tatsächlichen Dateinamen (asset.name) gesetzt */
         ? `<a href="${url}" class="v-dl" download="${asset.name}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>${t('ver_dl')}</a>`
         : `<span style="font-size:11px;color:var(--text-muted)">${t('ver_noexe')}</span>`}
     </div>`;
@@ -397,15 +390,12 @@ async function loadReleases(){
         const mainDl = document.getElementById('main-dl');
         const heroDl = document.getElementById('hero-dl');
         
-        // URL zuweisen
         mainDl.href = asset.browser_download_url;
         heroDl.href = asset.browser_download_url;
         
-        // Das download-Attribut auf den echten, dynamischen Dateinamen setzen
         mainDl.setAttribute('download', asset.name);
         heroDl.setAttribute('download', asset.name);
         
-        // Button-Text aktualisieren
         updateDownloadButtonText();
       }
     }
