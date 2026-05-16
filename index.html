@@ -78,11 +78,24 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;display:flex;align-items:cen
 .v-tag{font-family:'Cormorant Garamond',serif;font-size:16px;font-style:italic;color:var(--cream);min-width:72px}
 .v-date{font-size:12px;color:var(--text-muted);letter-spacing:.05em;min-width:90px}
 .v-new{font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--gold);border:0.5px solid var(--gold-dim);padding:3px 10px;white-space:nowrap}
-.v-warn{font-size:11px;color:rgba(255,170,40,.85);flex:2;display:flex;align-items:center;gap:4px}
-.v-dl{display:inline-flex;align-items:center;gap:6px;background:transparent;border:0.5px solid var(--navy-border);color:var(--text-body);text-decoration:none;font-family:'Jost',sans-serif;font-size:11px;letter-spacing:.1em;text-transform:uppercase;padding:7px 14px;white-space:nowrap;transition:border-color .2s,color .2s}
+.v-dl{display:inline-flex;align-items:center;gap:6px;background:transparent;border:0.5px solid var(--navy-border);color:var(--text-body);text-decoration:none;font-family:'Jost',sans-serif;font-size:11px;letter-spacing:.1em;text-transform:uppercase;padding:7px 14px;white-space:nowrap;transition:border-color .2s,color .2s;cursor:pointer}
 .v-dl:hover{border-color:var(--gold);color:var(--gold-light)}
 .v-dl svg{width:12px;height:12px;flex-shrink:0}
 .v-loading,.v-error{text-align:center;padding:36px;font-size:12px;color:var(--text-muted);letter-spacing:.1em;text-transform:uppercase}
+
+.modal-backdrop{position:fixed;inset:0;background:rgba(8,10,16,.78);backdrop-filter:blur(4px);display:none;align-items:center;justify-content:center;z-index:300;padding:24px}
+.modal-backdrop.open{display:flex}
+.modal-card{width:min(620px,100%);background:linear-gradient(180deg,rgba(24,26,38,.98),rgba(16,18,30,.98));border:0.5px solid var(--navy-border);box-shadow:0 18px 40px rgba(0,0,0,.35);padding:24px 22px}
+.modal-kicker{font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:rgba(255,170,40,.85);margin-bottom:10px}
+.modal-card h4{font-family:'Cormorant Garamond',serif;font-style:italic;font-weight:400;font-size:30px;line-height:1.1;color:var(--cream);margin-bottom:12px}
+.modal-card p{font-size:14px;color:var(--text-body);line-height:1.65;margin-bottom:12px}
+.modal-note{font-size:12px;color:rgba(255,170,40,.9);border:0.5px solid rgba(255,170,40,.25);background:rgba(255,170,40,.07);padding:10px 12px;margin-bottom:14px}
+.modal-version{display:inline-block;border:0.5px solid var(--navy-border);font-size:12px;letter-spacing:.08em;color:var(--gold-light);padding:6px 10px;margin:4px 0 14px}
+.modal-actions{display:flex;justify-content:flex-end;gap:12px;flex-wrap:wrap}
+.btn-m{border:0.5px solid var(--navy-border);background:transparent;color:var(--text-body);font-family:'Jost',sans-serif;font-size:11px;letter-spacing:.1em;text-transform:uppercase;padding:10px 15px;cursor:pointer;transition:border-color .2s,color .2s,background .2s}
+.btn-m:hover{border-color:var(--gold);color:var(--gold-light)}
+.btn-m.warn{border-color:rgba(255,170,40,.65);color:#ffd289;background:rgba(255,170,40,.09)}
+.btn-m.warn:hover{background:rgba(255,170,40,.16)}
 
 footer{border-top:0.5px solid var(--navy-border);padding:32px 56px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:14px}
 footer p{font-size:12px;color:var(--text-muted)}
@@ -97,7 +110,8 @@ footer a:hover{color:var(--gold-light)}
   .hero,.features,.dl-section,.ver-section{padding-left:20px;padding-right:20px}
   .dl-box{padding:22px 16px}
   .vr{padding:16px;flex-direction:column;align-items:flex-start;gap:8px}
-  .v-warn{display:none} /* Da du das Handy-Layout nicht brauchst, bleibt die Warnung mobil unsichtbar */
+  .modal-card{padding:18px 16px}
+  .modal-card h4{font-size:25px}
   footer{padding:24px 20px;flex-direction:column}
 }
 </style>
@@ -216,6 +230,21 @@ footer a:hover{color:var(--gold-light)}
   </div>
 </footer>
 
+<div id="downgrade-modal" class="modal-backdrop" aria-hidden="true">
+  <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="downgrade-title">
+    <div class="modal-kicker" data-i18n="downgrade_kicker">Kompatibilitaets-Warnung</div>
+    <h4 id="downgrade-title" data-i18n="downgrade_title">Aeltere Version installieren?</h4>
+    <span id="downgrade-version" class="modal-version">Version</span>
+    <p data-i18n="downgrade_body_1">Beim Downgrade koennen Datenmigrationen neuerer Versionen fehlen. Dadurch koennen Notizbuecher, Einstellungen oder Dateiformate inkompatibel werden.</p>
+    <p data-i18n="downgrade_body_2">Bitte erstelle vor dem Fortfahren ein Backup deiner aktuellen Daten und installiere nur, wenn du den Downgrade bewusst moechtest.</p>
+    <p class="modal-note" data-i18n="downgrade_body_3">Hinweis: Falls danach in der App ein Hinweis auf eine neuere Version erscheint, kannst du diesen einfach ignorieren.</p>
+    <div class="modal-actions">
+      <button id="downgrade-cancel" class="btn-m" type="button" data-i18n="downgrade_cancel">Abbrechen</button>
+      <button id="downgrade-confirm" class="btn-m warn" type="button" data-i18n="downgrade_confirm">Trotzdem herunterladen</button>
+    </div>
+  </div>
+</div>
+
 <script>
 const GH_USER = 'manuel0anvi';
 const GH_REPO = 'Inkwell';
@@ -253,9 +282,16 @@ const T = {
     ver_loading:'Versionen werden geladen…',
     ver_error:'Versionen konnten nicht geladen werden.',
     ver_latest:'Neueste',
-    ver_warn:'⚠ Ältere Version — Der Update-Hinweis in der App kann einfach ignoriert werden.',
     ver_dl:'Herunterladen',
-    ver_noexe:'Keine .exe verfügbar'
+    ver_noexe:'Keine .exe verfügbar',
+    downgrade_kicker:'Kompatibilitaets-Warnung',
+    downgrade_title:'Aeltere Version installieren?',
+    downgrade_body_1:'Beim Downgrade koennen Datenmigrationen neuerer Versionen fehlen. Dadurch koennen Notizbuecher, Einstellungen oder Dateiformate inkompatibel werden.',
+    downgrade_body_2:'Bitte erstelle vor dem Fortfahren ein Backup deiner aktuellen Daten und installiere nur, wenn du den Downgrade bewusst moechtest.',
+    downgrade_body_3:'Hinweis: Falls danach in der App ein Hinweis auf eine neuere Version erscheint, kannst du diesen einfach ignorieren.',
+    downgrade_cancel:'Abbrechen',
+    downgrade_confirm:'Trotzdem herunterladen',
+    downgrade_version:'Ausgewaehlte Version: {version}'
   },
   en:{
     nav_dl_btn:'Download',
@@ -289,9 +325,16 @@ const T = {
     ver_loading:'Loading versions…',
     ver_error:'Could not load versions.',
     ver_latest:'Latest',
-    ver_warn:'⚠ Older version — The update notice in the app can be safely ignored.',
     ver_dl:'Download',
-    ver_noexe:'No .exe available'
+    ver_noexe:'No .exe available',
+    downgrade_kicker:'Compatibility Warning',
+    downgrade_title:'Install an older version?',
+    downgrade_body_1:'A downgrade may skip newer data migrations. This can make notebooks, settings, or file formats incompatible.',
+    downgrade_body_2:'Create a backup of your current data before continuing and proceed only if you explicitly want to downgrade.',
+    downgrade_body_3:'Note: If the app later shows a newer-version update notice, you can simply ignore it.',
+    downgrade_cancel:'Cancel',
+    downgrade_confirm:'Download Anyway',
+    downgrade_version:'Selected version: {version}'
   },
   it:{
     nav_dl_btn:'Scarica',
@@ -325,14 +368,27 @@ const T = {
     ver_loading:'Caricamento versioni…',
     ver_error:'Impossibile caricare le versioni.',
     ver_latest:'Ultima',
-    ver_warn:"⚠ Versione precedente — L'avviso di aggiornamento nell'app può essere semplicemente ignorato.",
     ver_dl:'Scarica',
-    ver_noexe:'Nessun .exe disponibile'
+    ver_noexe:'Nessun .exe disponibile',
+    downgrade_kicker:'Avviso di compatibilita',
+    downgrade_title:'Installare una versione precedente?',
+    downgrade_body_1:'Con un downgrade possono mancare migrazioni dati delle versioni piu recenti. Questo puo rendere incompatibili quaderni, impostazioni o formati file.',
+    downgrade_body_2:'Crea un backup dei dati attuali prima di continuare e procedi solo se vuoi davvero tornare indietro.',
+    downgrade_body_3:'Nota: se poi nell\'app compare un avviso di aggiornamento a una versione piu recente, puoi semplicemente ignorarlo.',
+    downgrade_cancel:'Annulla',
+    downgrade_confirm:'Scarica comunque',
+    downgrade_version:'Versione selezionata: {version}'
   }
 };
 
 let lang = 'de', releases = [];
 function t(k){ return T[lang][k] || k; }
+function tf(k, vars){
+  const base = t(k);
+  return base.replace(/\{(\w+)\}/g, (_, key) => vars[key] || '');
+}
+
+let pendingDowngrade = null;
 
 function setLang(l){
   lang = l;
@@ -345,6 +401,11 @@ function setLang(l){
   
   updateDownloadButtonText();
   renderVersions();
+
+  if (pendingDowngrade?.version) {
+    const versionLabel = document.getElementById('downgrade-version');
+    if (versionLabel) versionLabel.textContent = tf('downgrade_version', { version: pendingDowngrade.version });
+  }
 }
 
 function updateDownloadButtonText() {
@@ -375,12 +436,69 @@ function renderVersions(){
     return `<div class="vr${isNew?' latest':''}">
       <span class="v-tag">${r.tag_name}</span>
       <span class="v-date">${fmtDate(r.published_at)}</span>
-      ${isNew ? `<span class="v-new">${t('ver_latest')}</span>` : `<span class="v-warn">${t('ver_warn')}</span>`}
       ${url
-        ? `<a href="${url}" class="v-dl" download="${asset.name}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>${t('ver_dl')}</a>`
+        ? `<button type="button" class="v-dl" data-old-version="${isNew ? 'false' : 'true'}" data-asset-name="${asset.name}" data-version-tag="${r.tag_name}" data-download-url="${url}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>${t('ver_dl')}</button>`
         : `<span style="font-size:11px;color:var(--text-muted)">${t('ver_noexe')}</span>`}
     </div>`;
   }).join('');
+}
+
+function triggerDownload(url, filename) {
+  const link = document.createElement('a');
+  link.href = url;
+  if (filename) link.setAttribute('download', filename);
+  link.rel = 'noopener';
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+}
+
+function closeDowngradeModal(){
+  const modal = document.getElementById('downgrade-modal');
+  if (!modal) return;
+  modal.classList.remove('open');
+  modal.setAttribute('aria-hidden', 'true');
+  pendingDowngrade = null;
+}
+
+function openDowngradeModal(url, filename, version){
+  pendingDowngrade = { url, filename, version };
+  const modal = document.getElementById('downgrade-modal');
+  const versionLabel = document.getElementById('downgrade-version');
+  if (!modal || !versionLabel) return;
+
+  versionLabel.textContent = tf('downgrade_version', { version: version || '-' });
+  modal.classList.add('open');
+  modal.setAttribute('aria-hidden', 'false');
+}
+
+function setupDowngradeGuard(){
+  document.addEventListener('click', (event) => {
+    const control = event.target.closest('button.v-dl');
+    if (!control) return;
+    if (control.getAttribute('data-old-version') !== 'true') return;
+
+    event.preventDefault();
+    openDowngradeModal(control.getAttribute('data-download-url'), control.getAttribute('data-asset-name'), control.getAttribute('data-version-tag'));
+  });
+
+  const cancelBtn = document.getElementById('downgrade-cancel');
+  const confirmBtn = document.getElementById('downgrade-confirm');
+  const modal = document.getElementById('downgrade-modal');
+
+  cancelBtn?.addEventListener('click', closeDowngradeModal);
+  modal?.addEventListener('click', (event) => {
+    if (event.target === modal) closeDowngradeModal();
+  });
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') closeDowngradeModal();
+  });
+
+  confirmBtn?.addEventListener('click', () => {
+    if (!pendingDowngrade) return;
+    triggerDownload(pendingDowngrade.url, pendingDowngrade.filename);
+    closeDowngradeModal();
+  });
 }
 
 async function loadReleases(){
@@ -414,6 +532,7 @@ async function loadReleases(){
   }
 }
 
+setupDowngradeGuard();
 loadReleases();
 </script>
 </body>
