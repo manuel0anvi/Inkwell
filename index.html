@@ -4,6 +4,10 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Inkwell — Digitales Notizbuch</title>
+
+<link rel="icon" type="image/svg+xml" href="icon.svg">
+<link rel="alternate icon" type="image/x-icon" href="icon.ico">
+
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;1,300;1,400&family=Cormorant+Infant:ital,wght@0,300;1,300&family=Jost:wght@300;400;500&display=swap" rel="stylesheet">
 <style>
@@ -18,7 +22,7 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;display:flex;align-items:cen
 .nav-right{display:flex;align-items:center;gap:16px}
 .nav-dl{background:transparent;border:0.5px solid var(--gold);color:var(--gold-light);padding:7px 18px;font-family:'Jost',sans-serif;font-size:11px;letter-spacing:0.14em;text-transform:uppercase;text-decoration:none;transition:background .2s}
 .nav-dl:hover{background:var(--gold-dim)}
-.lang-sw">display:flex;align-items:center;gap:1px;border:0.5px solid var(--navy-border);padding:2px}
+.lang-sw{display:flex;align-items:center;gap:1px;border:0.5px solid var(--navy-border);padding:2px}
 .lb{background:transparent;border:none;color:var(--text-muted);font-family:'Jost',sans-serif;font-size:10px;letter-spacing:0.1em;padding:5px 8px;cursor:pointer;transition:color .2s,background .2s;text-transform:uppercase}
 .lb:hover{color:var(--gold-light)}
 .lb.active{background:var(--gold-dim);color:var(--gold-light)}
@@ -72,9 +76,9 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;display:flex;align-items:cen
 .vr:hover{background:rgba(201,162,39,.04)}
 .vr.latest{border-left:2px solid var(--gold)}
 .v-tag{font-family:'Cormorant Garamond',serif;font-size:16px;font-style:italic;color:var(--cream);min-width:72px}
-.v-date{font-size:12px;color:var(--text-muted);flex:1;letter-spacing:.05em}
+.v-date{font-size:12px;color:var(--text-muted);letter-spacing:.05em;min-width:90px}
 .v-new{font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--gold);border:0.5px solid var(--gold-dim);padding:3px 10px;white-space:nowrap}
-.v-warn{font-size:11px;color:rgba(255,170,40,.6);flex:2;display:flex;align-items:center;gap:4px}
+.v-warn{font-size:11px;color:rgba(255,170,40,.85);flex:2;display:flex;align-items:center;gap:4px}
 .v-dl{display:inline-flex;align-items:center;gap:6px;background:transparent;border:0.5px solid var(--navy-border);color:var(--text-body);text-decoration:none;font-family:'Jost',sans-serif;font-size:11px;letter-spacing:.1em;text-transform:uppercase;padding:7px 14px;white-space:nowrap;transition:border-color .2s,color .2s}
 .v-dl:hover{border-color:var(--gold);color:var(--gold-light)}
 .v-dl svg{width:12px;height:12px;flex-shrink:0}
@@ -92,7 +96,8 @@ footer a:hover{color:var(--gold-light)}
   nav{padding:14px 18px;gap:10px}
   .hero,.features,.dl-section,.ver-section{padding-left:20px;padding-right:20px}
   .dl-box{padding:22px 16px}
-  .v-warn{display:none}
+  .vr{padding:16px;flex-direction:column;align-items:flex-start;gap:8px}
+  .v-warn{display:none} /* Da du das Handy-Layout nicht brauchst, bleibt die Warnung mobil unsichtbar */
   footer{padding:24px 20px;flex-direction:column}
 }
 </style>
@@ -198,7 +203,9 @@ footer a:hover{color:var(--gold-light)}
 <section class="ver-section" id="versions">
   <h3 data-i18n="ver_title">Alle Versionen</h3>
   <p data-i18n="ver_sub">Ältere Versionen können direkt hier heruntergeladen werden.</p>
-  <div id="ver-list" class="ver-list"><div class="v-loading" data-i18n="ver_loading">Versionen werden geladen…</div></div>
+  <div id="ver-list" class="ver-list">
+    <div class="v-loading" data-i18n="ver_loading">Versionen werden geladen…</div>
+  </div>
 </section>
 
 <footer>
@@ -359,10 +366,12 @@ function fmtDate(iso){
 function renderVersions(){
   const c = document.getElementById('ver-list');
   if(!releases.length){ c.innerHTML = `<div class="v-error">${t('ver_error')}</div>`; return; }
+  
   c.innerHTML = releases.map((r,i)=>{
     const asset = r.assets.find(a=>a.name.endsWith('.exe'));
     const url = asset ? asset.browser_download_url : null;
     const isNew = i===0;
+    
     return `<div class="vr${isNew?' latest':''}">
       <span class="v-tag">${r.tag_name}</span>
       <span class="v-date">${fmtDate(r.published_at)}</span>
