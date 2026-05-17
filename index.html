@@ -476,10 +476,21 @@ function setupDowngradeGuard(){
   document.addEventListener('click', (event) => {
     const control = event.target.closest('button.v-dl');
     if (!control) return;
-    if (control.getAttribute('data-old-version') !== 'true') return;
+
+    const url = control.getAttribute('data-download-url');
+    const filename = control.getAttribute('data-asset-name');
+    const isOldVersion = control.getAttribute('data-old-version') === 'true';
+
+    if (!url) return;
 
     event.preventDefault();
-    openDowngradeModal(control.getAttribute('data-download-url'), control.getAttribute('data-asset-name'), control.getAttribute('data-version-tag'));
+
+    if (isOldVersion) {
+      openDowngradeModal(url, filename, control.getAttribute('data-version-tag'));
+      return;
+    }
+
+    triggerDownload(url, filename);
   });
 
   const cancelBtn = document.getElementById('downgrade-cancel');
