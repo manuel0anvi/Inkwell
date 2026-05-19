@@ -159,7 +159,7 @@ footer a:hover{color:var(--gold-light)}
   .lang-sw {
     display: none !important;
   }
-  .lang-select-mobile {
+  .lang-sw-mobile-custom {
     display: inline-block !important;
   }
   
@@ -206,11 +206,16 @@ footer a:hover{color:var(--gold-light)}
       <button class="lb" onclick="setLang('en')">EN</button>
       <button class="lb" onclick="setLang('it')">IT</button>
     </div>
-    <select class="lang-select-mobile" onchange="setLang(this.value)" style="display: none; background: transparent; border: 0.5px solid var(--navy-border); color: var(--gold-light); font-family: 'Jost', sans-serif; font-size: 11px; padding: 6px; text-transform: uppercase; border-radius: 4px; outline: none; cursor: pointer;">
-      <option value="de" style="background: var(--navy); color: var(--cream);">DE</option>
-      <option value="en" style="background: var(--navy); color: var(--cream);">EN</option>
-      <option value="it" style="background: var(--navy); color: var(--cream);">IT</option>
-    </select>
+    <div class="lang-sw-mobile-custom" style="display: none; position: relative;">
+      <button id="lang-btn-mobile" class="nav-dl" onclick="toggleMobileLangMenu(event)" style="padding: 8px; border-radius: 50%; display: flex; align-items: center; justify-content: center; width: 36px; height: 36px; cursor: pointer;">
+        <span style="font-size: 11px; font-weight: 500; text-transform: uppercase;">DE</span>
+      </button>
+      <div id="lang-dropdown-mobile" style="display: none; position: absolute; top: 42px; right: 0; background: var(--navy-card); border: 0.5px solid var(--navy-border); box-shadow: 0 8px 24px rgba(0,0,0,0.5); border-radius: 4px; padding: 4px; z-index: 1000; min-width: 60px;">
+        <button class="lb" onclick="setLang('de'); toggleMobileLangMenu()" style="display: block; width: 100%; text-align: center; padding: 8px 12px;">DE</button>
+        <button class="lb" onclick="setLang('en'); toggleMobileLangMenu()" style="display: block; width: 100%; text-align: center; padding: 8px 12px;">EN</button>
+        <button class="lb" onclick="setLang('it'); toggleMobileLangMenu()" style="display: block; width: 100%; text-align: center; padding: 8px 12px;">IT</button>
+      </div>
+    </div>
   </div>
 </nav>
 
@@ -551,11 +556,12 @@ let pendingDowngrade = null;
 
 function setLang(l){
   lang = l;
-  document.querySelectorAll('.lb').forEach(b => b.classList.toggle('active', b.textContent.toLowerCase()===l));
   
-  // Keep mobile select in sync
-  const selectMobile = document.querySelector('.lang-select-mobile');
-  if(selectMobile) selectMobile.value = l;
+  // Keep custom mobile select in sync
+  const mobileLangBtn = document.getElementById('lang-btn-mobile');
+  if (mobileLangBtn) mobileLangBtn.querySelector('span').textContent = l.toUpperCase();
+
+  document.querySelectorAll('.lb').forEach(b => b.classList.toggle('active', b.textContent.trim().toLowerCase()===l));
 
   document.querySelectorAll('[data-i18n]').forEach(el => { 
     const v = t(el.getAttribute('data-i18n')); 
@@ -793,6 +799,42 @@ btnOpenLogin.addEventListener('click', () => {
   } else {
     loginModal.classList.add('open');
     loginModal.setAttribute('aria-hidden', 'false');
+  }
+});
+
+// Download button click from dashboard
+document.querySelector('a[href="#download"]').addEventListener('click', (event) => {
+  const webappDashboard = document.getElementById('webapp-dashboard');
+  const webappViewer = document.getElementById('webapp-viewer');
+  if (webappDashboard.style.display === 'block' || webappViewer.style.display === 'block') {
+    webappDashboard.style.display = 'none';
+    webappViewer.style.display = 'none';
+    landingContent.style.display = 'block';
+    
+    btnOpenLogin.querySelector('span').textContent = 'Dashboard';
+    btnOpenLogin.querySelector('.nav-icon-user').style.display = 'inline-block';
+    btnOpenLogin.querySelector('.nav-icon-home').style.display = 'none';
+    
+    setTimeout(() => {
+      document.querySelector('#download')?.scrollIntoView({ behavior: 'smooth' });
+    }, 100);
+  }
+});
+
+// Custom mobile dropdown logic
+function toggleMobileLangMenu(event) {
+  if (event) event.stopPropagation();
+  const dropdown = document.getElementById('lang-dropdown-mobile');
+  if (!dropdown) return;
+  const isShown = dropdown.style.display === 'block';
+  dropdown.style.display = isShown ? 'none' : 'block';
+}
+
+document.addEventListener('click', (event) => {
+  const dropdown = document.getElementById('lang-dropdown-mobile');
+  const btn = document.getElementById('lang-btn-mobile');
+  if (dropdown && !dropdown.contains(event.target) && event.target !== btn && !btn.contains(event.target)) {
+    dropdown.style.display = 'none';
   }
 });
 
