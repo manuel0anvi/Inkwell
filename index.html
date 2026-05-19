@@ -332,7 +332,10 @@ footer a:hover{color:var(--gold-light)}
 <!-- Web App Dashboard -->
 <div id="webapp-dashboard" style="display: none; padding: 120px 40px 100px; max-width: 1000px; margin: 0 auto; min-height: 100vh;">
   <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 40px; flex-wrap: wrap; gap: 20px;">
-    <h2 style="font-family: 'Cormorant Garamond', serif; font-size: 42px; font-style: italic; font-weight: 300;" data-i18n="dash_title">Meine Notebooks</h2>
+    <div>
+      <h2 style="font-family: 'Cormorant Garamond', serif; font-size: 42px; font-style: italic; font-weight: 300; margin: 0;" data-i18n="dash_title">Meine Notebooks</h2>
+      <div id="last-sync-time" style="font-family: 'Jost', sans-serif; font-size: 13px; color: var(--text-muted); margin-top: 4px;"></div>
+    </div>
     <div style="display: flex; gap: 12px;">
       <button id="logout-btn" class="btn-m" style="color: #d9534f; border-color: rgba(217,83,79,0.3);" data-i18n="dash_logout">Abmelden</button>
     </div>
@@ -343,10 +346,18 @@ footer a:hover{color:var(--gold-light)}
 
 <!-- Web App Viewer -->
 <div id="webapp-viewer" style="display: none; padding: 100px 20px 40px; text-align: center;">
-  <button id="viewer-back" class="btn-m" style="margin-bottom: 20px;" data-i18n="viewer_back">Zurück zur Übersicht</button>
-  <h3 id="viewer-title" style="font-family: 'Cormorant Garamond', serif; font-size: 32px; font-style: italic; margin-bottom: 20px;">Notebook</h3>
-  <div style="overflow: auto; max-width: 100%; display: inline-block; background: #fff; border-radius: 4px; box-shadow: 0 10px 30px rgba(0,0,0,0.5);">
+  <div style="margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center; max-width: 800px; margin: 0 auto 20px; flex-wrap: wrap; gap: 10px;">
+    <button id="viewer-back" class="btn-m" data-i18n="viewer_back">Zurück zur Übersicht</button>
+    <h3 id="viewer-title" style="font-family: 'Cormorant Garamond', serif; font-size: 32px; font-style: italic; margin: 0;">Notebook</h3>
+    <span id="viewer-page-num-top" style="font-family: 'Jost', sans-serif; font-size: 15px; color: var(--gold-light);">Seite 1 / 1</span>
+  </div>
+  <div style="overflow: auto; max-width: 100%; display: inline-block; background: #fff; border-radius: 4px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); margin-bottom: 20px;">
      <canvas id="viewer-canvas" style="display: block;"></canvas>
+  </div>
+  <div style="display: flex; justify-content: center; align-items: center; gap: 20px; max-width: 800px; margin: 0 auto;">
+    <button id="viewer-prev" class="btn-m" style="padding: 10px 16px;">◀</button>
+    <span id="viewer-page-num" style="font-family: 'Jost', sans-serif; font-size: 16px; color: var(--cream); min-width: 120px; text-align: center;">Seite 1 / 1</span>
+    <button id="viewer-next" class="btn-m" style="padding: 10px 16px;">▶</button>
   </div>
 </div>
 
@@ -933,6 +944,13 @@ async function showDashboard() {
     
     const notebooks = await res.json();
     grid.innerHTML = '';
+    
+    // Set Last Sync time
+    const now = new Date();
+    const timeStr = now.toLocaleTimeString();
+    const dateStr = now.toLocaleDateString();
+    document.getElementById('last-sync-time').innerHTML = `Letzter Cloud-Abgleich: <strong>${dateStr} ${timeStr}</strong>`;
+    
     if (notebooks.length === 0) {
       grid.innerHTML = `<p style="color:var(--text-muted)" data-i18n="dash_empty">${t('dash_empty')}</p>`;
       return;
@@ -960,64 +978,133 @@ async function showDashboard() {
   }
 }
 
+let currentNotebook = null;
+let currentPageIndex = 0;
+
 function renderNotebook(nb) {
+  currentNotebook = nb;
+  currentPageIndex = 0;
   webappDashboard.style.display = 'none';
   webappViewer.style.display = 'block';
   document.getElementById('viewer-title').textContent = nb.name || 'Untitled';
-  
+  renderPage(0);
+}
+
+async function renderPage(pageIdx) {
+  if (!currentNotebook || !currentNotebook.pages || currentNotebook.pages.length === 0) return;
+  if (pageIdx < 0) pageIdx = 0;
+  if (pageIdx >= currentNotebook.pages.length) pageIdx = currentNotebook.pages.length - 1;
+  currentPageIndex = pageIdx;
+
+  const page = currentNotebook.pages[pageIdx];
   const canvas = document.getElementById('viewer-canvas');
   const ctx = canvas.getContext('2d');
   
-  // A4 ratio
-  canvas.width = 794; 
-  canvas.height = 1123;
-  ctx.fillStyle = nb.bgType === 'none' ? '#ffffff' : '#faf9f6'; // cream paper color
+  // Set dimensions (standard or custom from page model)
+  const w = page.w || 794;
+  const h = page.h || 1123;
+  canvas.width = w; 
+  canvas.height = h;
+
+  // Clear / Fill background with white/cream
+  ctx.fillStyle = '#ffffff';
   ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-  if (nb.pages && nb.pages.length > 0) {
-    const page = nb.pages[0]; // Nur die erste Seite für die Web-Vorschau
-    
-    if (page.inkStrokes) {
-      page.inkStrokes.forEach(stroke => {
-        if (!stroke.points || stroke.points.length === 0) return;
-        ctx.beginPath();
-        ctx.strokeStyle = stroke.color || '#000';
-        ctx.lineWidth = stroke.size || 2;
-        ctx.lineCap = 'round';
-        ctx.lineJoin = 'round';
-        if (stroke.isHighlighter) {
-          ctx.globalAlpha = 0.5;
-          ctx.lineWidth = 15;
-        } else {
-          ctx.globalAlpha = 1.0;
-        }
-        
-        ctx.moveTo(stroke.points[0].x, stroke.points[0].y);
-        for (let i = 1; i < stroke.points.length; i++) {
-          ctx.lineTo(stroke.points[i].x, stroke.points[i].y);
-        }
-        ctx.stroke();
-      });
-    }
-    
-    if (page.textContent) {
-       // Simple text preview (stripping html tags)
-       const tempDiv = document.createElement('div');
-       tempDiv.innerHTML = page.textContent;
-       const plainText = tempDiv.innerText;
-       ctx.globalAlpha = 1.0;
-       ctx.font = '16px sans-serif';
-       ctx.fillStyle = '#000';
-       const lines = plainText.split('\\n');
-       lines.forEach((l, i) => ctx.fillText(l, 72, 80 + (i * 24)));
+  // 1. Draw page background image (if base64 / url is present)
+  if (page.bgImg) {
+    const bgImg = new Image();
+    bgImg.src = page.bgImg;
+    await new Promise((resolve) => {
+      bgImg.onload = () => {
+        ctx.drawImage(bgImg, 0, 0, canvas.width, canvas.height);
+        resolve();
+      };
+      bgImg.onerror = () => resolve();
+    });
+  }
+
+  // 2. Draw page objects (like imported PDF page images or other photos)
+  if (page.objects && page.objects.length > 0) {
+    for (const obj of page.objects) {
+      if (obj.src) {
+        const objImg = new Image();
+        objImg.src = obj.src;
+        await new Promise((resolve) => {
+          objImg.onload = () => {
+            ctx.drawImage(objImg, obj.x || 0, obj.y || 0, obj.w || w, obj.h || h);
+            resolve();
+          };
+          objImg.onerror = () => resolve();
+        });
+      }
     }
   }
-  
-  ctx.globalAlpha = 1.0;
+
+  // 3. Draw ink strokes
+  if (page.inkStrokes) {
+    page.inkStrokes.forEach(stroke => {
+      const path = stroke.path || stroke.points || [];
+      if (path.length === 0) return;
+      
+      ctx.beginPath();
+      ctx.strokeStyle = stroke.color || '#000';
+      ctx.lineWidth = stroke.width || stroke.size || 2;
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      
+      if (stroke.isHL || stroke.isHighlighter) {
+        ctx.globalAlpha = 0.4;
+        ctx.lineWidth = stroke.width || 15;
+      } else {
+        ctx.globalAlpha = 1.0;
+      }
+      
+      ctx.moveTo(path[0].x, path[0].y);
+      for (let i = 1; i < path.length; i++) {
+        ctx.lineTo(path[i].x, path[i].y);
+      }
+      ctx.stroke();
+    });
+  }
+
+  // 4. Draw text content
+  if (page.textContent) {
+     const tempDiv = document.createElement('div');
+     tempDiv.innerHTML = page.textContent;
+     const plainText = tempDiv.innerText || tempDiv.textContent || '';
+     ctx.globalAlpha = 1.0;
+     ctx.font = '16px sans-serif';
+     ctx.fillStyle = '#000';
+     const lines = plainText.split('\n');
+     lines.forEach((l, i) => ctx.fillText(l, 72, 80 + (i * 24)));
+  }
+
+  // 5. Watermark / Footer
+  ctx.globalAlpha = 0.5;
   ctx.font = '12px sans-serif';
   ctx.fillStyle = '#999';
-  ctx.fillText(t('viewer_watermark'), 20, 20);
+  ctx.fillText('Inkwell Web Viewer', 20, 20);
+  ctx.globalAlpha = 1.0;
+
+  // Update page labels
+  const total = currentNotebook.pages.length;
+  const label = `Seite ${pageIdx + 1} / ${total}`;
+  document.getElementById('viewer-page-num').textContent = label;
+  document.getElementById('viewer-page-num-top').textContent = label;
 }
+
+// Hook up pagination listeners
+document.getElementById('viewer-prev').addEventListener('click', () => {
+  if (currentPageIndex > 0) {
+    renderPage(currentPageIndex - 1);
+  }
+});
+
+document.getElementById('viewer-next').addEventListener('click', () => {
+  if (currentNotebook && currentNotebook.pages && currentPageIndex < currentNotebook.pages.length - 1) {
+    renderPage(currentPageIndex + 1);
+  }
+});
 </script>
 </body>
 </html>
