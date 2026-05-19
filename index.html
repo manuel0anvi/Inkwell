@@ -207,8 +207,8 @@ footer a:hover{color:var(--gold-light)}
       <button class="lb" onclick="setLang('it')">IT</button>
     </div>
     <div class="lang-sw-mobile-custom" style="display: none; position: relative;">
-      <button id="lang-btn-mobile" class="nav-dl" onclick="toggleMobileLangMenu(event)" style="padding: 8px; border-radius: 50%; display: flex; align-items: center; justify-content: center; width: 36px; height: 36px; cursor: pointer;">
-        <span style="font-size: 11px; font-weight: 500; text-transform: uppercase;">DE</span>
+      <button id="lang-btn-mobile" onclick="toggleMobileLangMenu(event)" style="background: var(--gold-dim); border: 0.5px solid var(--navy-border); color: var(--gold-light); font-family: 'Jost', sans-serif; font-size: 11px; padding: 6px 12px; text-transform: uppercase; border-radius: 4px; cursor: pointer; display: flex; align-items: center; justify-content: center; height: 36px;">
+        <span style="font-size: 11px; font-weight: 500; text-transform: uppercase; display: inline !important;">DE</span>
       </button>
       <div id="lang-dropdown-mobile" style="display: none; position: absolute; top: 42px; right: 0; background: var(--navy-card); border: 0.5px solid var(--navy-border); box-shadow: 0 8px 24px rgba(0,0,0,0.5); border-radius: 4px; padding: 4px; z-index: 1000; min-width: 60px;">
         <button class="lb" onclick="setLang('de'); toggleMobileLangMenu()" style="display: block; width: 100%; text-align: center; padding: 8px 12px;">DE</button>
