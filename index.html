@@ -241,15 +241,15 @@ footer a:hover{color:var(--gold-light)}
   <div class="modal-card" role="dialog" aria-modal="true">
     <div class="modal-kicker" data-i18n="nav_login">Anmelden</div>
     <h4 data-i18n="login_title">Cloud Login</h4>
-    <p data-i18n="login_sub">Melde dich an, um deine Notizbuecher im Web anzusehen.</p>
+    <p data-i18n="login_sub">Melde dich an, um deine Notizbücher im Web anzusehen.</p>
     <div style="margin-top: 20px; display: flex; flex-direction: column; gap: 12px;">
       <button id="login-google-btn" class="btn-m" style="display:flex; justify-content:center; align-items:center; gap:8px; border-color:var(--navy-border);">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12.24 10.285V14.4h6.806c-.275 1.765-2.056 5.174-6.806 5.174-4.095 0-7.439-3.389-7.439-7.574s3.344-7.574 7.439-7.574c2.33 0 3.891.989 4.785 1.849l3.254-3.138C18.189 1.186 15.479 0 12.24 0 5.611 0 0 5.372 0 12s5.611 12 12.24 12c6.926 0 11.52-4.869 11.52-11.726 0-.788-.085-1.39-.189-1.989H12.24z"/></svg>
-        Mit Google anmelden
+        <span data-i18n="login_google">Mit Google anmelden</span>
       </button>
-      <div style="text-align:center; font-size:11px; color:var(--text-muted); margin:4px 0;">ODER</div>
-      <input type="email" id="login-email" placeholder="E-Mail" style="padding: 12px; background: rgba(0,0,0,0.2); border: 0.5px solid var(--navy-border); color: var(--cream); border-radius: 4px; font-family: 'Jost', sans-serif;">
-      <input type="password" id="login-pass" placeholder="Passwort" style="padding: 12px; background: rgba(0,0,0,0.2); border: 0.5px solid var(--navy-border); color: var(--cream); border-radius: 4px; font-family: 'Jost', sans-serif;">
+      <div style="text-align:center; font-size:11px; color:var(--text-muted); margin:4px 0;" data-i18n="login_or">ODER</div>
+      <input type="email" id="login-email" data-i18n-ph="login_email" placeholder="E-Mail" style="padding: 12px; background: rgba(0,0,0,0.2); border: 0.5px solid var(--navy-border); color: var(--cream); border-radius: 4px; font-family: 'Jost', sans-serif;">
+      <input type="password" id="login-pass" data-i18n-ph="login_pass" placeholder="Passwort" style="padding: 12px; background: rgba(0,0,0,0.2); border: 0.5px solid var(--navy-border); color: var(--cream); border-radius: 4px; font-family: 'Jost', sans-serif;">
       <div id="login-error" style="color: #d9534f; font-size: 13px; display: none;"></div>
       <div class="modal-actions" style="margin-top: 10px;">
         <button id="login-cancel" class="btn-m" type="button" data-i18n="downgrade_cancel">Abbrechen</button>
@@ -262,10 +262,9 @@ footer a:hover{color:var(--gold-light)}
 <!-- Web App Dashboard -->
 <div id="webapp-dashboard" style="display: none; padding: 120px 40px 100px; max-width: 1000px; margin: 0 auto; min-height: 100vh;">
   <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 40px; flex-wrap: wrap; gap: 20px;">
-    <h2 style="font-family: 'Cormorant Garamond', serif; font-size: 42px; font-style: italic; font-weight: 300;">Meine Notebooks</h2>
+    <h2 style="font-family: 'Cormorant Garamond', serif; font-size: 42px; font-style: italic; font-weight: 300;" data-i18n="dash_title">Meine Notebooks</h2>
     <div style="display: flex; gap: 12px;">
-      <button id="dashboard-home-btn" class="btn-m">Zur Startseite</button>
-      <button id="logout-btn" class="btn-m" style="color: #d9534f; border-color: rgba(217,83,79,0.3);">Abmelden</button>
+      <button id="logout-btn" class="btn-m" style="color: #d9534f; border-color: rgba(217,83,79,0.3);" data-i18n="dash_logout">Abmelden</button>
     </div>
   </div>
   <div id="dashboard-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 20px;">
@@ -274,7 +273,7 @@ footer a:hover{color:var(--gold-light)}
 
 <!-- Web App Viewer -->
 <div id="webapp-viewer" style="display: none; padding: 100px 20px 40px; text-align: center;">
-  <button id="viewer-back" class="btn-m" style="margin-bottom: 20px;">Zurück zur Übersicht</button>
+  <button id="viewer-back" class="btn-m" style="margin-bottom: 20px;" data-i18n="viewer_back">Zurück zur Übersicht</button>
   <h3 id="viewer-title" style="font-family: 'Cormorant Garamond', serif; font-size: 32px; font-style: italic; margin-bottom: 20px;">Notebook</h3>
   <div style="overflow: auto; max-width: 100%; display: inline-block; background: #fff; border-radius: 4px; box-shadow: 0 10px 30px rgba(0,0,0,0.5);">
      <canvas id="viewer-canvas" style="display: block;"></canvas>
@@ -345,7 +344,20 @@ const T = {
     downgrade_body_3:'Hinweis: Falls danach in der App ein Hinweis auf eine neuere Version erscheint, kannst du diesen einfach ignorieren.',
     downgrade_cancel:'Abbrechen',
     downgrade_confirm:'Trotzdem herunterladen',
-    downgrade_version:'Ausgewaehlte Version: {version}'
+    downgrade_version:'Ausgewaehlte Version: {version}',
+    login_title:'Cloud Login',
+    login_sub:'Melde dich an, um deine Notizbücher im Web anzusehen.',
+    login_google:'Mit Google anmelden',
+    login_or:'ODER',
+    login_email:'E-Mail',
+    login_pass:'Passwort',
+    dash_title:'Meine Notebooks',
+    dash_home:'Zur Startseite',
+    dash_logout:'Abmelden',
+    dash_loading:'Lade Notebooks...',
+    dash_empty:'Keine Notebooks gefunden.',
+    viewer_back:'Zurück zur Übersicht',
+    viewer_watermark:'Leseansicht (nur Seite 1)',
   },
   en:{
     nav_dl_btn:'Download',
@@ -389,7 +401,20 @@ const T = {
     downgrade_body_3:'Note: If the app later shows a newer-version update notice, you can simply ignore it.',
     downgrade_cancel:'Cancel',
     downgrade_confirm:'Download Anyway',
-    downgrade_version:'Selected version: {version}'
+    downgrade_version:'Selected version: {version}',
+    login_title:'Cloud Login',
+    login_sub:'Log in to view your notebooks on the web.',
+    login_google:'Sign in with Google',
+    login_or:'OR',
+    login_email:'Email',
+    login_pass:'Password',
+    dash_title:'My Notebooks',
+    dash_home:'Back to Home',
+    dash_logout:'Sign out',
+    dash_loading:'Loading notebooks...',
+    dash_empty:'No notebooks found.',
+    viewer_back:'Back to Overview',
+    viewer_watermark:'Read-Only View (Page 1 only)',
   },
   it:{
     nav_dl_btn:'Scarica',
@@ -433,7 +458,20 @@ const T = {
     downgrade_body_3:'Nota: se poi nell\'app compare un avviso di aggiornamento a una versione piu recente, puoi semplicemente ignorarlo.',
     downgrade_cancel:'Annulla',
     downgrade_confirm:'Scarica comunque',
-    downgrade_version:'Versione selezionata: {version}'
+    downgrade_version:'Versione selezionata: {version}',
+    login_title:'Cloud Login',
+    login_sub:'Accedi per visualizzare i tuoi quaderni sul web.',
+    login_google:'Accedi con Google',
+    login_or:'OPPURE',
+    login_email:'Email',
+    login_pass:'Password',
+    dash_title:'I Miei Quaderni',
+    dash_home:'Torna alla Home',
+    dash_logout:'Esci',
+    dash_loading:'Caricamento...',
+    dash_empty:'Nessun quaderno trovato.',
+    viewer_back:'Torna alla panoramica',
+    viewer_watermark:'Sola Lettura (Solo pagina 1)',
   }
 };
 
@@ -453,7 +491,26 @@ function setLang(l){
     const v = t(el.getAttribute('data-i18n')); 
     if(v) el.innerHTML = v; 
   });
+  document.querySelectorAll('[data-i18n-ph]').forEach(el => {
+    const key = el.getAttribute('data-i18n-ph');
+    const v = t(key);
+    if(v) el.placeholder = v;
+  });
   document.documentElement.lang = l;
+  
+  if (typeof session !== 'undefined' && session) {
+    const span = document.getElementById('btn-open-login').querySelector('span');
+    const webappDashboard = document.getElementById('webapp-dashboard');
+    const webappViewer = document.getElementById('webapp-viewer');
+    if (webappDashboard.style.display === 'block' || webappViewer.style.display === 'block') {
+      span.textContent = t('dash_home');
+    } else {
+      span.textContent = 'Dashboard';
+    }
+  } else {
+    const span = document.getElementById('btn-open-login')?.querySelector('span');
+    if(span) span.textContent = t('nav_login');
+  }
   
   updateDownloadButtonText();
   renderVersions();
@@ -641,8 +698,16 @@ if (hash && hash.includes('access_token')) {
 }
 
 btnOpenLogin.addEventListener('click', () => {
-  if(session) showDashboard();
-  else {
+  if(session) {
+    if (webappDashboard.style.display === 'block' || webappViewer.style.display === 'block') {
+      webappDashboard.style.display = 'none';
+      webappViewer.style.display = 'none';
+      landingContent.style.display = 'block';
+      btnOpenLogin.querySelector('span').textContent = 'Dashboard';
+    } else {
+      showDashboard();
+    }
+  } else {
     loginModal.classList.add('open');
     loginModal.setAttribute('aria-hidden', 'false');
   }
@@ -686,11 +751,6 @@ document.getElementById('login-submit').addEventListener('click', async () => {
   }
 });
 
-document.getElementById('dashboard-home-btn').addEventListener('click', () => {
-  webappDashboard.style.display = 'none';
-  landingContent.style.display = 'block';
-});
-
 document.getElementById('logout-btn').addEventListener('click', () => {
   localStorage.removeItem('inkwell_web_token');
   localStorage.removeItem('inkwell_web_uid');
@@ -710,10 +770,10 @@ async function showDashboard() {
   landingContent.style.display = 'none';
   webappViewer.style.display = 'none';
   webappDashboard.style.display = 'block';
-  btnOpenLogin.querySelector('span').textContent = 'Dashboard';
+  btnOpenLogin.querySelector('span').textContent = t('dash_home');
   
   const grid = document.getElementById('dashboard-grid');
-  grid.innerHTML = '<p style="color:var(--text-muted)">Lade Notebooks...</p>';
+  grid.innerHTML = `<p style="color:var(--text-muted)">${t('dash_loading')}</p>`;
   
   try {
     const res = await fetch(
@@ -725,7 +785,7 @@ async function showDashboard() {
     const notebooks = await res.json();
     grid.innerHTML = '';
     if (notebooks.length === 0) {
-      grid.innerHTML = '<p style="color:var(--text-muted)">Keine Notebooks gefunden.</p>';
+      grid.innerHTML = `<p style="color:var(--text-muted)">${t('dash_empty')}</p>`;
       return;
     }
 
@@ -799,7 +859,7 @@ function renderNotebook(nb) {
   ctx.globalAlpha = 1.0;
   ctx.font = '12px sans-serif';
   ctx.fillStyle = '#999';
-  ctx.fillText('Read-Only Cloud Vorschau (nur Seite 1)', 20, 20);
+  ctx.fillText(t('viewer_watermark'), 20, 20);
 }
 </script>
 </body>
