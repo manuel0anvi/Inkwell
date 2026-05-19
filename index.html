@@ -207,7 +207,7 @@ footer a:hover{color:var(--gold-light)}
       <button class="lb" onclick="setLang('it')">IT</button>
     </div>
     <div class="lang-sw-mobile-custom" style="display: none; position: relative;">
-      <button id="lang-btn-mobile" onclick="toggleMobileLangMenu(event)" style="background: var(--gold-dim); border: 0.5px solid var(--navy-border); color: var(--gold-light); font-family: 'Jost', sans-serif; font-size: 11px; padding: 6px 12px; text-transform: uppercase; border-radius: 4px; cursor: pointer; display: flex; align-items: center; justify-content: center; height: 36px;">
+      <button id="lang-btn-mobile" onclick="toggleMobileLangMenu(event)" style="background: transparent; border: 0.5px solid var(--gold); color: var(--gold-light); font-family: 'Jost', sans-serif; font-size: 11px; padding: 6px 12px; text-transform: uppercase; border-radius: 4px; cursor: pointer; display: flex; align-items: center; justify-content: center; height: 36px; letter-spacing: 0.14em;">
         <span style="font-size: 11px; font-weight: 500; text-transform: uppercase; display: inline !important;">DE</span>
       </button>
       <div id="lang-dropdown-mobile" style="display: none; position: absolute; top: 42px; right: 0; background: var(--navy-card); border: 0.5px solid var(--navy-border); box-shadow: 0 8px 24px rgba(0,0,0,0.5); border-radius: 4px; padding: 4px; z-index: 1000; min-width: 60px;">
@@ -428,6 +428,7 @@ const T = {
     dash_empty:'Keine Notebooks gefunden.',
     viewer_back:'Zurück zur Übersicht',
     viewer_watermark:'Leseansicht (nur Seite 1)',
+    dash_err:'Fehler:',
   },
   en:{
     nav_dl_btn:'Download',
@@ -485,6 +486,7 @@ const T = {
     dash_empty:'No notebooks found.',
     viewer_back:'Back to Overview',
     viewer_watermark:'Read-Only View (Page 1 only)',
+    dash_err:'Error:',
   },
   it:{
     nav_dl_btn:'Scarica',
@@ -542,6 +544,7 @@ const T = {
     dash_empty:'Nessun quaderno trovato.',
     viewer_back:'Torna alla panoramica',
     viewer_watermark:'Sola Lettura (Solo pagina 1)',
+    dash_err:'Errore:',
   }
 };
 
@@ -902,7 +905,7 @@ async function showDashboard() {
   btnOpenLogin.querySelector('.nav-icon-home').style.display = 'inline-block';
   
   const grid = document.getElementById('dashboard-grid');
-  grid.innerHTML = `<p style="color:var(--text-muted)">${t('dash_loading')}</p>`;
+  grid.innerHTML = `<p style="color:var(--text-muted)" data-i18n="dash_loading">${t('dash_loading')}</p>`;
   
   try {
     const res = await fetch(
@@ -914,7 +917,7 @@ async function showDashboard() {
     const notebooks = await res.json();
     grid.innerHTML = '';
     if (notebooks.length === 0) {
-      grid.innerHTML = `<p style="color:var(--text-muted)">${t('dash_empty')}</p>`;
+      grid.innerHTML = `<p style="color:var(--text-muted)" data-i18n="dash_empty">${t('dash_empty')}</p>`;
       return;
     }
 
@@ -928,7 +931,7 @@ async function showDashboard() {
       grid.appendChild(card);
     });
   } catch (err) {
-    grid.innerHTML = `<p style="color:#d9534f">Fehler: ${err.message}</p>`;
+    grid.innerHTML = `<p style="color:#d9534f"><span data-i18n="dash_err">${t('dash_err')}</span> ${err.message}</p>`;
   }
 }
 
