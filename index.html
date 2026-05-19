@@ -136,7 +136,11 @@ footer a:hover{color:var(--gold-light)}
     Inkwell
   </a>
   <div class="nav-right">
-    <a href="src/index.html?login=1" class="nav-dl" style="background: var(--gold-dim); border-color: var(--gold-light); margin-right: 8px;">Web-App / Login</a>
+  <div class="nav-right">
+    <button id="btn-open-login" class="nav-dl" title="Web-App / Login" style="padding: 6px 12px; display: flex; align-items: center; gap: 8px; border-radius: 20px; cursor: pointer;">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
+      <span data-i18n="nav_login">Anmelden</span>
+    </button>
     <a href="#download" class="nav-dl" data-i18n="nav_dl_btn">Herunterladen</a>
     <div class="lang-sw">
       <button class="lb active" onclick="setLang('de')">DE</button>
@@ -146,6 +150,7 @@ footer a:hover{color:var(--gold-light)}
   </div>
 </nav>
 
+<div id="landing-content">
 <section class="hero">
   <div class="hero-badge" data-i18n="hero_badge">Digitales Notizbuch für Windows</div>
   <div class="hero-icon">
@@ -230,6 +235,44 @@ footer a:hover{color:var(--gold-light)}
     <a href="https://github.com/manuel0anvi/Inkwell/issues" target="_blank">Feedback</a>
   </div>
 </footer>
+</div>
+
+<!-- Login Modal -->
+<div id="login-modal" class="modal-backdrop" aria-hidden="true">
+  <div class="modal-card" role="dialog" aria-modal="true">
+    <div class="modal-kicker" data-i18n="nav_login">Anmelden</div>
+    <h4 data-i18n="login_title">Cloud Login</h4>
+    <p data-i18n="login_sub">Melde dich an, um deine Notizbuecher im Web anzusehen.</p>
+    <div style="margin-top: 20px; display: flex; flex-direction: column; gap: 12px;">
+      <input type="email" id="login-email" placeholder="E-Mail" style="padding: 12px; background: rgba(0,0,0,0.2); border: 0.5px solid var(--navy-border); color: var(--cream); border-radius: 4px; font-family: 'Jost', sans-serif;">
+      <input type="password" id="login-pass" placeholder="Passwort" style="padding: 12px; background: rgba(0,0,0,0.2); border: 0.5px solid var(--navy-border); color: var(--cream); border-radius: 4px; font-family: 'Jost', sans-serif;">
+      <div id="login-error" style="color: #d9534f; font-size: 13px; display: none;"></div>
+      <div class="modal-actions" style="margin-top: 10px;">
+        <button id="login-cancel" class="btn-m" type="button" data-i18n="downgrade_cancel">Abbrechen</button>
+        <button id="login-submit" class="btn-m" style="background: var(--gold-dim); border-color: var(--gold-light); color: var(--gold-light);" type="button" data-i18n="nav_login">Anmelden</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Web App Dashboard -->
+<div id="webapp-dashboard" style="display: none; padding: 120px 40px 100px; max-width: 1000px; margin: 0 auto; min-height: 100vh;">
+  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 40px; flex-wrap: wrap; gap: 20px;">
+    <h2 style="font-family: 'Cormorant Garamond', serif; font-size: 42px; font-style: italic; font-weight: 300;">Meine Notebooks</h2>
+    <button id="logout-btn" class="btn-m" style="color: #d9534f; border-color: rgba(217,83,79,0.3);">Abmelden</button>
+  </div>
+  <div id="dashboard-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 20px;">
+  </div>
+</div>
+
+<!-- Web App Viewer -->
+<div id="webapp-viewer" style="display: none; padding: 100px 20px 40px; text-align: center;">
+  <button id="viewer-back" class="btn-m" style="margin-bottom: 20px;">Zurück zur Übersicht</button>
+  <h3 id="viewer-title" style="font-family: 'Cormorant Garamond', serif; font-size: 32px; font-style: italic; margin-bottom: 20px;">Notebook</h3>
+  <div style="overflow: auto; max-width: 100%; display: inline-block; background: #fff; border-radius: 4px; box-shadow: 0 10px 30px rgba(0,0,0,0.5);">
+     <canvas id="viewer-canvas" style="display: block;"></canvas>
+  </div>
+</div>
 
 <div id="downgrade-modal" class="modal-backdrop" aria-hidden="true">
   <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="downgrade-title">
@@ -249,10 +292,13 @@ footer a:hover{color:var(--gold-light)}
 <script>
 const GH_USER = 'manuel0anvi';
 const GH_REPO = 'Inkwell';
+const SUPABASE_URL = 'https://sdplctlpigzrscaepatk.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_9gAsGOmApJIB8gKeJzwPRg_L1dslM0V';
 
 const T = {
   de:{
     nav_dl_btn:'Herunterladen',
+    nav_login:'Anmelden',
     hero_badge:'Digitales Notizbuch für Windows',
     hero_tagline:'Text und Handschrift vereint in einem eleganten, digitalen Notizbuch.',
     hero_dl:'Download für Windows',
@@ -296,6 +342,7 @@ const T = {
   },
   en:{
     nav_dl_btn:'Download',
+    nav_login:'Login',
     hero_badge:'Digital Notebook for Windows',
     hero_tagline:'Type and handwrite — united in one elegant digital notebook.',
     hero_dl:'Download for Windows',
@@ -339,6 +386,7 @@ const T = {
   },
   it:{
     nav_dl_btn:'Scarica',
+    nav_login:'Accedi',
     hero_badge:'Blocco note digitale per Windows',
     hero_tagline:'Testo e scrittura a mano uniti in un elegante blocco note digitale.',
     hero_dl:'Download per Windows',
@@ -546,6 +594,172 @@ async function loadReleases(){
 
 setupDowngradeGuard();
 loadReleases();
+
+// --- Web App Logic ---
+let session = null;
+const landingContent = document.getElementById('landing-content');
+const webappDashboard = document.getElementById('webapp-dashboard');
+const webappViewer = document.getElementById('webapp-viewer');
+const loginModal = document.getElementById('login-modal');
+const btnOpenLogin = document.getElementById('btn-open-login');
+
+// Check Session
+const savedToken = localStorage.getItem('inkwell_web_token');
+if(savedToken){
+  session = { accessToken: savedToken, userId: localStorage.getItem('inkwell_web_uid') };
+  showDashboard();
+}
+
+btnOpenLogin.addEventListener('click', () => {
+  if(session) showDashboard();
+  else {
+    loginModal.classList.add('open');
+    loginModal.setAttribute('aria-hidden', 'false');
+  }
+});
+
+document.getElementById('login-cancel').addEventListener('click', () => {
+  loginModal.classList.remove('open');
+  loginModal.setAttribute('aria-hidden', 'true');
+});
+
+document.getElementById('login-submit').addEventListener('click', async () => {
+  const email = document.getElementById('login-email').value;
+  const password = document.getElementById('login-pass').value;
+  const errEl = document.getElementById('login-error');
+  errEl.style.display = 'none';
+  
+  try {
+    const res = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=password`, {
+      method: 'POST',
+      headers: { apikey: SUPABASE_KEY, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password })
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error_description || 'Login fehlgeschlagen');
+    
+    session = { accessToken: data.access_token, userId: data.user.id };
+    localStorage.setItem('inkwell_web_token', session.accessToken);
+    localStorage.setItem('inkwell_web_uid', session.userId);
+    
+    loginModal.classList.remove('open');
+    showDashboard();
+  } catch(e) {
+    errEl.textContent = e.message;
+    errEl.style.display = 'block';
+  }
+});
+
+document.getElementById('logout-btn').addEventListener('click', () => {
+  localStorage.removeItem('inkwell_web_token');
+  localStorage.removeItem('inkwell_web_uid');
+  session = null;
+  webappDashboard.style.display = 'none';
+  webappViewer.style.display = 'none';
+  landingContent.style.display = 'block';
+  btnOpenLogin.querySelector('span').textContent = t('nav_login');
+});
+
+document.getElementById('viewer-back').addEventListener('click', () => {
+  webappViewer.style.display = 'none';
+  webappDashboard.style.display = 'block';
+});
+
+async function showDashboard() {
+  landingContent.style.display = 'none';
+  webappViewer.style.display = 'none';
+  webappDashboard.style.display = 'block';
+  btnOpenLogin.querySelector('span').textContent = 'Dashboard';
+  
+  const grid = document.getElementById('dashboard-grid');
+  grid.innerHTML = '<p style="color:var(--text-muted)">Lade Notebooks...</p>';
+  
+  try {
+    const res = await fetch(
+      `${SUPABASE_URL}/rest/v1/notebooks?owner_id=eq.${encodeURIComponent(session.userId)}&select=id,title,updated_at,notebook_json`,
+      { headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${session.accessToken}` } }
+    );
+    if (!res.ok) throw new Error('Fehler beim Laden');
+    
+    const notebooks = await res.json();
+    grid.innerHTML = '';
+    if (notebooks.length === 0) {
+      grid.innerHTML = '<p style="color:var(--text-muted)">Keine Notebooks gefunden.</p>';
+      return;
+    }
+
+    notebooks.forEach(row => {
+      const nb = typeof row.notebook_json === 'string' ? JSON.parse(row.notebook_json) : row.notebook_json;
+      const card = document.createElement('div');
+      card.className = 'fc'; // reuse feature card style
+      card.style.cursor = 'pointer';
+      card.innerHTML = `<h3 style="margin-bottom:4px;">${nb.name || row.title}</h3><p style="font-size:12px;opacity:0.6">${new Date(row.updated_at).toLocaleDateString()}</p>`;
+      card.addEventListener('click', () => renderNotebook(nb));
+      grid.appendChild(card);
+    });
+  } catch (err) {
+    grid.innerHTML = `<p style="color:#d9534f">Fehler: ${err.message}</p>`;
+  }
+}
+
+function renderNotebook(nb) {
+  webappDashboard.style.display = 'none';
+  webappViewer.style.display = 'block';
+  document.getElementById('viewer-title').textContent = nb.name || 'Untitled';
+  
+  const canvas = document.getElementById('viewer-canvas');
+  const ctx = canvas.getContext('2d');
+  
+  // A4 ratio
+  canvas.width = 794; 
+  canvas.height = 1123;
+  ctx.fillStyle = nb.bgType === 'none' ? '#ffffff' : '#faf9f6'; // cream paper color
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  if (nb.pages && nb.pages.length > 0) {
+    const page = nb.pages[0]; // Nur die erste Seite für die Web-Vorschau
+    
+    if (page.inkStrokes) {
+      page.inkStrokes.forEach(stroke => {
+        if (!stroke.points || stroke.points.length === 0) return;
+        ctx.beginPath();
+        ctx.strokeStyle = stroke.color || '#000';
+        ctx.lineWidth = stroke.size || 2;
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+        if (stroke.isHighlighter) {
+          ctx.globalAlpha = 0.5;
+          ctx.lineWidth = 15;
+        } else {
+          ctx.globalAlpha = 1.0;
+        }
+        
+        ctx.moveTo(stroke.points[0].x, stroke.points[0].y);
+        for (let i = 1; i < stroke.points.length; i++) {
+          ctx.lineTo(stroke.points[i].x, stroke.points[i].y);
+        }
+        ctx.stroke();
+      });
+    }
+    
+    if (page.textContent) {
+       // Simple text preview (stripping html tags)
+       const tempDiv = document.createElement('div');
+       tempDiv.innerHTML = page.textContent;
+       const plainText = tempDiv.innerText;
+       ctx.globalAlpha = 1.0;
+       ctx.font = '16px sans-serif';
+       ctx.fillStyle = '#000';
+       const lines = plainText.split('\\n');
+       lines.forEach((l, i) => ctx.fillText(l, 72, 80 + (i * 24)));
+    }
+  }
+  
+  ctx.globalAlpha = 1.0;
+  ctx.font = '12px sans-serif';
+  ctx.fillStyle = '#999';
+  ctx.fillText('Read-Only Cloud Vorschau (nur Seite 1)', 20, 20);
+}
 </script>
 </body>
 </html>
