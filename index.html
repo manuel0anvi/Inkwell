@@ -27,6 +27,37 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;display:flex;align-items:cen
 .lb:hover{color:var(--gold-light)}
 .lb.active{background:var(--gold-dim);color:var(--gold-light)}
 
+/* Mobile Navigation Styles */
+@media (max-width: 768px) {
+  nav {
+    padding: 12px 16px !important;
+  }
+  .nav-logo span {
+    display: none !important;
+  }
+  #btn-open-login span, .nav-dl span {
+    display: none !important;
+  }
+  #btn-open-login, .nav-dl {
+    padding: 8px !important;
+    border-radius: 50% !important;
+    display: inline-flex !important;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+  }
+  .dl-icon-mobile {
+    display: inline-block !important;
+  }
+  .lang-sw {
+    display: none !important;
+  }
+  .lang-select-mobile {
+    display: inline-block !important;
+  }
+}
+
 .hero{min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:120px 40px 100px;position:relative;overflow:hidden}
 .hero::before{content:'';position:absolute;inset:0;background:radial-gradient(ellipse 60% 50% at 50% 30%,rgba(201,162,39,.07) 0%,transparent 70%),radial-gradient(ellipse 40% 60% at 20% 80%,rgba(201,162,39,.04) 0%,transparent 60%);pointer-events:none}
 .hero-badge{display:inline-block;border:0.5px solid var(--navy-border);color:var(--gold);font-size:11px;letter-spacing:.2em;text-transform:uppercase;padding:6px 18px;margin-bottom:40px;opacity:0;animation:fu .7s .1s forwards}
@@ -105,8 +136,33 @@ footer a:hover{color:var(--gold-light)}
 
 @keyframes fu{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:translateY(0)}}
 
-@media(max-width:680px){
-  nav{padding:14px 18px;gap:10px}
+@media(max-width:768px){
+  nav{padding:12px 16px !important;gap:8px}
+  .nav-logo span {
+    display: none !important;
+  }
+  #btn-open-login span, .nav-dl span {
+    display: none !important;
+  }
+  #btn-open-login, .nav-dl {
+    padding: 8px !important;
+    border-radius: 50% !important;
+    display: inline-flex !important;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+  }
+  .dl-icon-mobile {
+    display: inline-block !important;
+  }
+  .lang-sw {
+    display: none !important;
+  }
+  .lang-select-mobile {
+    display: inline-block !important;
+  }
+  
   .hero,.features,.dl-section,.ver-section{padding-left:20px;padding-right:20px}
   .dl-box{padding:22px 16px}
   .vr{padding:16px;flex-direction:column;align-items:flex-start;gap:8px}
@@ -133,19 +189,28 @@ footer a:hover{color:var(--gold-light)}
       <rect x="48" y="32" width="3" height="187" fill="url(#gN)" opacity="0.8"/>
       <text x="95" y="105" font-family="Georgia,serif" font-size="52" font-style="italic" font-weight="bold" fill="url(#gN)">J</text>
     </svg>
-    Inkwell
+    <span>Inkwell</span>
   </a>
   <div class="nav-right">
     <button id="btn-open-login" class="nav-dl" title="Web-App / Login" style="padding: 6px 12px; display: flex; align-items: center; gap: 8px; border-radius: 20px; cursor: pointer;">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
+      <svg class="nav-icon-user" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
+      <svg class="nav-icon-home" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16" style="display: none;"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><polyline points="9 22 9 12 15 12 15 22"></polyline></svg>
       <span data-i18n="nav_login">Anmelden</span>
     </button>
-    <a href="#download" class="nav-dl" data-i18n="nav_dl_btn">Herunterladen</a>
+    <a href="#download" class="nav-dl" style="display: inline-flex; align-items: center; justify-content: center; gap: 8px;">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16" style="display: none; flex-shrink: 0;" class="dl-icon-mobile"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+      <span data-i18n="nav_dl_btn">Herunterladen</span>
+    </a>
     <div class="lang-sw">
       <button class="lb active" onclick="setLang('de')">DE</button>
       <button class="lb" onclick="setLang('en')">EN</button>
       <button class="lb" onclick="setLang('it')">IT</button>
     </div>
+    <select class="lang-select-mobile" onchange="setLang(this.value)" style="display: none; background: transparent; border: 0.5px solid var(--navy-border); color: var(--gold-light); font-family: 'Jost', sans-serif; font-size: 11px; padding: 6px; text-transform: uppercase; border-radius: 4px; outline: none; cursor: pointer;">
+      <option value="de" style="background: var(--navy); color: var(--cream);">DE</option>
+      <option value="en" style="background: var(--navy); color: var(--cream);">EN</option>
+      <option value="it" style="background: var(--navy); color: var(--cream);">IT</option>
+    </select>
   </div>
 </nav>
 
@@ -487,6 +552,11 @@ let pendingDowngrade = null;
 function setLang(l){
   lang = l;
   document.querySelectorAll('.lb').forEach(b => b.classList.toggle('active', b.textContent.toLowerCase()===l));
+  
+  // Keep mobile select in sync
+  const selectMobile = document.querySelector('.lang-select-mobile');
+  if(selectMobile) selectMobile.value = l;
+
   document.querySelectorAll('[data-i18n]').forEach(el => { 
     const v = t(el.getAttribute('data-i18n')); 
     if(v) el.innerHTML = v; 
@@ -502,14 +572,25 @@ function setLang(l){
     const span = document.getElementById('btn-open-login').querySelector('span');
     const webappDashboard = document.getElementById('webapp-dashboard');
     const webappViewer = document.getElementById('webapp-viewer');
+    const userIcon = document.getElementById('btn-open-login').querySelector('.nav-icon-user');
+    const homeIcon = document.getElementById('btn-open-login').querySelector('.nav-icon-home');
     if (webappDashboard.style.display === 'block' || webappViewer.style.display === 'block') {
       span.textContent = t('dash_home');
+      if(userIcon) userIcon.style.display = 'none';
+      if(homeIcon) homeIcon.style.display = 'inline-block';
     } else {
       span.textContent = 'Dashboard';
+      if(userIcon) userIcon.style.display = 'inline-block';
+      if(homeIcon) homeIcon.style.display = 'none';
     }
   } else {
-    const span = document.getElementById('btn-open-login')?.querySelector('span');
+    const btn = document.getElementById('btn-open-login');
+    const span = btn?.querySelector('span');
     if(span) span.textContent = t('nav_login');
+    const userIcon = btn?.querySelector('.nav-icon-user');
+    const homeIcon = btn?.querySelector('.nav-icon-home');
+    if(userIcon) userIcon.style.display = 'inline-block';
+    if(homeIcon) homeIcon.style.display = 'none';
   }
   
   updateDownloadButtonText();
@@ -704,6 +785,8 @@ btnOpenLogin.addEventListener('click', () => {
       webappViewer.style.display = 'none';
       landingContent.style.display = 'block';
       btnOpenLogin.querySelector('span').textContent = 'Dashboard';
+      btnOpenLogin.querySelector('.nav-icon-user').style.display = 'inline-block';
+      btnOpenLogin.querySelector('.nav-icon-home').style.display = 'none';
     } else {
       showDashboard();
     }
@@ -759,6 +842,8 @@ document.getElementById('logout-btn').addEventListener('click', () => {
   webappViewer.style.display = 'none';
   landingContent.style.display = 'block';
   btnOpenLogin.querySelector('span').textContent = t('nav_login');
+  btnOpenLogin.querySelector('.nav-icon-user').style.display = 'inline-block';
+  btnOpenLogin.querySelector('.nav-icon-home').style.display = 'none';
 });
 
 document.getElementById('viewer-back').addEventListener('click', () => {
@@ -771,6 +856,8 @@ async function showDashboard() {
   webappViewer.style.display = 'none';
   webappDashboard.style.display = 'block';
   btnOpenLogin.querySelector('span').textContent = t('dash_home');
+  btnOpenLogin.querySelector('.nav-icon-user').style.display = 'none';
+  btnOpenLogin.querySelector('.nav-icon-home').style.display = 'inline-block';
   
   const grid = document.getElementById('dashboard-grid');
   grid.innerHTML = `<p style="color:var(--text-muted)">${t('dash_loading')}</p>`;
