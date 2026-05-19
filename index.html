@@ -912,7 +912,24 @@ async function showDashboard() {
       `${SUPABASE_URL}/rest/v1/notebooks?owner_id=eq.${encodeURIComponent(session.userId)}&select=id,title,updated_at,notebook_json`,
       { headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${session.accessToken}` } }
     );
-    if (!res.ok) throw new Error('Fehler beim Laden');
+    if (!res.ok) {
+      if (res.status === 401) {
+        localStorage.removeItem('inkwell_web_token');
+        localStorage.removeItem('inkwell_web_uid');
+        session = null;
+        webappDashboard.style.display = 'none';
+        webappViewer.style.display = 'none';
+        landingContent.style.display = 'block';
+        btnOpenLogin.querySelector('span').textContent = t('nav_login');
+        btnOpenLogin.querySelector('.nav-icon-user').style.display = 'inline-block';
+        btnOpenLogin.querySelector('.nav-icon-home').style.display = 'none';
+        
+        loginModal.classList.add('open');
+        loginModal.setAttribute('aria-hidden', 'false');
+        throw new Error('Sitzung abgelaufen. Bitte erneut anmelden.');
+      }
+      throw new Error('Fehler beim Laden');
+    }
     
     const notebooks = await res.json();
     grid.innerHTML = '';
@@ -926,7 +943,15 @@ async function showDashboard() {
       const card = document.createElement('div');
       card.className = 'fc'; // reuse feature card style
       card.style.cursor = 'pointer';
-      card.innerHTML = `<h3 style="margin-bottom:4px;">${nb.name || row.title}</h3><p style="font-size:12px;opacity:0.6">${new Date(row.updated_at).toLocaleDateString()}</p>`;
+      card.style.borderLeft = `6px solid ${nb.color || 'var(--gold)'}`;
+      card.style.borderRadius = '4px';
+      
+      const pageCount = (nb.pages || []).length;
+      const pageLabel = pageCount !== 1 ? (t('pages') || 'Seiten') : (t('page') || 'Seite');
+      
+      card.innerHTML = `<h3 style="margin-bottom:4px;">${nb.name || row.title}</h3>`
+        + `<p style="font-size:12px;opacity:0.6;margin-bottom:8px;">${new Date(row.updated_at).toLocaleDateString()}</p>`
+        + `<p style="font-size:11px;color:var(--gold);letter-spacing:0.05em;text-transform:uppercase;margin:0;">${pageCount} ${pageLabel}</p>`;
       card.addEventListener('click', () => renderNotebook(nb));
       grid.appendChild(card);
     });
