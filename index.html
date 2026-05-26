@@ -355,12 +355,10 @@ footer a:hover{color:var(--gold-light)}
 
 <!-- Web App Viewer -->
 <div id="webapp-viewer" style="display: none; padding: 100px 20px 40px;">
-  <div style="margin-bottom: 24px; display: flex; justify-content: space-between; align-items: center; max-width: 1180px; margin: 0 auto 24px; flex-wrap: wrap; gap: 10px;">
+  <div style="margin-bottom: 24px; display: grid; grid-template-columns: auto 1fr auto; align-items: center; max-width: 1180px; margin: 0 auto 24px; gap: 12px;">
     <button id="viewer-back" class="btn-m" data-i18n="viewer_back">Zurück zur Übersicht</button>
-    <div style="text-align: center; flex: 1 1 360px; min-width: 240px;">
-      <h3 id="viewer-title" style="font-family: 'Cormorant Garamond', serif; font-size: 32px; font-style: italic; margin: 0;">Notebook</h3>
-      <span id="viewer-page-num-top" style="font-family: 'Jost', sans-serif; font-size: 15px; color: var(--gold-light);">0 Seiten</span>
-    </div>
+    <h3 id="viewer-title" style="font-family: 'Cormorant Garamond', serif; font-size: 32px; font-style: italic; margin: 0; text-align: center;">Notebook</h3>
+    <span id="viewer-page-num-top" style="font-family: 'Jost', sans-serif; font-size: 13px; color: var(--gold-light); justify-self: end; white-space: nowrap;">0 Seiten</span>
   </div>
   <div id="viewer-pages" style="display: grid; gap: 28px; justify-items: center; align-items: start; max-width: 1180px; margin: 0 auto;">
   </div>
