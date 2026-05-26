@@ -1,14 +1,77 @@
 <!DOCTYPE html>
 <html lang="de">
 <head>
-    html = html.replace(/<\/p>/gi, '\n\n');
-    html = html.replace(/<\/div>/gi, '\n');
-    html = html.replace(/<\/h[1-6]>/gi, '\n\n');
-    html = html.replace(/<\/li>/gi, '\n');
-
-    const tempDiv = document.createElement('div');
-    tempDiv.innerHTML = html;
-    const plainText = tempDiv.textContent || '';
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="refresh" content="0; url=src/index.html">
+  <title>Inkwell</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #0c0e18;
+      --panel: #151724;
+      --text: #faf8f3;
+      --muted: rgba(250, 248, 243, 0.68);
+      --gold: #c9a227;
+    }
+    html, body {
+      margin: 0;
+      min-height: 100%;
+      background: radial-gradient(circle at top, rgba(201, 162, 39, 0.12), transparent 36%), var(--bg);
+      color: var(--text);
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    body {
+      display: grid;
+      place-items: center;
+      padding: 24px;
+    }
+    .card {
+      width: min(520px, 100%);
+      background: rgba(21, 23, 36, 0.94);
+      border: 1px solid rgba(201, 162, 39, 0.18);
+      border-radius: 18px;
+      padding: 28px;
+      box-shadow: 0 18px 50px rgba(0, 0, 0, 0.35);
+    }
+    h1 {
+      margin: 0 0 10px;
+      font-size: 28px;
+      font-weight: 600;
+      letter-spacing: 0.02em;
+    }
+    p {
+      margin: 0 0 14px;
+      line-height: 1.6;
+      color: var(--muted);
+    }
+    a {
+      color: var(--gold);
+      text-decoration: none;
+      font-weight: 600;
+    }
+    a:hover {
+      text-decoration: underline;
+    }
+    .meta {
+      margin-top: 16px;
+      font-size: 13px;
+      color: rgba(250, 248, 243, 0.52);
+    }
+  </style>
+  <script>
+    window.location.replace('src/index.html');
+  </script>
+</head>
+<body>
+  <main class="card">
+    <h1>Inkwell wird geladen</h1>
+    <p>Die Website leitet dich zur funktionierenden App-Seite weiter.</p>
+    <p>Falls die Weiterleitung blockiert wird, öffne bitte <a href="src/index.html">src/index.html</a>.</p>
+    <div class="meta">Inkwell</div>
+  </main>
+</body>
+</html>
       <div class="modal-actions" style="margin-top: 10px;">
         <button id="login-cancel" class="btn-m" type="button" data-i18n="downgrade_cancel">Abbrechen</button>
         <button id="login-submit" class="btn-m" style="background: var(--gold-dim); border-color: var(--gold-light); color: var(--gold-light);" type="button" data-i18n="nav_login">Anmelden</button>
@@ -445,7 +508,10 @@ async function loadReleases(){
     }
     renderVersions();
   }catch{
-    document.getElementById('ver-list').innerHTML=`<div class="v-error">${t('ver_error')}</div>`;
+    const releaseList = document.getElementById('ver-list');
+    if (releaseList) {
+      releaseList.innerHTML=`<div class="v-error">${t('ver_error')}</div>`;
+    }
   }
 }
 
@@ -490,7 +556,7 @@ if (hash && hash.includes('access_token')) {
   }
 }
 
-btnOpenLogin.addEventListener('click', () => {
+btnOpenLogin?.addEventListener('click', () => {
   if(session) {
     if (webappDashboard.style.display === 'block' || webappViewer.style.display === 'block') {
       webappDashboard.style.display = 'none';
@@ -509,7 +575,7 @@ btnOpenLogin.addEventListener('click', () => {
 });
 
 // Download button click from dashboard
-document.querySelector('a[href="#download"]').addEventListener('click', (event) => {
+document.querySelector('a[href="#download"]')?.addEventListener('click', (event) => {
   const webappDashboard = document.getElementById('webapp-dashboard');
   const webappViewer = document.getElementById('webapp-viewer');
   if (webappDashboard.style.display === 'block' || webappViewer.style.display === 'block') {
@@ -544,7 +610,7 @@ document.addEventListener('click', (event) => {
   }
 });
 
-document.getElementById('login-google-btn').addEventListener('click', () => {
+document.getElementById('login-google-btn')?.addEventListener('click', () => {
   let currentUrl = window.location.origin + window.location.pathname;
   if (!window.location.origin || window.location.origin === 'null' || window.location.protocol === 'file:') {
     currentUrl = 'https://manuel0anvi.github.io/Inkwell/index.html';
@@ -557,12 +623,12 @@ document.getElementById('login-google-btn').addEventListener('click', () => {
   window.location.href = url;
 });
 
-document.getElementById('login-cancel').addEventListener('click', () => {
+document.getElementById('login-cancel')?.addEventListener('click', () => {
   loginModal.classList.remove('open');
   loginModal.setAttribute('aria-hidden', 'true');
 });
 
-document.getElementById('login-submit').addEventListener('click', async () => {
+document.getElementById('login-submit')?.addEventListener('click', async () => {
   const email = document.getElementById('login-email').value;
   const password = document.getElementById('login-pass').value;
   const errEl = document.getElementById('login-error');
@@ -589,7 +655,7 @@ document.getElementById('login-submit').addEventListener('click', async () => {
   }
 });
 
-document.getElementById('logout-btn').addEventListener('click', () => {
+document.getElementById('logout-btn')?.addEventListener('click', () => {
   localStorage.removeItem('inkwell_web_token');
   localStorage.removeItem('inkwell_web_uid');
   session = null;
@@ -601,7 +667,7 @@ document.getElementById('logout-btn').addEventListener('click', () => {
   btnOpenLogin.querySelector('.nav-icon-home').style.display = 'none';
 });
 
-document.getElementById('viewer-back').addEventListener('click', () => {
+document.getElementById('viewer-back')?.addEventListener('click', () => {
   webappViewer.style.display = 'none';
   webappDashboard.style.display = 'block';
 });
@@ -615,6 +681,7 @@ async function showDashboard() {
   btnOpenLogin.querySelector('.nav-icon-home').style.display = 'inline-block';
   
   const grid = document.getElementById('dashboard-grid');
+  if (!grid) return;
   grid.innerHTML = `<p style="color:var(--text-muted)" data-i18n="dash_loading">${t('dash_loading')}</p>`;
   
   try {
