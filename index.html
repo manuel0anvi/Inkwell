@@ -1,77 +1,326 @@
 <!DOCTYPE html>
 <html lang="de">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta http-equiv="refresh" content="0; url=src/index.html">
-  <title>Inkwell</title>
-  <style>
-    :root {
-      color-scheme: dark;
-      --bg: #0c0e18;
-      --panel: #151724;
-      --text: #faf8f3;
-      --muted: rgba(250, 248, 243, 0.68);
-      --gold: #c9a227;
-    }
-    html, body {
-      margin: 0;
-      min-height: 100%;
-      background: radial-gradient(circle at top, rgba(201, 162, 39, 0.12), transparent 36%), var(--bg);
-      color: var(--text);
-      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-    }
-    body {
-      display: grid;
-      place-items: center;
-      padding: 24px;
-    }
-    .card {
-      width: min(520px, 100%);
-      background: rgba(21, 23, 36, 0.94);
-      border: 1px solid rgba(201, 162, 39, 0.18);
-      border-radius: 18px;
-      padding: 28px;
-      box-shadow: 0 18px 50px rgba(0, 0, 0, 0.35);
-    }
-    h1 {
-      margin: 0 0 10px;
-      font-size: 28px;
-      font-weight: 600;
-      letter-spacing: 0.02em;
-    }
-    p {
-      margin: 0 0 14px;
-      line-height: 1.6;
-      color: var(--muted);
-    }
-    a {
-      color: var(--gold);
-      text-decoration: none;
-      font-weight: 600;
-    }
-    a:hover {
-      text-decoration: underline;
-    }
-    .meta {
-      margin-top: 16px;
-      font-size: 13px;
-      color: rgba(250, 248, 243, 0.52);
-    }
-  </style>
-  <script>
-    window.location.replace('src/index.html');
-  </script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Inkwell — Digitales Notizbuch</title>
+
+<link rel="icon" type="image/svg+xml" href="icon.svg">
+<link rel="alternate icon" type="image/x-icon" href="icon.ico">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;1,300;1,400&family=Cormorant+Infant:ital,wght@0,300;1,300&family=Jost:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{--gold:#c9a227;--gold-light:#d4a857;--gold-dim:rgba(201,162,39,0.15);--navy:#0c0e18;--navy-card:#151724;--navy-border:rgba(201,162,39,0.15);--cream:#faf8f3;--text-muted:rgba(250,248,243,0.45);--text-body:rgba(250,248,243,0.78)}
+html{scroll-behavior:smooth}
+body{background:var(--navy);color:var(--cream);font-family:'Jost',sans-serif;font-weight:300;line-height:1.7;overflow-x:hidden}
+
+nav{position:fixed;top:0;left:0;right:0;z-index:100;display:flex;align-items:center;justify-content:space-between;padding:18px 56px;background:rgba(12,14,24,0.97);backdrop-filter:blur(8px);border-bottom:0.5px solid var(--navy-border)}
+.nav-logo{display:flex;align-items:center;gap:10px;text-decoration:none;font-family:'Cormorant Garamond',serif;font-size:20px;font-style:italic;color:var(--gold-light);letter-spacing:0.06em}
+.nav-logo svg{width:26px;height:26px}
+.nav-right{display:flex;align-items:center;gap:16px}
+.nav-dl{background:transparent;border:0.5px solid var(--gold);color:var(--gold-light);padding:7px 18px;font-family:'Jost',sans-serif;font-size:11px;letter-spacing:0.14em;text-transform:uppercase;text-decoration:none;transition:background .2s}
+.nav-dl:hover{background:var(--gold-dim)}
+.lang-sw{display:flex;align-items:center;gap:1px;border:0.5px solid var(--navy-border);padding:2px}
+.lb{background:transparent;border:none;color:var(--text-muted);font-family:'Jost',sans-serif;font-size:10px;letter-spacing:0.1em;padding:5px 8px;cursor:pointer;transition:color .2s,background .2s;text-transform:uppercase}
+.lb:hover{color:var(--gold-light)}
+.lb.active{background:var(--gold-dim);color:var(--gold-light)}
+
+/* Mobile Navigation Styles */
+@media (max-width: 768px) {
+  nav {
+    padding: 12px 16px !important;
+  }
+  .nav-logo span {
+    display: none !important;
+  }
+  #btn-open-login span, .nav-dl span {
+    display: none !important;
+  }
+  #btn-open-login, .nav-dl {
+    padding: 8px !important;
+    border-radius: 50% !important;
+    display: inline-flex !important;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+  }
+  .dl-icon-mobile {
+    display: inline-block !important;
+  }
+  .lang-sw {
+    display: none !important;
+  }
+  .lang-select-mobile {
+    display: inline-block !important;
+  }
+}
+
+.hero{min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:120px 40px 100px;position:relative;overflow:hidden}
+.hero::before{content:'';position:absolute;inset:0;background:radial-gradient(ellipse 60% 50% at 50% 30%,rgba(201,162,39,.07) 0%,transparent 70%),radial-gradient(ellipse 40% 60% at 20% 80%,rgba(201,162,39,.04) 0%,transparent 60%);pointer-events:none}
+.hero-badge{display:inline-block;border:0.5px solid var(--navy-border);color:var(--gold);font-size:11px;letter-spacing:.2em;text-transform:uppercase;padding:6px 18px;margin-bottom:40px;opacity:0;animation:fu .7s .1s forwards}
+.hero-icon{width:84px;height:84px;margin-bottom:34px;opacity:0;animation:fu .7s .2s forwards}
+.hero h1{font-family:'Cormorant Garamond',serif;font-size:clamp(68px,10vw,120px);font-weight:300;font-style:italic;line-height:.9;color:var(--cream);margin-bottom:26px;opacity:0;animation:fu .7s .3s forwards}
+.hero h1 span{color:var(--gold-light)}
+.hero-tagline{font-family:'Cormorant Infant',serif;font-style:italic;font-size:21px;font-weight:300;color:var(--text-body);max-width:500px;margin:0 auto 52px;opacity:0;animation:fu .7s .4s forwards}
+.hero-actions{display:flex;align-items:center;gap:18px;flex-wrap:wrap;justify-content:center;opacity:0;animation:fu .7s .55s forwards}
+.btn-p{display:inline-flex;align-items:center;gap:10px;background:var(--gold);color:#0c0e18;text-decoration:none;font-family:'Jost',sans-serif;font-size:12px;font-weight:500;letter-spacing:.12em;text-transform:uppercase;padding:15px 34px;transition:background .2s,transform .15s}
+.btn-p:hover{background:var(--gold-light);transform:translateY(-1px)}
+.btn-g{display:inline-flex;align-items:center;gap:8px;color:var(--text-muted);text-decoration:none;font-size:12px;letter-spacing:.1em;text-transform:uppercase;transition:color .2s}
+.btn-g:hover{color:var(--cream)}
+.hero-meta{margin-top:52px;font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--text-muted);opacity:0;animation:fu .7s .7s forwards}
+.hero-meta span{color:var(--gold);margin:0 5px}
+
+.ornament{text-align:center;padding:40px 0 70px;color:var(--gold);font-size:17px;opacity:.4}
+
+.features{max-width:1000px;margin:0 auto;padding:0 40px 120px}
+.sec-label{text-align:center;font-size:11px;letter-spacing:.22em;text-transform:uppercase;color:var(--gold);margin-bottom:16px}
+.sec-title{text-align:center;font-family:'Cormorant Garamond',serif;font-size:clamp(34px,5vw,52px);font-weight:300;font-style:italic;color:var(--cream);margin-bottom:64px;line-height:1.1}
+.feat-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:1px;border:0.5px solid var(--navy-border)}
+.fc{padding:38px 34px;background:var(--navy-card);border:0.5px solid transparent;transition:border-color .3s,background .3s}
+.fc:hover{border-color:var(--navy-border);background:rgba(201,162,39,.04)}
+.fi{width:34px;height:34px;color:var(--gold);margin-bottom:18px}
+.fc h3{font-family:'Cormorant Garamond',serif;font-size:20px;font-weight:400;font-style:italic;color:var(--cream);margin-bottom:9px}
+.fc p{font-size:14px;color:var(--text-body);line-height:1.65}
+
+.dl-section{max-width:720px;margin:0 auto;padding:80px 40px 80px;text-align:center;position:relative}
+.dl-section::before{content:'';position:absolute;top:0;left:50%;transform:translateX(-50%);width:0.5px;height:56px;background:linear-gradient(to bottom,transparent,var(--gold))}
+.ver-badge{display:inline-block;border:0.5px solid var(--navy-border);color:var(--gold);font-size:11px;letter-spacing:.18em;text-transform:uppercase;padding:5px 15px;margin-bottom:30px}
+.dl-section h2{font-family:'Cormorant Garamond',serif;font-size:clamp(32px,5vw,50px);font-weight:300;font-style:italic;margin-bottom:14px;color:var(--cream)}
+.dl-section>p{font-size:14px;color:var(--text-body);margin-bottom:44px;max-width:440px;margin-left:auto;margin-right:auto}
+.dl-box{background:var(--navy-card);border:0.5px solid var(--navy-border);padding:36px}
+.dl-plat{display:flex;align-items:center;gap:14px;margin-bottom:24px}
+.pl-icon{width:42px;height:42px;background:var(--gold-dim);display:flex;align-items:center;justify-content:center;flex-shrink:0;color:var(--gold-light)}
+.pl-icon svg{width:20px;height:20px}
+.pl-info{text-align:left}
+.pl-info strong{display:block;font-size:15px;font-weight:400;color:var(--cream);font-family:'Cormorant Garamond',serif;font-style:italic}
+.pl-info span{font-size:12px;color:var(--text-muted)}
+.dl-meta{display:flex;justify-content:space-between;font-size:11px;color:var(--text-muted);letter-spacing:.07em;border-top:0.5px solid var(--navy-border);padding-top:18px;margin-top:18px}
+
+.ver-section{max-width:720px;margin:0 auto;padding:0 40px 140px}
+.ver-section h3{font-family:'Cormorant Garamond',serif;font-size:26px;font-weight:300;font-style:italic;color:var(--cream);margin-bottom:6px;text-align:center}
+.ver-section>p{font-size:13px;color:var(--text-muted);text-align:center;margin-bottom:28px}
+.ver-list{display:flex;flex-direction:column;gap:1px;border:0.5px solid var(--navy-border)}
+.vr{background:var(--navy-card);padding:16px 22px;display:flex;align-items:center;gap:14px;transition:background .2s;flex-wrap:wrap}
+.vr:hover{background:rgba(201,162,39,.04)}
+.vr.latest{border-left:2px solid var(--gold)}
+.v-tag{font-family:'Cormorant Garamond',serif;font-size:16px;font-style:italic;color:var(--cream);min-width:72px}
+.v-date{font-size:12px;color:var(--text-muted);letter-spacing:.05em;min-width:90px}
+.v-new{font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--gold);border:0.5px solid var(--gold-dim);padding:3px 10px;white-space:nowrap}
+.v-dl{display:inline-flex;align-items:center;gap:6px;background:transparent;border:0.5px solid var(--navy-border);color:var(--text-body);text-decoration:none;font-family:'Jost',sans-serif;font-size:11px;letter-spacing:.1em;text-transform:uppercase;padding:7px 14px;white-space:nowrap;transition:border-color .2s,color .2s;cursor:pointer}
+.v-dl:hover{border-color:var(--gold);color:var(--gold-light)}
+.v-dl svg{width:12px;height:12px;flex-shrink:0}
+.v-loading,.v-error{text-align:center;padding:36px;font-size:12px;color:var(--text-muted);letter-spacing:.1em;text-transform:uppercase}
+
+.modal-backdrop{position:fixed;inset:0;background:rgba(8,10,16,.78);backdrop-filter:blur(4px);display:none;align-items:center;justify-content:center;z-index:300;padding:24px}
+.modal-backdrop.open{display:flex}
+.modal-card{width:min(620px,100%);background:linear-gradient(180deg,rgba(24,26,38,.98),rgba(16,18,30,.98));border:0.5px solid var(--navy-border);box-shadow:0 18px 40px rgba(0,0,0,.35);padding:24px 22px}
+.modal-kicker{font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:rgba(255,170,40,.85);margin-bottom:10px}
+.modal-card h4{font-family:'Cormorant Garamond',serif;font-style:italic;font-weight:400;font-size:30px;line-height:1.1;color:var(--cream);margin-bottom:12px}
+.modal-card p{font-size:14px;color:var(--text-body);line-height:1.65;margin-bottom:12px}
+.modal-note{font-size:12px;color:rgba(255,170,40,.9);border:0.5px solid rgba(255,170,40,.25);background:rgba(255,170,40,.07);padding:10px 12px;margin-bottom:14px}
+.modal-version{display:inline-block;border:0.5px solid var(--navy-border);font-size:12px;letter-spacing:.08em;color:var(--gold-light);padding:6px 10px;margin:4px 0 14px}
+.modal-actions{display:flex;justify-content:flex-end;gap:12px;flex-wrap:wrap}
+.btn-m{border:0.5px solid var(--navy-border);background:transparent;color:var(--text-body);font-family:'Jost',sans-serif;font-size:11px;letter-spacing:.1em;text-transform:uppercase;padding:10px 15px;cursor:pointer;transition:border-color .2s,color .2s,background .2s}
+.btn-m:hover{border-color:var(--gold);color:var(--gold-light)}
+.btn-m.warn{border-color:rgba(255,170,40,.65);color:#ffd289;background:rgba(255,170,40,.09)}
+.btn-m.warn:hover{background:rgba(255,170,40,.16)}
+
+footer{border-top:0.5px solid var(--navy-border);padding:32px 56px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:14px}
+footer p{font-size:12px;color:var(--text-muted)}
+footer a{color:var(--text-muted);text-decoration:none;font-size:12px;transition:color .2s}
+footer a:hover{color:var(--gold-light)}
+.fl{display:flex;gap:24px}
+
+@keyframes fu{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:translateY(0)}}
+
+@media(max-width:768px){
+  nav{padding:12px 16px !important;gap:8px}
+  .nav-logo span {
+    display: none !important;
+  }
+  #btn-open-login span, .nav-dl span {
+    display: none !important;
+  }
+  #btn-open-login, .nav-dl {
+    padding: 8px !important;
+    border-radius: 50% !important;
+    display: inline-flex !important;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+  }
+  .dl-icon-mobile {
+    display: inline-block !important;
+  }
+  .lang-sw {
+    display: none !important;
+  }
+  .lang-sw-mobile-custom {
+    display: inline-block !important;
+  }
+  
+  .hero,.features,.dl-section,.ver-section{padding-left:20px;padding-right:20px}
+  .dl-box{padding:22px 16px}
+  .vr{padding:16px;flex-direction:column;align-items:flex-start;gap:8px}
+  .modal-card{padding:18px 16px}
+  .modal-card h4{font-size:25px}
+  footer{padding:24px 20px;flex-direction:column}
+}
+</style>
 </head>
 <body>
-  <main class="card">
-    <h1>Inkwell wird geladen</h1>
-    <p>Die Website leitet dich zur funktionierenden App-Seite weiter.</p>
-    <p>Falls die Weiterleitung blockiert wird, öffne bitte <a href="src/index.html">src/index.html</a>.</p>
-    <div class="meta">Inkwell</div>
-  </main>
-</body>
-</html>
+
+<nav>
+  <a href="#" class="nav-logo">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256">
+      <defs>
+        <linearGradient id="gN" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" style="stop-color:#d4a857"/><stop offset="100%" style="stop-color:#a8860c"/></linearGradient>
+        <linearGradient id="cN" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" style="stop-color:#2a2a3a"/><stop offset="100%" style="stop-color:#1a1a24"/></linearGradient>
+      </defs>
+      <rect x="45" y="28" width="166" height="195" rx="8" fill="url(#cN)"/>
+      <rect x="55" y="35" width="150" height="180" rx="4" fill="#f5f0e6"/>
+      <rect x="58" y="38" width="144" height="174" rx="3" fill="#faf8f3"/>
+      <g stroke="#d4c8b0" stroke-width="1.5" opacity="0.6"><line x1="75" y1="70" x2="185" y2="70"/><line x1="75" y1="90" x2="185" y2="90"/><line x1="75" y1="110" x2="185" y2="110"/><line x1="75" y1="130" x2="185" y2="130"/></g>
+      <rect x="45" y="28" width="18" height="195" rx="4" fill="url(#cN)"/>
+      <rect x="48" y="32" width="3" height="187" fill="url(#gN)" opacity="0.8"/>
+      <text x="95" y="105" font-family="Georgia,serif" font-size="52" font-style="italic" font-weight="bold" fill="url(#gN)">J</text>
+    </svg>
+    <span>Inkwell</span>
+  </a>
+  <div class="nav-right">
+    <button id="btn-open-login" class="nav-dl" title="Web-App / Login" style="padding: 6px 12px; display: flex; align-items: center; gap: 8px; border-radius: 20px; cursor: pointer;">
+      <svg class="nav-icon-user" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
+      <svg class="nav-icon-home" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16" style="display: none;"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><polyline points="9 22 9 12 15 12 15 22"></polyline></svg>
+      <span data-i18n="nav_login">Anmelden</span>
+    </button>
+    <a href="#download" class="nav-dl" style="display: inline-flex; align-items: center; justify-content: center; gap: 8px;">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16" style="display: none; flex-shrink: 0;" class="dl-icon-mobile"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+      <span data-i18n="nav_dl_btn">Herunterladen</span>
+    </a>
+    <div class="lang-sw">
+      <button class="lb active" onclick="setLang('de')">DE</button>
+      <button class="lb" onclick="setLang('en')">EN</button>
+      <button class="lb" onclick="setLang('it')">IT</button>
+    </div>
+    <div class="lang-sw-mobile-custom" style="display: none; position: relative;">
+      <button id="lang-btn-mobile" onclick="toggleMobileLangMenu(event)" style="background: transparent; border: 0.5px solid var(--gold); color: var(--gold-light); font-family: 'Jost', sans-serif; font-size: 11px; padding: 6px 12px; text-transform: uppercase; border-radius: 4px; cursor: pointer; display: flex; align-items: center; justify-content: center; height: 36px; letter-spacing: 0.14em;">
+        <span style="font-size: 11px; font-weight: 500; text-transform: uppercase; display: inline !important;">DE</span>
+      </button>
+      <div id="lang-dropdown-mobile" style="display: none; position: absolute; top: 42px; right: 0; background: var(--navy-card); border: 0.5px solid var(--navy-border); box-shadow: 0 8px 24px rgba(0,0,0,0.5); border-radius: 4px; padding: 4px; z-index: 1000; min-width: 60px;">
+        <button class="lb" onclick="setLang('de'); toggleMobileLangMenu()" style="display: block; width: 100%; text-align: center; padding: 8px 12px;">DE</button>
+        <button class="lb" onclick="setLang('en'); toggleMobileLangMenu()" style="display: block; width: 100%; text-align: center; padding: 8px 12px;">EN</button>
+        <button class="lb" onclick="setLang('it'); toggleMobileLangMenu()" style="display: block; width: 100%; text-align: center; padding: 8px 12px;">IT</button>
+      </div>
+    </div>
+  </div>
+</nav>
+
+<div id="landing-content">
+<section class="hero">
+  <div class="hero-badge" data-i18n="hero_badge">Digitales Notizbuch für Windows</div>
+  <div class="hero-icon">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256">
+      <defs>
+        <linearGradient id="gH" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" style="stop-color:#d4a857"/><stop offset="50%" style="stop-color:#c9a227"/><stop offset="100%" style="stop-color:#a8860c"/></linearGradient>
+        <linearGradient id="cH" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" style="stop-color:#2a2a3a"/><stop offset="100%" style="stop-color:#1a1a24"/></linearGradient>
+        <linearGradient id="pH" x1="0%" y1="0%" x2="0%" y2="100%"><stop offset="0%" style="stop-color:#f5f0e6"/><stop offset="100%" style="stop-color:#e8e0d0"/></linearGradient>
+      </defs>
+      <ellipse cx="128" cy="240" rx="70" ry="12" fill="rgba(0,0,0,0.3)"/>
+      <rect x="45" y="28" width="166" height="195" rx="8" fill="url(#cH)"/>
+      <rect x="55" y="35" width="150" height="180" rx="4" fill="url(#pH)"/>
+      <rect x="58" y="38" width="144" height="174" rx="3" fill="#faf8f3"/>
+      <g stroke="#d4c8b0" stroke-width="1.5" opacity="0.6"><line x1="75" y1="70" x2="185" y2="70"/><line x1="75" y1="90" x2="185" y2="90"/><line x1="75" y1="110" x2="185" y2="110"/><line x1="75" y1="130" x2="185" y2="130"/><line x1="75" y1="150" x2="185" y2="150"/><line x1="75" y1="170" x2="160" y2="170"/></g>
+      <rect x="45" y="28" width="18" height="195" rx="4" fill="url(#cH)"/>
+      <rect x="48" y="32" width="3" height="187" fill="url(#gH)" opacity="0.8"/>
+      <path d="M195 28 L211 28 L211 55 L205 55 L205 34 L195 34 Z" fill="url(#gH)"/>
+      <path d="M195 223 L211 223 L211 196 L205 196 L205 217 L195 217 Z" fill="url(#gH)"/>
+      <g transform="translate(145,85) rotate(35)"><path d="M0 0 L8 75 L12 75 L20 0 L10 8 Z" fill="url(#gH)"/><path d="M8 75 L10 95 L12 75" fill="#1a1510"/></g>
+      <text x="95" y="95" font-family="Georgia,serif" font-size="48" font-style="italic" font-weight="bold" fill="url(#gH)">J</text>
+    </svg>
+  </div>
+  <h1><span>Ink</span>well</h1>
+  <p class="hero-tagline" data-i18n="hero_tagline">Text und Handschrift vereint in einem eleganten, digitalen Notizbuch.</p>
+  <div class="hero-actions">
+    <a id="hero-dl" href="#" class="btn-p" download="Inkwell-Setup.exe">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="15" height="15"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+      <span data-i18n="hero_dl">Download für Windows</span>
+    </a>
+    <a href="https://github.com/manuel0anvi/Inkwell" target="_blank" class="btn-g">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="15" height="15"><path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 00-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0020 4.77 5.07 5.07 0 0019.91 1S18.73.65 16 2.48a13.38 13.38 0 00-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 005 4.77a5.44 5.44 0 00-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 009 18.13V22"/></svg>
+      <span data-i18n="hero_github">GitHub ansehen</span>
+    </a>
+  </div>
+  <p class="hero-meta"><span id="hv">v1.0.0</span><span>·</span><span data-i18n="hero_platform">Windows x64</span><span>·</span><span data-i18n="hero_free">Kostenlos</span></p>
+</section>
+
+<div class="ornament">— ✦ —</div>
+
+<section class="features" id="features">
+  <p class="sec-label" data-i18n="feat_label">Funktionen</p>
+  <h2 class="sec-title" data-i18n="feat_title">Alles in einem Notizbuch</h2>
+  <div class="feat-grid">
+    <div class="fc"><svg class="fi" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/></svg><h3 data-i18n="f1_t">Text & Handschrift</h3><p data-i18n="f1_d">Klassische Textnotizen und handschriftliche Zeichnungen in einer einzigen Oberfläche vereint.</p></div>
+    <div class="fc"><svg class="fi" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="21" x2="9" y2="9"/></svg><h3 data-i18n="f2_t">Mehrere Hefte</h3><p data-i18n="f2_d">Organisiere deine Notizen in separaten Heften mit eigenen Farben und Hintergründen.</p></div>
+    <div class="fc"><svg class="fi" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg><h3 data-i18n="f3_t">PDF-Unterstützung</h3><p data-i18n="f3_d">PDFs direkt in der App öffnen, anzeigen und mit Notizen oder Markierungen versehen.</p></div>
+    <div class="fc"><svg class="fi" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v11a2 2 0 01-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg><h3 data-i18n="f4_t">Auto-Speicherung</h3><p data-i18n="f4_d">Notizen werden automatisch im Hintergrund gespeichert — kein manuelles Speichern nötig.</p></div>
+    <div class="fc"><svg class="fi" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93l-1.41 1.41M5.34 18.66l-1.41 1.41M12 2v2M12 20v2M4.93 4.93l1.41 1.41M18.66 18.66l1.41 1.41M2 12h2M20 12h2"/></svg><h3 data-i18n="f5_t">Zeichenwerkzeuge</h3><p data-i18n="f5_d">Stift, Marker, Radierer und mehr — optimiert für Stifteingabe und Touch-Bedienung.</p></div>
+    <div class="fc"><svg class="fi" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg><h3 data-i18n="f6_t">Automatische Updates</h3><p data-i18n="f6_d">Die App prüft beim Start auf neue Versionen und aktualisiert sich mit einem Klick.</p></div>
+  </div>
+</section>
+
+<section class="dl-section" id="download">
+  <div class="ver-badge" id="vbadge">Version 1.0.0</div>
+  <h2 data-i18n="dl_title">Bereit zum Schreiben?</h2>
+  <p data-i18n="dl_sub">Lade Inkwell kostenlos herunter und starte noch heute mit deinen ersten digitalen Notizen.</p>
+  <div class="dl-box">
+    <div class="dl-plat">
+      <div class="pl-icon"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M0 3.449L9.75 2.1v9.451H0m10.949-9.602L24 0v11.4H10.949M0 12.6h9.75v9.451L0 20.699M10.949 12.6H24V24l-12.9-1.801"/></svg></div>
+      <div class="pl-info"><strong>Windows</strong><span data-i18n="dl_info">Windows 10 / 11 · x64 · NSIS Installer</span></div>
+    </div>
+    <a id="main-dl" href="#" class="btn-p" style="width:100%;justify-content:center;" download="Inkwell-Setup.exe">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="15" height="15"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+      <span data-i18n="dl_btn">Inkwell-Setup.exe herunterladen</span>
+    </a>
+    <div class="dl-meta"><span id="dm-ver">Version 1.0.0</span><span data-i18n="dl_free">Kostenlos &amp; Open Source</span></div>
+  </div>
+</section>
+
+<section class="ver-section" id="versions">
+  <h3 data-i18n="ver_title">Alle Versionen</h3>
+  <p data-i18n="ver_sub">Ältere Versionen können direkt hier heruntergeladen werden.</p>
+  <div id="ver-list" class="ver-list">
+    <div class="v-loading" data-i18n="ver_loading">Versionen werden geladen…</div>
+  </div>
+</section>
+
+<footer>
+  <p>© 2025 Inkwell · Anvi</p>
+  <div class="fl">
+    <a href="https://github.com/manuel0anvi/Inkwell" target="_blank">GitHub</a>
+    <a href="https://github.com/manuel0anvi/Inkwell/issues" target="_blank">Feedback</a>
+  </div>
+</footer>
+</div>
+
+<!-- Login Modal -->
+<div id="login-modal" class="modal-backdrop" aria-hidden="true">
+  <div class="modal-card" role="dialog" aria-modal="true">
+    <div class="modal-kicker" data-i18n="nav_login">Anmelden</div>
+    <h4 data-i18n="login_title">Cloud Login</h4>
+    <p data-i18n="login_sub">Melde dich an, um deine Notizbücher im Web anzusehen.</p>
+    <div style="margin-top: 20px; display: flex; flex-direction: column; gap: 12px;">
+      <button id="login-google-btn" class="btn-m" style="display:flex; justify-content:center; align-items:center; gap:8px; border-color:var(--navy-border);">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12.24 10.285V14.4h6.806c-.275 1.765-2.056 5.174-6.806 5.174-4.095 0-7.439-3.389-7.439-7.574s3.344-7.574 7.439-7.574c2.33 0 3.891.989 4.785 1.849l3.254-3.138C18.189 1.186 15.479 0 12.24 0 5.611 0 0 5.372 0 12s5.611 12 12.24 12c6.926 0 11.52-4.869 11.52-11.726 0-.788-.085-1.39-.189-1.989H12.24z"/></svg>
+        <span data-i18n="login_google">Mit Google anmelden</span>
+      </button>
+      <div style="text-align:center; font-size:11px; color:var(--text-muted); margin:4px 0;" data-i18n="login_or">ODER</div>
+      <input type="email" id="login-email" data-i18n-ph="login_email" placeholder="E-Mail" style="padding: 12px; background: rgba(0,0,0,0.2); border: 0.5px solid var(--navy-border); color: var(--cream); border-radius: 4px; font-family: 'Jost', sans-serif;">
+      <input type="password" id="login-pass" data-i18n-ph="login_pass" placeholder="Passwort" style="padding: 12px; background: rgba(0,0,0,0.2); border: 0.5px solid var(--navy-border); color: var(--cream); border-radius: 4px; font-family: 'Jost', sans-serif;">
+      <div id="login-error" style="color: #d9534f; font-size: 13px; display: none;"></div>
       <div class="modal-actions" style="margin-top: 10px;">
         <button id="login-cancel" class="btn-m" type="button" data-i18n="downgrade_cancel">Abbrechen</button>
         <button id="login-submit" class="btn-m" style="background: var(--gold-dim); border-color: var(--gold-light); color: var(--gold-light);" type="button" data-i18n="nav_login">Anmelden</button>
@@ -97,16 +346,15 @@
 
 <!-- Web App Viewer -->
 <div id="webapp-viewer" style="display: none; padding: 100px 20px 40px; text-align: center;">
-  <div style="margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center; max-width: 1000px; margin: 0 auto 20px; flex-wrap: wrap; gap: 10px;">
+  <div style="margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center; max-width: 800px; margin: 0 auto 20px; flex-wrap: wrap; gap: 10px;">
     <button id="viewer-back" class="btn-m" data-i18n="viewer_back">Zurück zur Übersicht</button>
     <h3 id="viewer-title" style="font-family: 'Cormorant Garamond', serif; font-size: 32px; font-style: italic; margin: 0;">Notebook</h3>
-    <span id="viewer-page-num-top" style="font-family: 'Jost', sans-serif; font-size: 15px; color: var(--gold-light);">Scroll-Übersicht</span>
+    <span id="viewer-page-num-top" style="font-family: 'Jost', sans-serif; font-size: 15px; color: var(--gold-light);">Seite 1 / 1</span>
   </div>
-  <div id="viewer-scroll" style="max-width: 100%; overflow-y: auto; overflow-x: hidden; padding: 8px 0 20px;">
-    <div id="viewer-pages" style="display: flex; flex-direction: column; gap: 28px; align-items: center;">
-    </div>
+  <div style="overflow: auto; max-width: 100%; display: inline-block; background: #fff; border-radius: 4px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); margin-bottom: 20px;">
+     <canvas id="viewer-canvas" style="display: block;"></canvas>
   </div>
-  <div style="display: none; justify-content: center; align-items: center; gap: 20px; max-width: 800px; margin: 0 auto;">
+  <div style="display: flex; justify-content: center; align-items: center; gap: 20px; max-width: 800px; margin: 0 auto;">
     <button id="viewer-prev" class="btn-m" style="padding: 10px 16px;">◀</button>
     <span id="viewer-page-num" style="font-family: 'Jost', sans-serif; font-size: 16px; color: var(--cream); min-width: 120px; text-align: center;">Seite 1 / 1</span>
     <button id="viewer-next" class="btn-m" style="padding: 10px 16px;">▶</button>
@@ -191,7 +439,7 @@ const T = {
     dash_empty:'Keine Notebooks gefunden.',
     dash_last_sync:'Letzter Cloud-Abgleich: <strong>{datetime}</strong>',
     viewer_back:'Zurück zur Übersicht',
-    viewer_watermark:'Scroll-Übersicht',
+    viewer_watermark:'Leseansicht (nur Seite 1)',
     dash_err:'Fehler:',
   },
   en:{
@@ -250,7 +498,7 @@ const T = {
     dash_empty:'No notebooks found.',
     dash_last_sync:'Last cloud sync: <strong>{datetime}</strong>',
     viewer_back:'Back to Overview',
-    viewer_watermark:'Scroll Overview',
+    viewer_watermark:'Read-Only View (Page 1 only)',
     dash_err:'Error:',
   },
   it:{
@@ -309,7 +557,7 @@ const T = {
     dash_empty:'Nessun quaderno trovato.',
     dash_last_sync:'Ultima sincronizzazione cloud: <strong>{datetime}</strong>',
     viewer_back:'Torna alla panoramica',
-    viewer_watermark:'Panoramica a scorrimento',
+    viewer_watermark:'Sola Lettura (Solo pagina 1)',
     dash_err:'Errore:',
   }
 };
@@ -508,10 +756,7 @@ async function loadReleases(){
     }
     renderVersions();
   }catch{
-    const releaseList = document.getElementById('ver-list');
-    if (releaseList) {
-      releaseList.innerHTML=`<div class="v-error">${t('ver_error')}</div>`;
-    }
+    document.getElementById('ver-list').innerHTML=`<div class="v-error">${t('ver_error')}</div>`;
   }
 }
 
@@ -556,7 +801,7 @@ if (hash && hash.includes('access_token')) {
   }
 }
 
-btnOpenLogin?.addEventListener('click', () => {
+btnOpenLogin.addEventListener('click', () => {
   if(session) {
     if (webappDashboard.style.display === 'block' || webappViewer.style.display === 'block') {
       webappDashboard.style.display = 'none';
@@ -575,7 +820,7 @@ btnOpenLogin?.addEventListener('click', () => {
 });
 
 // Download button click from dashboard
-document.querySelector('a[href="#download"]')?.addEventListener('click', (event) => {
+document.querySelector('a[href="#download"]').addEventListener('click', (event) => {
   const webappDashboard = document.getElementById('webapp-dashboard');
   const webappViewer = document.getElementById('webapp-viewer');
   if (webappDashboard.style.display === 'block' || webappViewer.style.display === 'block') {
@@ -610,7 +855,7 @@ document.addEventListener('click', (event) => {
   }
 });
 
-document.getElementById('login-google-btn')?.addEventListener('click', () => {
+document.getElementById('login-google-btn').addEventListener('click', () => {
   let currentUrl = window.location.origin + window.location.pathname;
   if (!window.location.origin || window.location.origin === 'null' || window.location.protocol === 'file:') {
     currentUrl = 'https://manuel0anvi.github.io/Inkwell/index.html';
@@ -623,12 +868,12 @@ document.getElementById('login-google-btn')?.addEventListener('click', () => {
   window.location.href = url;
 });
 
-document.getElementById('login-cancel')?.addEventListener('click', () => {
+document.getElementById('login-cancel').addEventListener('click', () => {
   loginModal.classList.remove('open');
   loginModal.setAttribute('aria-hidden', 'true');
 });
 
-document.getElementById('login-submit')?.addEventListener('click', async () => {
+document.getElementById('login-submit').addEventListener('click', async () => {
   const email = document.getElementById('login-email').value;
   const password = document.getElementById('login-pass').value;
   const errEl = document.getElementById('login-error');
@@ -655,7 +900,7 @@ document.getElementById('login-submit')?.addEventListener('click', async () => {
   }
 });
 
-document.getElementById('logout-btn')?.addEventListener('click', () => {
+document.getElementById('logout-btn').addEventListener('click', () => {
   localStorage.removeItem('inkwell_web_token');
   localStorage.removeItem('inkwell_web_uid');
   session = null;
@@ -667,7 +912,7 @@ document.getElementById('logout-btn')?.addEventListener('click', () => {
   btnOpenLogin.querySelector('.nav-icon-home').style.display = 'none';
 });
 
-document.getElementById('viewer-back')?.addEventListener('click', () => {
+document.getElementById('viewer-back').addEventListener('click', () => {
   webappViewer.style.display = 'none';
   webappDashboard.style.display = 'block';
 });
@@ -681,7 +926,6 @@ async function showDashboard() {
   btnOpenLogin.querySelector('.nav-icon-home').style.display = 'inline-block';
   
   const grid = document.getElementById('dashboard-grid');
-  if (!grid) return;
   grid.innerHTML = `<p style="color:var(--text-muted)" data-i18n="dash_loading">${t('dash_loading')}</p>`;
   
   try {
@@ -775,42 +1019,122 @@ function renderNotebook(nb) {
   viewerTitle.style.borderBottom = `3px solid ${nb.color || 'var(--gold)'}`;
   viewerTitle.style.paddingBottom = '4px';
   viewerTitle.style.display = 'inline-block';
-  renderNotebookOverview();
-}
-
-async function renderNotebookOverview() {
-  const pagesContainer = document.getElementById('viewer-pages');
-  if (!pagesContainer || !currentNotebook || !Array.isArray(currentNotebook.pages) || currentNotebook.pages.length === 0) {
-    if (pagesContainer) {
-      pagesContainer.innerHTML = '';
-    }
-    setViewerSummary(0);
-    return;
-  }
-
-  const pages = currentNotebook.pages;
-  pagesContainer.innerHTML = '';
-  setViewerSummary(pages.length);
-
-  for (let pageIndex = 0; pageIndex < pages.length; pageIndex++) {
-    const page = pages[pageIndex];
-    const { shell, canvas } = createViewerCanvasShell(page, pageIndex, pages.length);
-    pagesContainer.appendChild(shell);
-    await renderViewerPage(page, canvas);
-  }
+  renderPage(0);
 }
 
 async function renderPage(pageIdx) {
-  if (!currentNotebook || !Array.isArray(currentNotebook.pages) || currentNotebook.pages.length === 0) return;
+  if (!currentNotebook || !currentNotebook.pages || currentNotebook.pages.length === 0) return;
   if (pageIdx < 0) pageIdx = 0;
   if (pageIdx >= currentNotebook.pages.length) pageIdx = currentNotebook.pages.length - 1;
   currentPageIndex = pageIdx;
 
-  const pagesContainer = document.getElementById('viewer-pages');
-  const target = pagesContainer?.querySelector(`[data-page-index="${pageIdx}"]`);
-  if (target) {
-    target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  const page = currentNotebook.pages[pageIdx];
+  const canvas = document.getElementById('viewer-canvas');
+  const ctx = canvas.getContext('2d');
+  
+  // Set dimensions (standard or custom from page model)
+  const w = page.w || 794;
+  const h = page.h || 1123;
+  canvas.width = w; 
+  canvas.height = h;
+
+  // Clear / Fill background with white/cream
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  // 1. Draw page background image (if base64 / url is present)
+  if (page.bgImg) {
+    const bgImg = new Image();
+    bgImg.src = page.bgImg;
+    await new Promise((resolve) => {
+      bgImg.onload = () => {
+        ctx.drawImage(bgImg, 0, 0, canvas.width, canvas.height);
+        resolve();
+      };
+      bgImg.onerror = () => resolve();
+    });
   }
+
+  // 2. Draw page objects (like imported PDF page images or other photos)
+  if (page.objects && page.objects.length > 0) {
+    for (const obj of page.objects) {
+      if (obj.src) {
+        const objImg = new Image();
+        objImg.src = obj.src;
+        await new Promise((resolve) => {
+          objImg.onload = () => {
+            ctx.drawImage(objImg, obj.x || 0, obj.y || 0, obj.w || w, obj.h || h);
+            resolve();
+          };
+          objImg.onerror = () => resolve();
+        });
+      }
+    }
+  }
+
+  // 3. Draw ink strokes
+  if (page.inkStrokes) {
+    page.inkStrokes.forEach(stroke => {
+      const path = stroke.path || stroke.points || [];
+      if (path.length === 0) return;
+      
+      ctx.beginPath();
+      ctx.strokeStyle = stroke.color || '#000';
+      ctx.lineWidth = stroke.width || stroke.size || 2;
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      
+      if (stroke.isHL || stroke.isHighlighter) {
+        ctx.globalAlpha = 0.4;
+        ctx.lineWidth = stroke.width || 15;
+      } else {
+        ctx.globalAlpha = 1.0;
+      }
+      
+      ctx.moveTo(path[0].x, path[0].y);
+      for (let i = 1; i < path.length; i++) {
+        ctx.lineTo(path[i].x, path[i].y);
+      }
+      ctx.stroke();
+    });
+  }
+
+  // 4. Draw text content
+  if (page.textContent) {
+     let html = page.textContent || '';
+     // Pre-process HTML tags and replace line breaks/block elements with newlines
+     html = html.replace(/<br\s*\/?>/gi, '\n');
+     html = html.replace(/<\/p>/gi, '\n\n');
+     html = html.replace(/<\/div>/gi, '\n');
+     html = html.replace(/<\/h[1-6]>/gi, '\n\n');
+     html = html.replace(/<\/li>/gi, '\n');
+
+     const tempDiv = document.createElement('div');
+     tempDiv.innerHTML = html;
+     const plainText = tempDiv.textContent || '';
+     ctx.globalAlpha = 1.0;
+     ctx.font = '16px sans-serif';
+     ctx.fillStyle = '#000';
+     const rawLines = plainText.split('\n');
+     const lines = [];
+     rawLines.forEach(l => {
+       lines.push(l.trimEnd());
+     });
+     lines.forEach((l, i) => ctx.fillText(l, 72, 80 + (i * 24)));
+  }
+
+  // 5. Watermark / Footer
+  ctx.globalAlpha = 0.5;
+  ctx.font = '12px sans-serif';
+  ctx.fillStyle = '#999';
+  ctx.fillText('Inkwell Web Viewer', 20, 20);
+  ctx.globalAlpha = 1.0;
+
+  // Update page labels
+  const total = currentNotebook.pages.length;
+  const label = `Seite ${pageIdx + 1} / ${total}`;
+  document.getElementById('viewer-page-num').textContent = label;
+  document.getElementById('viewer-page-num-top').textContent = label;
 }
 
 // Hook up pagination listeners
