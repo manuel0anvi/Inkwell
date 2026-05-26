@@ -1,6 +1,15 @@
 <!DOCTYPE html>
 <html lang="de">
 <head>
+<script>
+  (function() {
+    const path = window.location.pathname;
+    if (path.includes('webseite-') || path.includes('webseite%20')) {
+      const cleanPath = path.replace(/webseite-?\s*index\.html/i, 'index.html');
+      window.location.replace(window.location.origin + cleanPath + window.location.search + window.location.hash);
+    }
+  })();
+</script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Inkwell — Digitales Notizbuch</title>
@@ -345,19 +354,15 @@ footer a:hover{color:var(--gold-light)}
 </div>
 
 <!-- Web App Viewer -->
-<div id="webapp-viewer" style="display: none; padding: 100px 20px 40px; text-align: center;">
-  <div style="margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center; max-width: 800px; margin: 0 auto 20px; flex-wrap: wrap; gap: 10px;">
+<div id="webapp-viewer" style="display: none; padding: 100px 20px 40px;">
+  <div style="margin-bottom: 24px; display: flex; justify-content: space-between; align-items: center; max-width: 1180px; margin: 0 auto 24px; flex-wrap: wrap; gap: 10px;">
     <button id="viewer-back" class="btn-m" data-i18n="viewer_back">Zurück zur Übersicht</button>
-    <h3 id="viewer-title" style="font-family: 'Cormorant Garamond', serif; font-size: 32px; font-style: italic; margin: 0;">Notebook</h3>
-    <span id="viewer-page-num-top" style="font-family: 'Jost', sans-serif; font-size: 15px; color: var(--gold-light);">Seite 1 / 1</span>
+    <div style="text-align: center; flex: 1 1 360px; min-width: 240px;">
+      <h3 id="viewer-title" style="font-family: 'Cormorant Garamond', serif; font-size: 32px; font-style: italic; margin: 0;">Notebook</h3>
+      <span id="viewer-page-num-top" style="font-family: 'Jost', sans-serif; font-size: 15px; color: var(--gold-light);">0 Seiten</span>
+    </div>
   </div>
-  <div style="overflow: auto; max-width: 100%; display: inline-block; background: #fff; border-radius: 4px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); margin-bottom: 20px;">
-     <canvas id="viewer-canvas" style="display: block;"></canvas>
-  </div>
-  <div style="display: flex; justify-content: center; align-items: center; gap: 20px; max-width: 800px; margin: 0 auto;">
-    <button id="viewer-prev" class="btn-m" style="padding: 10px 16px;">◀</button>
-    <span id="viewer-page-num" style="font-family: 'Jost', sans-serif; font-size: 16px; color: var(--cream); min-width: 120px; text-align: center;">Seite 1 / 1</span>
-    <button id="viewer-next" class="btn-m" style="padding: 10px 16px;">▶</button>
+  <div id="viewer-pages" style="display: grid; gap: 28px; justify-items: center; align-items: start; max-width: 1180px; margin: 0 auto;">
   </div>
 </div>
 
@@ -1008,10 +1013,128 @@ async function showDashboard() {
 
 let currentNotebook = null;
 let currentPageIndex = 0;
+const viewerPages = document.getElementById('viewer-pages');
+const viewerPageCountTop = document.getElementById('viewer-page-num-top');
+
+function loadViewerImage(src) {
+  return new Promise((resolve) => {
+    if (!src) {
+      resolve(null);
+      return;
+    }
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = () => resolve(null);
+    img.src = src;
+  });
+}
+
+function extractPlainText(html = '') {
+  const tempDiv = document.createElement('div');
+  tempDiv.innerHTML = html
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/p>/gi, '\n\n')
+    .replace(/<\/div>/gi, '\n')
+    .replace(/<\/h[1-6]>/gi, '\n\n')
+    .replace(/<\/li>/gi, '\n');
+  return tempDiv.textContent || '';
+}
+
+async function renderNotebookPage(page, pageNumber, totalPages) {
+  const card = document.createElement('section');
+  card.style.cssText = 'width: min(100%, 1040px); background: #f7f1e6; border-radius: 18px; box-shadow: 0 18px 45px rgba(0,0,0,0.35); overflow: hidden; border: 1px solid rgba(0,0,0,0.08);';
+
+  const header = document.createElement('div');
+  header.style.cssText = 'display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 14px 18px; background: linear-gradient(180deg, rgba(255,255,255,0.92), rgba(248,240,225,0.96)); border-bottom: 1px solid rgba(0,0,0,0.06); font-family: "Jost", sans-serif;';
+  header.innerHTML = `<strong style="font-size: 14px; color: #443327;">Seite ${pageNumber} von ${totalPages}</strong><span style="font-size: 13px; color: #7b6652;">${Math.round((page.w || 794) / 10)} × ${Math.round((page.h || 1123) / 10)} mm</span>`;
+
+  const canvasWrap = document.createElement('div');
+  canvasWrap.style.cssText = 'overflow: auto; padding: 22px; background: #efe4d0;';
+
+  const canvas = document.createElement('canvas');
+  canvas.style.cssText = 'display: block; margin: 0 auto; background: #fff; border-radius: 4px; box-shadow: 0 8px 24px rgba(0,0,0,0.18); max-width: 100%; height: auto;';
+  canvasWrap.appendChild(canvas);
+  card.appendChild(header);
+  card.appendChild(canvasWrap);
+  viewerPages.appendChild(card);
+
+  const ctx = canvas.getContext('2d');
+  const cssW = page.w || 794;
+  const cssH = page.h || 1123;
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  canvas.width = Math.round(cssW * dpr);
+  canvas.height = Math.round(cssH * dpr);
+  canvas.style.width = '100%';
+  canvas.style.maxWidth = `${cssW}px`;
+  canvas.style.aspectRatio = `${cssW} / ${cssH}`;
+
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, cssW, cssH);
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, cssW, cssH);
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = 'high';
+
+  const bgImg = await loadViewerImage(page.bgImg);
+  if (bgImg) {
+    ctx.drawImage(bgImg, 0, 0, cssW, cssH);
+  }
+
+  if (Array.isArray(page.objects)) {
+    for (const obj of page.objects) {
+      if (!obj || !obj.src) continue;
+      const objImg = await loadViewerImage(obj.src);
+      if (objImg) {
+        ctx.drawImage(objImg, obj.x || 0, obj.y || 0, obj.w || cssW, obj.h || cssH);
+      }
+    }
+  }
+
+  if (Array.isArray(page.inkStrokes)) {
+    for (const stroke of page.inkStrokes) {
+      const path = stroke.path || stroke.points || [];
+      if (!path.length) continue;
+
+      ctx.beginPath();
+      ctx.strokeStyle = stroke.color || '#000';
+      ctx.lineWidth = stroke.width || stroke.size || 2;
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      ctx.globalAlpha = stroke.isHL || stroke.isHighlighter ? 0.4 : 1;
+      if (stroke.isHL || stroke.isHighlighter) {
+        ctx.lineWidth = stroke.width || 15;
+      }
+
+      ctx.moveTo(path[0].x, path[0].y);
+      for (let i = 1; i < path.length; i++) {
+        ctx.lineTo(path[i].x, path[i].y);
+      }
+      ctx.stroke();
+    }
+  }
+
+  if (page.textContent) {
+    const plainText = extractPlainText(page.textContent);
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = '#101010';
+    ctx.font = '16px "Jost", sans-serif';
+    const lines = plainText.split('\n').map((line) => line.trimEnd());
+    let y = 78;
+    for (const line of lines) {
+      ctx.fillText(line, 72, y);
+      y += 24;
+    }
+  }
+
+  ctx.globalAlpha = 0.52;
+  ctx.fillStyle = '#7b6a58';
+  ctx.font = '12px "Jost", sans-serif';
+  ctx.fillText('Inkwell Web Viewer', 22, 22);
+  ctx.globalAlpha = 1;
+}
 
 function renderNotebook(nb) {
   currentNotebook = nb;
-  currentPageIndex = 0;
   webappDashboard.style.display = 'none';
   webappViewer.style.display = 'block';
   const viewerTitle = document.getElementById('viewer-title');
@@ -1019,136 +1142,25 @@ function renderNotebook(nb) {
   viewerTitle.style.borderBottom = `3px solid ${nb.color || 'var(--gold)'}`;
   viewerTitle.style.paddingBottom = '4px';
   viewerTitle.style.display = 'inline-block';
-  renderPage(0);
-}
+  viewerPages.innerHTML = '';
 
-async function renderPage(pageIdx) {
-  if (!currentNotebook || !currentNotebook.pages || currentNotebook.pages.length === 0) return;
-  if (pageIdx < 0) pageIdx = 0;
-  if (pageIdx >= currentNotebook.pages.length) pageIdx = currentNotebook.pages.length - 1;
-  currentPageIndex = pageIdx;
+  const pages = Array.isArray(nb.pages) ? nb.pages : [];
+  viewerPageCountTop.textContent = `${pages.length} ${pages.length === 1 ? 'Seite' : 'Seiten'}`;
 
-  const page = currentNotebook.pages[pageIdx];
-  const canvas = document.getElementById('viewer-canvas');
-  const ctx = canvas.getContext('2d');
-  
-  // Set dimensions (standard or custom from page model)
-  const w = page.w || 794;
-  const h = page.h || 1123;
-  canvas.width = w; 
-  canvas.height = h;
+  if (!pages.length) {
+    const empty = document.createElement('div');
+    empty.style.cssText = 'max-width: 960px; width: 100%; margin: 0 auto; padding: 36px 24px; border-radius: 18px; background: rgba(255,255,255,0.08); color: var(--cream); text-align: center; font-family: "Jost", sans-serif;';
+    empty.textContent = 'Dieses Notebook hat keine Seiten.';
+    viewerPages.appendChild(empty);
+    return;
+  }
 
-  // Clear / Fill background with white/cream
-  ctx.fillStyle = '#ffffff';
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-  // 1. Draw page background image (if base64 / url is present)
-  if (page.bgImg) {
-    const bgImg = new Image();
-    bgImg.src = page.bgImg;
-    await new Promise((resolve) => {
-      bgImg.onload = () => {
-        ctx.drawImage(bgImg, 0, 0, canvas.width, canvas.height);
-        resolve();
-      };
-      bgImg.onerror = () => resolve();
+  pages.forEach((page, index) => {
+    renderNotebookPage(page, index + 1, pages.length).catch((error) => {
+      console.error('Viewer render error:', error);
     });
-  }
-
-  // 2. Draw page objects (like imported PDF page images or other photos)
-  if (page.objects && page.objects.length > 0) {
-    for (const obj of page.objects) {
-      if (obj.src) {
-        const objImg = new Image();
-        objImg.src = obj.src;
-        await new Promise((resolve) => {
-          objImg.onload = () => {
-            ctx.drawImage(objImg, obj.x || 0, obj.y || 0, obj.w || w, obj.h || h);
-            resolve();
-          };
-          objImg.onerror = () => resolve();
-        });
-      }
-    }
-  }
-
-  // 3. Draw ink strokes
-  if (page.inkStrokes) {
-    page.inkStrokes.forEach(stroke => {
-      const path = stroke.path || stroke.points || [];
-      if (path.length === 0) return;
-      
-      ctx.beginPath();
-      ctx.strokeStyle = stroke.color || '#000';
-      ctx.lineWidth = stroke.width || stroke.size || 2;
-      ctx.lineCap = 'round';
-      ctx.lineJoin = 'round';
-      
-      if (stroke.isHL || stroke.isHighlighter) {
-        ctx.globalAlpha = 0.4;
-        ctx.lineWidth = stroke.width || 15;
-      } else {
-        ctx.globalAlpha = 1.0;
-      }
-      
-      ctx.moveTo(path[0].x, path[0].y);
-      for (let i = 1; i < path.length; i++) {
-        ctx.lineTo(path[i].x, path[i].y);
-      }
-      ctx.stroke();
-    });
-  }
-
-  // 4. Draw text content
-  if (page.textContent) {
-     let html = page.textContent || '';
-     // Pre-process HTML tags and replace line breaks/block elements with newlines
-     html = html.replace(/<br\s*\/?>/gi, '\n');
-     html = html.replace(/<\/p>/gi, '\n\n');
-     html = html.replace(/<\/div>/gi, '\n');
-     html = html.replace(/<\/h[1-6]>/gi, '\n\n');
-     html = html.replace(/<\/li>/gi, '\n');
-
-     const tempDiv = document.createElement('div');
-     tempDiv.innerHTML = html;
-     const plainText = tempDiv.textContent || '';
-     ctx.globalAlpha = 1.0;
-     ctx.font = '16px sans-serif';
-     ctx.fillStyle = '#000';
-     const rawLines = plainText.split('\n');
-     const lines = [];
-     rawLines.forEach(l => {
-       lines.push(l.trimEnd());
-     });
-     lines.forEach((l, i) => ctx.fillText(l, 72, 80 + (i * 24)));
-  }
-
-  // 5. Watermark / Footer
-  ctx.globalAlpha = 0.5;
-  ctx.font = '12px sans-serif';
-  ctx.fillStyle = '#999';
-  ctx.fillText('Inkwell Web Viewer', 20, 20);
-  ctx.globalAlpha = 1.0;
-
-  // Update page labels
-  const total = currentNotebook.pages.length;
-  const label = `Seite ${pageIdx + 1} / ${total}`;
-  document.getElementById('viewer-page-num').textContent = label;
-  document.getElementById('viewer-page-num-top').textContent = label;
+  });
 }
-
-// Hook up pagination listeners
-document.getElementById('viewer-prev').addEventListener('click', () => {
-  if (currentPageIndex > 0) {
-    renderPage(currentPageIndex - 1);
-  }
-});
-
-document.getElementById('viewer-next').addEventListener('click', () => {
-  if (currentNotebook && currentNotebook.pages && currentPageIndex < currentNotebook.pages.length - 1) {
-    renderPage(currentPageIndex + 1);
-  }
-});
 </script>
 </body>
 </html>
