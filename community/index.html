@@ -51,6 +51,12 @@
   gap: 6px;
   margin-bottom: 18px;
 }
+.forum-input-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: 12px;
+}
 .forum-input-group label {
   font-size: 11px;
   letter-spacing: 0.08em;
@@ -93,6 +99,13 @@
   line-height: 1.5;
   color: var(--text-muted);
   margin-top: -6px;
+}
+.forum-char-counter {
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--text-muted);
+  letter-spacing: 0.04em;
+  white-space: nowrap;
 }
 .forum-limit-note {
   font-size: 11px;
@@ -393,8 +406,11 @@
       <h3 style="font-family: 'Cormorant Garamond', serif; font-size: 28px; font-style: italic; color: var(--gold-light); margin-bottom: 20px;" data-i18n="community_new_post">Neuen Beitrag erstellen</h3>
       <form id="new-post-form" onsubmit="handleCreatePost(event)">
         <div class="forum-input-group">
-          <label for="post-title" data-i18n="community_post_title">Titel</label>
-          <input type="text" id="post-title" maxlength="120" required>
+          <div class="forum-input-header">
+            <label for="post-title" data-i18n="community_post_title">Titel</label>
+            <span class="forum-char-counter" id="post-title-counter">120 übrig von 120</span>
+          </div>
+          <input type="text" id="post-title" maxlength="120" required oninput="updateForumCounter('post-title', 120)">
           <div class="forum-limit-note" data-i18n="community_post_title_limit">Max. 120 Zeichen</div>
         </div>
         <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px;">
@@ -414,12 +430,15 @@
                 <span data-i18n="community_author_anonymous">Anonym posten</span>
               </label>
             </div>
-            <div class="forum-form-note" data-i18n="community_author_hint">Wenn du angemeldet bist, wird dein Name automatisch übernommen. Du kannst aber trotzdem ein Pseudonym nutzen oder anonym posten.</div>
+            <div class="forum-form-note" id="post-author-state" data-i18n="community_author_hint">Wenn du angemeldet bist, wird dein Name automatisch übernommen. Du kannst aber trotzdem ein Pseudonym nutzen oder anonym posten.</div>
           </div>
         </div>
         <div class="forum-input-group" style="margin-top: 10px;">
-          <label for="post-content" data-i18n="community_post_content">Beschreibung / Details</label>
-          <textarea id="post-content" rows="5" maxlength="2000" required></textarea>
+          <div class="forum-input-header">
+            <label for="post-content" data-i18n="community_post_content">Beschreibung / Details</label>
+            <span class="forum-char-counter" id="post-content-counter">2000 übrig von 2000</span>
+          </div>
+          <textarea id="post-content" rows="5" maxlength="2000" required oninput="updateForumCounter('post-content', 2000)"></textarea>
           <div class="forum-limit-note" data-i18n="community_post_content_limit">Max. 2000 Zeichen</div>
         </div>
         <div style="display: flex; justify-content: flex-end; gap: 14px; margin-top: 10px;">
@@ -528,6 +547,12 @@ function getForumPreferredAuthorName() {
   return '';
 }
 
+function getForumActiveAuthorName() {
+  if (isForumAnonymous()) return getForumAnonymousName();
+  if (forumIdentity.loggedIn) return forumIdentity.displayName || getForumPreferredAuthorName() || '';
+  return getForumPreferredAuthorName();
+}
+
 function isForumAnonymous() {
   return localStorage.getItem('inkwell_forum_author_anonymous') === 'true';
 }
@@ -544,12 +569,22 @@ function syncForumAuthorField(kind) {
     input.value = getForumAnonymousName();
     input.disabled = true;
     input.required = false;
+    updateForumAuthorState(kind, true);
+    return;
+  }
+
+  if (forumIdentity.loggedIn) {
+    input.value = forumIdentity.displayName || getForumPreferredAuthorName();
+    input.disabled = true;
+    input.required = false;
+    updateForumAuthorState(kind, false);
     return;
   }
 
   input.disabled = false;
   input.required = true;
   input.value = getForumPreferredAuthorName();
+  updateForumAuthorState(kind, false);
 }
 
 function syncForumAuthorDraft(kind) {
@@ -580,15 +615,46 @@ function toggleForumAnonymous(kind) {
   }
 
   input.disabled = false;
-  input.required = true;
   localStorage.setItem('inkwell_forum_author_anonymous', 'false');
 
   const restored = input.dataset.previousValue || getForumPreferredAuthorName();
-  input.value = restored;
-  if (restored && restored !== getForumAnonymousName()) {
+  input.value = forumIdentity.loggedIn ? (forumIdentity.displayName || restored) : restored;
+  input.disabled = forumIdentity.loggedIn;
+  input.required = !forumIdentity.loggedIn;
+  if (!forumIdentity.loggedIn && restored && restored !== getForumAnonymousName()) {
     localStorage.setItem('inkwell_forum_author_name', restored);
     localStorage.setItem('inkwell_forum_name', restored);
   }
+}
+
+function updateForumAuthorState(kind, anonymous) {
+  const stateEl = document.getElementById(kind === 'post' ? 'post-author-state' : `reply-author-state-${kind.split('-').slice(1).join('-')}`);
+  if (!stateEl) return;
+
+  if (anonymous) {
+    stateEl.textContent = t('community_author_anonymous') || getForumAnonymousName();
+    return;
+  }
+
+  if (forumIdentity.loggedIn && forumIdentity.displayName) {
+    stateEl.textContent = tf('community_author_logged_in', { name: forumIdentity.displayName });
+    return;
+  }
+
+  stateEl.textContent = t('community_author_hint');
+}
+
+function updateForumCounter(inputId, max) {
+  const input = document.getElementById(inputId);
+  const counter = document.getElementById(inputId + '-counter');
+  if (!input || !counter) return;
+
+  const remaining = Math.max(0, max - (input.value || '').length);
+  counter.textContent = tf('community_chars_left_of', { left: remaining, max });
+}
+
+function updateForumReplyCounters(postId) {
+  updateForumCounter(`reply-content-${postId}`, 500);
 }
 
 async function ensureForumIdentity() {
@@ -678,7 +744,7 @@ async function handleCreatePost(event) {
   const type = document.getElementById('post-type').value;
   const authorInput = document.getElementById('post-author');
   const anonymous = document.getElementById('post-author-anonymous').checked;
-  const author = anonymous ? getForumAnonymousName() : (authorInput.value.trim() || getForumPreferredAuthorName() || getForumGuestName());
+  const author = anonymous ? getForumAnonymousName() : (forumIdentity.loggedIn ? (forumIdentity.displayName || getForumPreferredAuthorName()) : (authorInput.value.trim() || getForumPreferredAuthorName() || getForumGuestName()));
   const content = document.getElementById('post-content').value.trim();
 
   if (!title || !content) return;
@@ -717,7 +783,7 @@ async function handleCreateReply(event, postId) {
   const form = event.target;
   const authorInput = form.querySelector('.reply-author-input');
   const anonymous = form.querySelector('.reply-author-anonymous').checked;
-  const author = anonymous ? getForumAnonymousName() : (authorInput.value.trim() || getForumPreferredAuthorName() || getForumGuestName());
+  const author = anonymous ? getForumAnonymousName() : (forumIdentity.loggedIn ? (forumIdentity.displayName || getForumPreferredAuthorName()) : (authorInput.value.trim() || getForumPreferredAuthorName() || getForumGuestName()));
   const content = form.querySelector('.reply-content-input').value.trim();
   if (!content) return;
 
@@ -761,6 +827,7 @@ function renderFeed() {
 
   const savedName = getForumPreferredAuthorName();
   const savedAnonymous = isForumAnonymous();
+  const activeAuthorName = getForumActiveAuthorName();
 
   filtered.forEach(post => {
     const card = document.createElement('div');
@@ -804,14 +871,20 @@ function renderFeed() {
     html += `
         <form id="reply-form-${post.id}" class="reply-form" onsubmit="handleCreateReply(event, '${post.id}')">
           <div class="reply-form-row">
-            <input type="text" id="reply-author-${post.id}" class="reply-author-input" maxlength="60" ${savedAnonymous ? '' : 'required'} placeholder="${t('community_post_author')}" value="${escapeHtml(savedAnonymous ? getForumAnonymousName() : savedName)}" ${savedAnonymous ? 'disabled' : ''} oninput="syncForumAuthorDraft('reply-${post.id}')">
+            <input type="text" id="reply-author-${post.id}" class="reply-author-input" maxlength="60" ${savedAnonymous || forumIdentity.loggedIn ? '' : 'required'} placeholder="${t('community_post_author')}" value="${escapeHtml(savedAnonymous ? getForumAnonymousName() : (forumIdentity.loggedIn ? activeAuthorName : savedName))}" ${savedAnonymous || forumIdentity.loggedIn ? 'disabled' : ''} oninput="syncForumAuthorDraft('reply-${post.id}')">
             <label class="forum-author-toggle" for="reply-author-anonymous-${post.id}" style="align-self:center; white-space:nowrap;">
               <input type="checkbox" class="reply-author-anonymous" id="reply-author-anonymous-${post.id}" ${savedAnonymous ? 'checked' : ''} onchange="toggleForumAnonymous('reply-${post.id}')">
               <span data-i18n="community_author_anonymous">Anonym posten</span>
             </label>
-            <textarea class="reply-content-input" rows="2" maxlength="500" required placeholder="${t('community_add_reply')}"></textarea>
+            <div class="forum-input-group" style="margin:0; width:100%;">
+              <div class="forum-input-header">
+                <label for="reply-content-${post.id}" data-i18n="community_add_reply">Antwort verfassen...</label>
+                <span class="forum-char-counter" id="reply-content-${post.id}-counter">500 übrig von 500</span>
+              </div>
+              <textarea id="reply-content-${post.id}" class="reply-content-input" rows="2" maxlength="500" required placeholder="${t('community_add_reply')}" oninput="updateForumCounter('reply-content-${post.id}', 500)"></textarea>
+            </div>
           </div>
-          <div class="forum-form-note" data-i18n="community_author_hint">Wenn du angemeldet bist, wird dein Name automatisch übernommen. Du kannst aber trotzdem ein Pseudonym nutzen oder anonym posten.</div>
+          <div class="forum-form-note" id="reply-author-state-${post.id}" data-i18n="community_author_hint">Wenn du angemeldet bist, wird dein Name automatisch übernommen. Du kannst aber trotzdem ein Pseudonym nutzen oder anonym posten.</div>
           <div class="forum-limit-note" data-i18n="community_reply_content_limit">Max. 500 Zeichen</div>
           <button type="submit" class="reply-submit-btn">${t('community_reply_btn')}</button>
         </form>
@@ -834,10 +907,14 @@ document.addEventListener('DOMContentLoaded', () => {
   (async () => {
     await ensureForumIdentity();
     syncForumAuthorField('post');
+    updateForumCounter('post-title', 120);
+    updateForumCounter('post-content', 2000);
 
     if (typeof addLangChangeListener === 'function') {
       addLangChangeListener(() => {
         syncForumAuthorField('post');
+        updateForumCounter('post-title', 120);
+        updateForumCounter('post-content', 2000);
         renderFeed();
       });
     }
