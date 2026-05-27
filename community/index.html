@@ -12,7 +12,6 @@
 <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;1,300;1,400&family=Cormorant+Infant:ital,wght@0,300;1,300&family=Jost:wght@300;400;500&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="../css/style.css">
 <style>
-/* Additional specific styling for the interactive community forum */
 .forum-new-btn {
   display: inline-flex;
   align-items: center;
@@ -40,7 +39,7 @@
   padding: 30px;
   border-radius: 8px;
   margin-bottom: 40px;
-  display: none; /* toggled via JS */
+  display: none;
   animation: fu .4s ease forwards;
 }
 .forum-form-card.open {
@@ -170,19 +169,40 @@
   margin-bottom: 20px;
   white-space: pre-wrap;
 }
-
-/* Replies list */
 .replies-section {
   border-top: 0.5px solid var(--navy-border);
   padding-top: 18px;
   margin-top: 18px;
+}
+.replies-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
 }
 .replies-title {
   font-size: 11px;
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--gold-light);
-  margin-bottom: 12px;
+}
+.reply-toggle-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: transparent;
+  border: 0.5px solid var(--gold);
+  color: var(--gold-light);
+  padding: 5px 14px;
+  font-family: 'Jost', sans-serif;
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: background .2s;
+}
+.reply-toggle-btn:hover {
+  background: var(--gold-dim);
 }
 .reply-item {
   background: rgba(0,0,0,0.15);
@@ -210,13 +230,15 @@
   color: var(--text-body);
   line-height: 1.6;
 }
-
-/* Add Reply Form */
 .reply-form {
   margin-top: 18px;
-  display: flex;
+  display: none;
   flex-direction: column;
   gap: 10px;
+  animation: fu .3s ease forwards;
+}
+.reply-form.open {
+  display: flex;
 }
 .reply-form-row {
   display: flex;
@@ -264,6 +286,22 @@
 }
 .reply-submit-btn:hover {
   background: var(--gold-dim);
+}
+.forum-loading {
+  text-align: center;
+  padding: 60px 20px;
+  color: var(--text-muted);
+  font-size: 13px;
+  letter-spacing: 0.08em;
+}
+.forum-error {
+  text-align: center;
+  padding: 40px 20px;
+  color: #d9534f;
+  font-size: 13px;
+  background: var(--navy-card);
+  border: 0.5px solid rgba(217,83,79,0.25);
+  border-radius: 8px;
 }
 </style>
 </head>
@@ -317,22 +355,18 @@
   </div>
 
   <div style="text-align: left;">
-    <!-- Toggle post form button -->
     <button onclick="togglePostForm()" class="forum-new-btn">
-      <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2" fill="none" style="display: inline-block; vertical-align: middle; margin-right: 4px;"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+      <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2" fill="none"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
       <span data-i18n="community_new_post">Neuen Beitrag erstellen</span>
     </button>
 
-    <!-- Create Post Form Card -->
     <div id="post-form-card" class="forum-form-card">
       <h3 style="font-family: 'Cormorant Garamond', serif; font-size: 28px; font-style: italic; color: var(--gold-light); margin-bottom: 20px;" data-i18n="community_new_post">Neuen Beitrag erstellen</h3>
-      
       <form id="new-post-form" onsubmit="handleCreatePost(event)">
         <div class="forum-input-group">
           <label for="post-title" data-i18n="community_post_title">Titel</label>
-          <input type="text" id="post-title" required placeholder="Titel des Beitrags">
+          <input type="text" id="post-title" required>
         </div>
-        
         <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px;">
           <div class="forum-input-group">
             <label for="post-type" data-i18n="community_post_type">Kategorie</label>
@@ -343,31 +377,29 @@
           </div>
           <div class="forum-input-group">
             <label for="post-author" data-i18n="community_post_author">Dein Name</label>
-            <input type="text" id="post-author" required placeholder="Name oder Pseudonym">
+            <input type="text" id="post-author" required>
           </div>
         </div>
-        
         <div class="forum-input-group" style="margin-top: 10px;">
           <label for="post-content" data-i18n="community_post_content">Beschreibung / Details</label>
-          <textarea id="post-content" rows="5" required placeholder="Beschreibe deine Frage oder den Fehler möglichst genau..."></textarea>
+          <textarea id="post-content" rows="5" required></textarea>
         </div>
-
         <div style="display: flex; justify-content: flex-end; gap: 14px; margin-top: 10px;">
-          <button type="button" onclick="togglePostForm()" class="btn-m">Abbrechen</button>
+          <button type="button" onclick="togglePostForm()" class="btn-m" data-i18n="downgrade_cancel">Abbrechen</button>
           <button type="submit" class="btn-m" style="background: var(--gold-dim); border-color: var(--gold-light); color: var(--gold-light);" data-i18n="community_publish_btn">Beitrag veröffentlichen</button>
         </div>
       </form>
     </div>
 
-    <!-- Filter Bar -->
     <div class="forum-filter-bar">
       <button id="filter-all" onclick="setFilter('all')" class="forum-filter-btn active" data-i18n="community_filter_all">Alle Beiträge</button>
       <button id="filter-question" onclick="setFilter('question')" class="forum-filter-btn" data-i18n="community_filter_questions">Fragen & Diskussionen</button>
       <button id="filter-bug" onclick="setFilter('bug')" class="forum-filter-btn" data-i18n="community_filter_bugs">Fehlerberichte</button>
     </div>
 
-    <!-- Posts Feed Container -->
-    <div id="forum-feed-list"></div>
+    <div id="forum-feed-list">
+      <div class="forum-loading">Lade Beiträge...</div>
+    </div>
   </div>
 </div>
 
@@ -380,61 +412,34 @@
   </div>
 </footer>
 
-<!-- Scripts -->
 <script src="../js/i18n.js"></script>
 <script src="../js/common.js"></script>
 <script>
-// Mock initial dataset for first-load seeding
-const INITIAL_POSTS = [
-  {
-    id: "p1",
-    type: "question",
-    title: "Pinsel-Templates und eigene Hintergründe teilen",
-    author: "anvi_ink",
-    content: "Hallo zusammen! Ich liebe die neue Touch-Zeichenfunktion in Inkwell. Gibt es hier Leute, die eigene Hintergrund-Templates (z.B. für Notenblätter oder Musiknotizen) teilen möchten? Wäre super, wenn wir hier eine kleine Sammlung aufbauen könnten!",
-    timestamp: "2026-05-25T14:32:00.000Z",
-    replies: [
-      {
-        author: "notiz_held",
-        content: "Das ist eine großartige Idee! Ich habe ein paar dot-grid (Punktraster) Templates entworfen, die ich gerne hochlade. Ich mache dazu die Tage mal einen GitHub Pull Request!",
-        timestamp: "2026-05-25T16:45:00.000Z"
-      }
-    ]
-  },
-  {
-    id: "p2",
-    type: "bug",
-    title: "PDF-Export skaliert auf High-DPI Displays falsch",
-    author: "dev_test",
-    content: "Mir ist aufgefallen, dass wenn ich ein Notizbuch mit importierten PDFs auf meinem 4K Monitor exportiere, die handschriftlichen Anmerkungen leicht verschoben gezeichnet werden. Auf meinem 1080p Monitor passt alles perfekt. Vermutlich liegt es an der canvas.width/height DPR-Skalierung im Exporter.",
-    timestamp: "2026-05-26T09:12:00.000Z",
-    replies: [
-      {
-        author: "manuel0anvi",
-        content: "Vielen Dank für den detaillierten Fehlerbericht! Das klingt tatsächlich nach einem Rundungsfehler bei der DPR-Berechnung im Export-Modul. Ich schaue mir das direkt an und werde im nächsten Release (v1.0.8) einen Fix bereitstellen.",
-        timestamp: "2026-05-26T11:20:00.000Z"
-      }
-    ]
-  }
-];
+const SUPABASE_URL = 'https://sdplctlpigzrscaepatk.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_9gAsGOmApJIB8gKeJzwPRg_L1dslM0V';
+const SB_HEADERS = {
+  apikey: SUPABASE_KEY,
+  'Content-Type': 'application/json',
+  Prefer: 'return=representation'
+};
 
 let posts = [];
 let currentFilter = 'all';
 
 function togglePostForm() {
-  const card = document.getElementById('post-form-card');
-  card.classList.toggle('open');
+  document.getElementById('post-form-card').classList.toggle('open');
 }
 
 function setFilter(filter) {
   currentFilter = filter;
-  document.querySelectorAll('.forum-filter-btn').forEach(btn => btn.classList.remove('active'));
-  
-  if (filter === 'all') document.getElementById('filter-all').classList.add('active');
-  else if (filter === 'question') document.getElementById('filter-question').classList.add('active');
-  else if (filter === 'bug') document.getElementById('filter-bug').classList.add('active');
-  
+  document.querySelectorAll('.forum-filter-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('filter-' + filter).classList.add('active');
   renderFeed();
+}
+
+function toggleReplyForm(postId) {
+  const form = document.getElementById('reply-form-' + postId);
+  if (form) form.classList.toggle('open');
 }
 
 function getFormattedDate(isoString) {
@@ -443,144 +448,190 @@ function getFormattedDate(isoString) {
   return date.toLocaleDateString(locale, { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
 }
 
-function handleCreatePost(event) {
-  event.preventDefault();
-  
-  const title = document.getElementById('post-title').value.trim();
-  const type = document.getElementById('post-type').value;
-  const author = document.getElementById('post-author').value.trim() || "Gast";
-  const content = document.getElementById('post-content').value.trim();
-  
-  const newPost = {
-    id: 'post_' + Date.now(),
-    type: type,
-    title: title,
-    author: author,
-    content: content,
-    timestamp: new Date().toISOString(),
-    replies: []
-  };
-  
-  posts.unshift(newPost);
-  localStorage.setItem('inkwell_community_posts', JSON.stringify(posts));
-  
-  // Reset Form and toggle view
-  document.getElementById('new-post-form').reset();
-  togglePostForm();
-  
-  renderFeed();
+// --- Supabase API ---
+
+async function loadPosts() {
+  try {
+    const res = await fetch(
+      `${SUPABASE_URL}/rest/v1/community_posts?select=*&order=created_at.desc`,
+      { headers: { apikey: SUPABASE_KEY } }
+    );
+    if (!res.ok) throw new Error('Fehler beim Laden der Beiträge');
+    const dbPosts = await res.json();
+
+    // Load all replies
+    const resReplies = await fetch(
+      `${SUPABASE_URL}/rest/v1/community_replies?select=*&order=created_at.asc`,
+      { headers: { apikey: SUPABASE_KEY } }
+    );
+    const dbReplies = resReplies.ok ? await resReplies.json() : [];
+
+    // Combine posts with their replies
+    posts = dbPosts.map(post => ({
+      ...post,
+      replies: dbReplies.filter(r => r.post_id === post.id)
+    }));
+
+    renderFeed();
+  } catch (err) {
+    console.error('Forum load error:', err);
+    document.getElementById('forum-feed-list').innerHTML =
+      `<div class="forum-error">${err.message}</div>`;
+  }
 }
 
-function handleCreateReply(event, postId) {
+async function handleCreatePost(event) {
   event.preventDefault();
-  
-  const form = event.target;
-  const author = form.querySelector('.reply-author-input').value.trim() || "Gast";
-  const content = form.querySelector('.reply-content-input').value.trim();
-  
-  if (!content) return;
-  
-  const postIndex = posts.findIndex(p => p.id === postId);
-  if (postIndex === -1) return;
-  
-  const newReply = {
-    author: author,
-    content: content,
-    timestamp: new Date().toISOString()
-  };
-  
-  posts[postIndex].replies.push(newReply);
-  localStorage.setItem('inkwell_community_posts', JSON.stringify(posts));
-  
-  renderFeed();
+
+  const title = document.getElementById('post-title').value.trim();
+  const type = document.getElementById('post-type').value;
+  const author = document.getElementById('post-author').value.trim() || 'Gast';
+  const content = document.getElementById('post-content').value.trim();
+
+  // Save author name for convenience
+  localStorage.setItem('inkwell_forum_name', author);
+
+  const submitBtn = event.target.querySelector('[type="submit"]');
+  submitBtn.disabled = true;
+
+  try {
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/community_posts`, {
+      method: 'POST',
+      headers: SB_HEADERS,
+      body: JSON.stringify({ type, title, author, content })
+    });
+    if (!res.ok) throw new Error('Beitrag konnte nicht gespeichert werden.');
+
+    document.getElementById('new-post-form').reset();
+    // Prefill author name again
+    document.getElementById('post-author').value = localStorage.getItem('inkwell_forum_name') || '';
+    togglePostForm();
+    await loadPosts();
+  } catch (err) {
+    alert(err.message);
+  } finally {
+    submitBtn.disabled = false;
+  }
 }
+
+async function handleCreateReply(event, postId) {
+  event.preventDefault();
+
+  const form = event.target;
+  const author = form.querySelector('.reply-author-input').value.trim() || 'Gast';
+  const content = form.querySelector('.reply-content-input').value.trim();
+  if (!content) return;
+
+  localStorage.setItem('inkwell_forum_name', author);
+
+  const submitBtn = form.querySelector('.reply-submit-btn');
+  submitBtn.disabled = true;
+
+  try {
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/community_replies`, {
+      method: 'POST',
+      headers: SB_HEADERS,
+      body: JSON.stringify({ post_id: postId, author, content })
+    });
+    if (!res.ok) throw new Error('Antwort konnte nicht gespeichert werden.');
+
+    await loadPosts();
+  } catch (err) {
+    alert(err.message);
+  } finally {
+    submitBtn.disabled = false;
+  }
+}
+
+// --- Rendering ---
 
 function renderFeed() {
   const container = document.getElementById('forum-feed-list');
   container.innerHTML = '';
-  
-  const filteredPosts = posts.filter(post => {
-    if (currentFilter === 'all') return true;
-    return post.type === currentFilter;
-  });
-  
-  if (filteredPosts.length === 0) {
-    container.innerHTML = `<div class="v-loading" style="border:0.5px solid var(--navy-border); background:var(--navy-card);" data-i18n="community_no_posts">${t('community_no_posts') || 'Noch keine Beiträge vorhanden. Schreibe den ersten!'}</div>`;
+
+  const filtered = posts.filter(p => currentFilter === 'all' || p.type === currentFilter);
+
+  if (filtered.length === 0) {
+    container.innerHTML = `<div class="v-loading" style="border:0.5px solid var(--navy-border); background:var(--navy-card);" data-i18n="community_no_posts">${t('community_no_posts')}</div>`;
     return;
   }
-  
-  filteredPosts.forEach(post => {
+
+  const savedName = localStorage.getItem('inkwell_forum_name') || '';
+
+  filtered.forEach(post => {
     const card = document.createElement('div');
     card.className = `post-item-card ${post.type}`;
-    
+
     const badgeText = post.type === 'question' ? t('community_type_question') : t('community_type_bug');
-    const badgeClass = post.type === 'question' ? 'question' : 'bug';
-    
-    // Construct HTML string
+    const replyCount = post.replies ? post.replies.length : 0;
+
     let html = `
       <div class="post-meta-line">
-        <span class="post-badge ${badgeClass}">${badgeText}</span>
-        <span class="post-author-time">von <strong>${post.author}</strong> am ${getFormattedDate(post.timestamp)}</span>
+        <span class="post-badge ${post.type}">${badgeText}</span>
+        <span class="post-author-time">von <strong>${escapeHtml(post.author)}</strong> am ${getFormattedDate(post.created_at)}</span>
       </div>
-      <h3>${post.title}</h3>
-      <div class="post-body-text">${post.content}</div>
-    `;
-    
-    // Replies block
-    html += `<div class="replies-section">
-      <h4 class="replies-title">${post.replies.length} ${t('community_replies') || 'Antworten'}</h4>`;
-      
-    if (post.replies.length > 0) {
+      <h3>${escapeHtml(post.title)}</h3>
+      <div class="post-body-text">${escapeHtml(post.content)}</div>
+      <div class="replies-section">
+        <div class="replies-header">
+          <span class="replies-title">${replyCount} ${t('community_replies')}</span>
+          <button type="button" class="reply-toggle-btn" onclick="toggleReplyForm('${post.id}')">
+            <svg viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" stroke-width="2" fill="none"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
+            ${t('community_reply_btn')}
+          </button>
+        </div>`;
+
+    if (replyCount > 0) {
       html += `<div style="display:flex; flex-direction:column; gap:8px; margin-bottom:14px;">`;
       post.replies.forEach(reply => {
         html += `
           <div class="reply-item">
             <div class="reply-meta">
-              <strong>${reply.author}</strong>
-              <span>${getFormattedDate(reply.timestamp)}</span>
+              <strong>${escapeHtml(reply.author)}</strong>
+              <span>${getFormattedDate(reply.created_at)}</span>
             </div>
-            <div class="reply-text">${reply.content}</div>
-          </div>
-        `;
+            <div class="reply-text">${escapeHtml(reply.content)}</div>
+          </div>`;
       });
       html += `</div>`;
     }
-    
-    // Add reply form
+
+    // Hidden reply form — shown only after clicking the button
     html += `
-        <form class="reply-form" onsubmit="handleCreateReply(event, '${post.id}')">
+        <form id="reply-form-${post.id}" class="reply-form" onsubmit="handleCreateReply(event, '${post.id}')">
           <div class="reply-form-row">
-            <input type="text" class="reply-author-input" required placeholder="${t('community_post_author') || 'Dein Name'}">
-            <textarea class="reply-content-input" rows="2" required placeholder="${t('community_add_reply') || 'Antwort verfassen...'}"></textarea>
+            <input type="text" class="reply-author-input" required placeholder="${t('community_post_author')}" value="${escapeHtml(savedName)}">
+            <textarea class="reply-content-input" rows="2" required placeholder="${t('community_add_reply')}"></textarea>
           </div>
-          <button type="submit" class="reply-submit-btn">${t('community_reply_btn') || 'Antworten'}</button>
+          <button type="submit" class="reply-submit-btn">${t('community_reply_btn')}</button>
         </form>
-      </div>
-    `;
-    
+      </div>`;
+
     card.innerHTML = html;
     container.appendChild(card);
   });
 }
 
-// Initial Data Load and Seeding
+function escapeHtml(text) {
+  const div = document.createElement('div');
+  div.textContent = text || '';
+  return div.innerHTML;
+}
+
+// --- Init ---
+
 document.addEventListener('DOMContentLoaded', () => {
-  const stored = localStorage.getItem('inkwell_community_posts');
-  if (stored) {
-    posts = JSON.parse(stored);
-  } else {
-    posts = INITIAL_POSTS;
-    localStorage.setItem('inkwell_community_posts', JSON.stringify(posts));
+  // Prefill remembered author name
+  const savedName = localStorage.getItem('inkwell_forum_name');
+  if (savedName) {
+    document.getElementById('post-author').value = savedName;
   }
-  
-  // Hook language callback to redraw feed on language switches
+
   if (typeof addLangChangeListener === 'function') {
-    addLangChangeListener(() => {
-      renderFeed();
-    });
+    addLangChangeListener(() => renderFeed());
   }
-  
-  renderFeed();
+
+  loadPosts();
 });
 </script>
 </body>
