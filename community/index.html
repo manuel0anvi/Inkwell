@@ -350,7 +350,7 @@
 <body>
 
 <nav>
-  <a href="../index.html" class="nav-logo">
+  <a href="../" class="nav-logo">
     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256">
       <defs>
         <linearGradient id="gN" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" style="stop-color:#d4a857"/><stop offset="100%" style="stop-color:#a8860c"/></linearGradient>
@@ -462,7 +462,7 @@
   <div class="fl">
     <a href="https://github.com/manuel0anvi/Inkwell" target="_blank">GitHub</a>
     <a href="#" data-i18n="nav_community">Community</a>
-    <a href="../datenschutz/index.html" data-i18n="nav_datenschutz">Datenschutz</a>
+    <a href="../datenschutz/" data-i18n="nav_datenschutz">Datenschutz</a>
   </div>
 </footer>
 
@@ -684,6 +684,20 @@ async function ensureForumIdentity() {
   return forumIdentityPromise;
 }
 
+function toggleRepliesList(postId) {
+  const list = document.getElementById('replies-list-' + postId);
+  const icon = document.getElementById('replies-icon-' + postId);
+  if (list) {
+    if (list.style.display === 'none') {
+      list.style.display = 'flex';
+      if (icon) icon.textContent = '▲';
+    } else {
+      list.style.display = 'none';
+      if (icon) icon.textContent = '▼';
+    }
+  }
+}
+
 function getFormattedDate(isoString) {
   const date = new Date(isoString);
   const locale = lang === 'de' ? 'de-DE' : lang === 'it' ? 'it-IT' : 'en-GB';
@@ -820,17 +834,21 @@ function renderFeed() {
 
     const badgeText = post.type === 'question' ? t('community_type_question') : t('community_type_bug');
     const replyCount = post.replies ? post.replies.length : 0;
+    const isAnonPost = ['Anonym', 'Anonymous', 'Anonimo'].includes(post.author);
 
     let html = `
       <div class="post-meta-line">
         <span class="post-badge ${post.type}">${badgeText}</span>
-        <span class="post-author-time">von <strong>${escapeHtml(post.author)}</strong> am ${getFormattedDate(post.created_at)}</span>
+        <span class="post-author-time">${isAnonPost ? '' : `von <strong>${escapeHtml(post.author)}</strong> `}am ${getFormattedDate(post.created_at)}</span>
       </div>
       <h3>${escapeHtml(post.title)}</h3>
       <div class="post-body-text">${escapeHtml(post.content)}</div>
       <div class="replies-section">
         <div class="replies-header">
-          <span class="replies-title">${replyCount} ${t('community_replies')}</span>
+          <span class="replies-title" style="cursor:pointer; user-select:none; display:inline-flex; align-items:center; gap:4px;" onclick="toggleRepliesList('${post.id}')">
+            ${replyCount} ${t('community_replies')}
+            ${replyCount > 0 ? `<span id="replies-icon-${post.id}">▼</span>` : ''}
+          </span>
           <button type="button" class="reply-toggle-btn" onclick="toggleReplyForm('${post.id}')">
             <svg viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" stroke-width="2" fill="none"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
             ${t('community_reply_btn')}
@@ -838,12 +856,13 @@ function renderFeed() {
         </div>`;
 
     if (replyCount > 0) {
-      html += `<div style="display:flex; flex-direction:column; gap:8px; margin-bottom:14px;">`;
+      html += `<div id="replies-list-${post.id}" style="display:none; flex-direction:column; gap:8px; margin-bottom:14px;">`;
       post.replies.forEach(reply => {
+        const isAnonReply = ['Anonym', 'Anonymous', 'Anonimo'].includes(reply.author);
         html += `
           <div class="reply-item">
             <div class="reply-meta">
-              <strong>${escapeHtml(reply.author)}</strong>
+              ${isAnonReply ? '' : `<strong>${escapeHtml(reply.author)}</strong>`}
               <span>${getFormattedDate(reply.created_at)}</span>
             </div>
             <div class="reply-text">${escapeHtml(reply.content)}</div>
