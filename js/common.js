@@ -36,7 +36,7 @@ function checkCommonAuth(isLandingPage = false, relativePathToRoot = './') {
     // On click, navigate directly to dashboard
     btnOpenLogin.onclick = (e) => {
       e.preventDefault();
-      window.location.href = `${relativePathToRoot}dashboard/index.html`;
+      window.location.href = `${relativePathToRoot}dashboard/`;
     };
   } else {
     // User is not logged in!
@@ -51,7 +51,7 @@ function checkCommonAuth(isLandingPage = false, relativePathToRoot = './') {
       // On other subpages, redirect to landing with ?login=true
       btnOpenLogin.onclick = (e) => {
         e.preventDefault();
-        window.location.href = `${relativePathToRoot}index.html?login=true`;
+        window.location.href = `${relativePathToRoot}?login=true`;
       };
     }
   }
