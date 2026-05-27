@@ -411,7 +411,6 @@
             <span class="forum-char-counter" id="post-title-counter">120 übrig von 120</span>
           </div>
           <input type="text" id="post-title" maxlength="120" required oninput="updateForumCounter('post-title', 120)">
-          <div class="forum-limit-note" data-i18n="community_post_title_limit">Max. 120 Zeichen</div>
         </div>
         <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px;">
           <div class="forum-input-group">
@@ -430,7 +429,6 @@
                 <span data-i18n="community_author_anonymous">Anonym posten</span>
               </label>
             </div>
-            <div class="forum-form-note" id="post-author-state" data-i18n="community_author_hint">Wenn du angemeldet bist, wird dein Name automatisch übernommen. Du kannst aber trotzdem ein Pseudonym nutzen oder anonym posten.</div>
           </div>
         </div>
         <div class="forum-input-group" style="margin-top: 10px;">
@@ -439,7 +437,6 @@
             <span class="forum-char-counter" id="post-content-counter">2000 übrig von 2000</span>
           </div>
           <textarea id="post-content" rows="5" maxlength="2000" required oninput="updateForumCounter('post-content', 2000)"></textarea>
-          <div class="forum-limit-note" data-i18n="community_post_content_limit">Max. 2000 Zeichen</div>
         </div>
         <div style="display: flex; justify-content: flex-end; gap: 14px; margin-top: 10px;">
           <button type="button" onclick="togglePostForm()" class="btn-m" data-i18n="downgrade_cancel">Abbrechen</button>
@@ -630,18 +627,6 @@ function toggleForumAnonymous(kind) {
 function updateForumAuthorState(kind, anonymous) {
   const stateEl = document.getElementById(kind === 'post' ? 'post-author-state' : `reply-author-state-${kind.split('-').slice(1).join('-')}`);
   if (!stateEl) return;
-
-  if (anonymous) {
-    stateEl.textContent = t('community_author_anonymous') || getForumAnonymousName();
-    return;
-  }
-
-  if (forumIdentity.loggedIn && forumIdentity.displayName) {
-    stateEl.textContent = tf('community_author_logged_in', { name: forumIdentity.displayName });
-    return;
-  }
-
-  stateEl.textContent = t('community_author_hint');
 }
 
 function updateForumCounter(inputId, max) {
@@ -879,13 +864,11 @@ function renderFeed() {
             <div class="forum-input-group" style="margin:0; width:100%;">
               <div class="forum-input-header">
                 <label for="reply-content-${post.id}" data-i18n="community_add_reply">Antwort verfassen...</label>
-                <span class="forum-char-counter" id="reply-content-${post.id}-counter">500 übrig von 500</span>
+                <span class="forum-char-counter" id="reply-content-${post.id}-counter">${tf('community_chars_left_of', { left: 500, max: 500 })}</span>
               </div>
               <textarea id="reply-content-${post.id}" class="reply-content-input" rows="2" maxlength="500" required placeholder="${t('community_add_reply')}" oninput="updateForumCounter('reply-content-${post.id}', 500)"></textarea>
             </div>
           </div>
-          <div class="forum-form-note" id="reply-author-state-${post.id}" data-i18n="community_author_hint">Wenn du angemeldet bist, wird dein Name automatisch übernommen. Du kannst aber trotzdem ein Pseudonym nutzen oder anonym posten.</div>
-          <div class="forum-limit-note" data-i18n="community_reply_content_limit">Max. 500 Zeichen</div>
           <button type="submit" class="reply-submit-btn">${t('community_reply_btn')}</button>
         </form>
       </div>`;
