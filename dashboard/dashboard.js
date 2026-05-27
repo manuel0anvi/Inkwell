@@ -10,7 +10,7 @@ function checkAuth() {
   
   if (!token || !uid) {
     // If not authenticated, redirect to landing page and show login modal
-    window.location.replace('../index.html?login=true');
+    window.location.replace('../?login=true');
     return false;
   }
   
@@ -54,7 +54,7 @@ async function showDashboard() {
         localStorage.removeItem('inkwell_web_token');
         localStorage.removeItem('inkwell_web_uid');
         session = null;
-        window.location.replace('../index.html?login=true');
+        window.location.replace('../?login=true');
         throw new Error('Sitzung abgelaufen. Bitte erneut anmelden.');
       }
       throw new Error('Fehler beim Laden');
@@ -275,13 +275,13 @@ document.getElementById('logout-btn').addEventListener('click', () => {
   localStorage.removeItem('inkwell_web_token');
   localStorage.removeItem('inkwell_web_uid');
   session = null;
-  window.location.replace('../index.html');
+  window.location.replace('../');
 });
 
 // Configure Home redirection click for the home button
 document.getElementById('btn-open-login').addEventListener('click', (e) => {
   e.preventDefault();
-  window.location.href = '../index.html';
+  window.location.href = '../';
 });
 
 // Initialize on Load
