@@ -42,7 +42,7 @@ function checkCommonAuth(isLandingPage = false, relativePathToRoot = './') {
       // On click, navigate to home
       btnOpenLogin.onclick = (e) => {
         e.preventDefault();
-        window.location.href = relativePathToRoot;
+        window.location.href = relativePathToRoot + '?home=true';
       };
     } else {
       if (span) {
