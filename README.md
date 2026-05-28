@@ -1,1 +1,1 @@
-visit the website: https://inkwell-web.netlify.app/
+visit the website: https://inkwells.me
