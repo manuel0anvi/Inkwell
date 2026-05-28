@@ -281,10 +281,9 @@ document.getElementById('logout-btn').addEventListener('click', () => {
 // Configure Home redirection click for the home button
 document.getElementById('btn-open-login').addEventListener('click', (e) => {
   e.preventDefault();
-  window.location.href = '../';
+  window.location.href = '../?home=true';
 });
 
-// Initialize on Load
 if (checkAuth()) {
   showDashboard();
 }
