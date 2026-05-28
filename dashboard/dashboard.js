@@ -122,7 +122,8 @@ async function showDashboard() {
     const dateOpts = { year: 'numeric', month: '2-digit', day: '2-digit' };
     const timeOpts = { hour: '2-digit', minute: '2-digit', second: '2-digit' };
     const datetimeStr = `${now.toLocaleDateString(locale, dateOpts)} ${now.toLocaleTimeString(locale, timeOpts)}`;
-    document.getElementById('last-sync-time').innerHTML = tf('dash_last_sync', { datetime: datetimeStr });
+    const sourceStr = useSupabaseFallback ? 'Supabase' : 'Google Drive';
+    document.getElementById('last-sync-time').innerHTML = tf('dash_last_sync', { datetime: datetimeStr }) + ` &bull; Quelle: <span style="color:var(--gold-light)">${sourceStr}</span>`;
     
     if (notebooks.length === 0) {
       grid.innerHTML = `<p style="color:var(--text-muted)" data-i18n="dash_empty">${t('dash_empty') || 'Keine Notebooks gefunden.'}</p>`;
