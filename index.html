@@ -148,11 +148,11 @@
 </section>
 
 <footer>
-  <p>© 2025 Inkwell · Anvi</p>
+  <p>© 2026 Inkwell · Anvi</p>
   <div class="fl">
     <a href="https://github.com/manuel0anvi/Inkwell" target="_blank">GitHub</a>
-    <a href="community/index.html" data-i18n="nav_community">Community</a>
-    <a href="datenschutz/index.html" data-i18n="nav_datenschutz">Datenschutz</a>
+    <a href="community/" data-i18n="nav_community">Community</a>
+    <a href="datenschutz/" data-i18n="nav_datenschutz">Datenschutz</a>
   </div>
 </footer>
 </div>
@@ -392,24 +392,27 @@ if (hash && hash.includes('access_token')) {
       localStorage.setItem('inkwell_web_token', accessToken);
       localStorage.setItem('inkwell_web_uid', data.id);
       // Clean up hash and redirect directly to dashboard
-      window.location.replace('dashboard/index.html');
+      window.location.replace('dashboard/');
     }).catch(err => {
       console.error('OAuth processing error:', err);
       document.getElementById('landing-content').style.display = 'block';
     });
   }
 } else {
-  // If already logged in, redirect directly to dashboard
+  // If already logged in, redirect directly to dashboard unless explicitly navigating home
+  const urlParams = new URLSearchParams(window.location.search);
+  const isHomeOverride = urlParams.get('home') === 'true';
   const savedToken = localStorage.getItem('inkwell_web_token');
-  if (savedToken) {
-    window.location.replace('dashboard/index.html');
+  
+  if (savedToken && !isHomeOverride) {
+    window.location.replace('dashboard/');
   }
 }
 
 document.getElementById('login-google-btn').addEventListener('click', () => {
   let currentUrl = window.location.origin + window.location.pathname;
   if (!window.location.origin || window.location.origin === 'null' || window.location.protocol === 'file:') {
-    currentUrl = 'https://manuel0anvi.github.io/Inkwell/index.html';
+    currentUrl = 'https://manuel0anvi.github.io/Inkwell/';
   }
   const url = `${SUPABASE_URL}/auth/v1/authorize?provider=google&redirect_to=${encodeURIComponent(currentUrl)}&prompt=select_account`;
   window.location.href = url;
@@ -439,7 +442,7 @@ document.getElementById('login-submit').addEventListener('click', async () => {
     localStorage.setItem('inkwell_web_uid', data.user.id);
     
     loginModal.classList.remove('open');
-    window.location.href = 'dashboard/index.html';
+    window.location.href = 'dashboard/';
   } catch(e) {
     errEl.textContent = e.message;
     errEl.style.display = 'block';
