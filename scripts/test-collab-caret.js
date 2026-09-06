@@ -360,6 +360,37 @@ for (let pos = 0; pos <= listenText.length; pos++) {
 check('Jede Stelle in der Liste findet sich wieder',
   listenRunde, Array.from({ length: listenText.length + 1 }, (_, i) => i));
 
+/* ══ 4b2. Tabellenzellen sind eigene Zeilen ═════════════════════════
+   >>> Der Fehler, den das festhält <<<
+   Eine Zelle galt als inline – „sie stehen nebeneinander, nicht
+   untereinander". Damit liefen die Zellen einer Reihe zu EINER
+   Zeichenkette zusammen: aus |AA|BB|CC| wurde „AABBCC". Das Ende der
+   zweiten Zelle und der Anfang der dritten waren dieselbe Zahl.
+
+   Für die Zeilensperre heißt das: eine Zelle hatte gar keine Grenze,
+   an der ein Anspruch enden konnte. Gemessen mit zwei echten Fenstern
+   (npm run test:live): wer in der mittleren Zelle tippte, beanspruchte
+   sie samt dem ersten Zeichen der Nachbarzelle. Genau das gemeldete
+   „in einer Tabelle nie in der gleichen Zelle".
+   ══════════════════════════════════════════════════════════════════ */
+
+console.log('\nTabellenzellen');
+
+const tabelle = el('div', el('table', el('tbody',
+  el('tr', el('td', 'AA'), el('td', 'BB')),
+  el('tr', el('td', 'CC'), el('td', 'DD')))));
+check('Jede Zelle ist eine eigene Zeile', flatTextOf(tabelle), 'AA\nBB\nCC\nDD');
+
+/* Und damit hat jede Zelle eine Grenze: die Sperre einer Zelle kann
+   nicht mehr in die Nachbarzelle reichen. */
+check('Die Zeile endet an der Zellgrenze',
+  flatLineSpan(flatTextOf(tabelle), 4, 0), { from: 3, to: 5 });
+
+/* Eine Kopfzelle genauso – sie ist nur ein <th> statt <td>. */
+check('Kopfzellen ebenso',
+  flatTextOf(el('div', el('table', el('tbody',
+    el('tr', el('th', 'Eins'), el('th', 'Zwei')))))), 'Eins\nZwei');
+
 /* Ein <br> am Ende zählt weiterhin nicht doppelt – auch dann nicht,
    wenn es in einer Auszeichnung steckt statt unmittelbar im Absatz. */
 check('<br> am Absatzende bleibt der Platzhalter',

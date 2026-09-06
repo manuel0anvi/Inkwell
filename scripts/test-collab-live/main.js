@@ -653,16 +653,80 @@ app.on('ready', async () => {
       !!drueben && /j-table/.test(drueben.klasse) && drueben.kopfzellen === 4,
       JSON.stringify(drueben));
 
-    /* Und die Rechnung der Schreibmarken muss weiterhin aufgehen: eine
-       Tabellenzeile ist EINE Zeile im flachen Maß (canvas/text.js zählt
-       <tr> als Block und <td> als inline). Sonst zeigten alle Marken in
-       einem Heft mit Tabelle daneben. */
+    /* Und die Rechnung der Schreibmarken muss weiterhin aufgehen: seit
+       dem Umbau ist jede ZELLE eine Zeile im flachen Maß (canvas/text.js
+       zählt <td> als Block, <tr> ist nur die Hülle darum). Vorher lief
+       eine ganze Reihe zu einer Zeile zusammen – dann hatte eine Zelle
+       keine Grenze, an der ein Anspruch enden konnte. */
     const flach = await B(`pruefstand.text()`);
     const zeilenImText = flach.split('\n').length;
     notiz('flacher Text: ' + JSON.stringify(flach) + ' → ' + zeilenImText + ' Zeilen');
-    pruefe('Eine Tabellenzeile ist eine Zeile im flachen Maß',
-      zeilenImText === 4,     // 3 Tabellenzeilen + der Absatz dahinter
-      zeilenImText + ' statt 4');
+    pruefe('Jede Tabellenzelle ist eine Zeile im flachen Maß',
+      zeilenImText === 13,    // 3 Reihen à 4 Zellen + der Absatz dahinter
+      zeilenImText + ' statt 13');
+
+    /* ══════════════════════════════════════════════════════════════════
+       EINE ZELLE GEHOERT EINEM – DIE NACHBARZELLE NICHT
+
+       Gemeldet: „in einer Tabelle nie in der gleichen Zelle."
+
+       >>> Warum das lange gar nicht formulierbar war <<<
+       Eine Tabellenzelle galt im flachen Text als inline. Die Zellen
+       einer Reihe liefen damit zu EINER Zeichenkette zusammen: aus
+       |AA|BB|CC| wurde „AABBCC". Das Ende der zweiten Zelle und der
+       Anfang der dritten waren dieselbe Zahl – eine Zelle hatte gar
+       keine Grenze, an der sich ein Anspruch festmachen liesse.
+
+       Gemessen wurde damals genau das: wer in der mittleren Zelle
+       tippte, beanspruchte sie samt dem ersten Zeichen der Nachbarzelle;
+       stand die Marke am Zellenrand, beanspruchte er die Nachbarzelle
+       statt der eigenen.
+
+       Seit jede Zelle eine eigene Zeile ist, beschneidet flatLineSpan
+       jeden Anspruch auf sie. Hier wird nachgemessen, dass er wirklich
+       drin bleibt.
+       ══════════════════════════════════════════════════════════════════ */
+    abschnitt('Eine Zelle gehoert einem, die Nachbarzelle nicht');
+    {
+      const tab = (bb) => '<table class="j-table"><tbody>'
+        + '<tr><td>AA</td><td>' + bb + '</td><td>CC</td></tr>'
+        + '<tr><td>DD</td><td>EE</td><td>FF</td></tr>'
+        + '</tbody></table><p>Danach</p>';
+
+      await A(`pruefstand.setzeText(${JSON.stringify(tab('BB'))}, 3)`);
+      await warte(600);
+
+      const flach = await B('pruefstand.text()');
+      notiz('flacher Text: ' + JSON.stringify(flach));
+      pruefe('Jede Zelle ist eine eigene Zeile',
+        flach === 'AA\nBB\nCC\nDD\nEE\nFF\nDanach',
+        JSON.stringify(flach));
+
+      /* A tippt in der MITTLEREN Zelle der ersten Reihe. Danach steht
+         dort „BBxy": Zelle 1 auf 0..1, Zelle 2 auf 3..6, Zelle 3 auf 8..9. */
+      await A(`pruefstand.setzeText(${JSON.stringify(tab('BBx'))}, 5)`);
+      await warte(400);
+      await A(`pruefstand.setzeText(${JSON.stringify(tab('BBxy'))}, 6)`);
+      await warte(600);
+
+      const gesperrt = await B('(function(){var a=[];for(var i=0;i<30;i++){if(window.Collab.lockOwner("p1",i,i))a.push(i);}return a;})()');
+      notiz('gesperrt bei B: ' + JSON.stringify(gesperrt));
+
+      pruefe('Ueberhaupt gesperrt', gesperrt.length > 0,
+        'niemand beansprucht etwas – dann sagt die Pruefung darunter nichts');
+      pruefe('Die Nachbarzellen bleiben frei',
+        gesperrt.length > 0 && gesperrt[0] >= 3 && gesperrt[gesperrt.length - 1] <= 7,
+        'der Anspruch reicht in eine Nachbarzelle: ' + JSON.stringify(gesperrt));
+
+      /* Und das Band darf auch nicht ueber die ganze Reihe laufen: sonst
+         sieht die freie Nachbarzelle belegt aus. Es bleibt in der Zelle. */
+      const band = await B('(function(){var e=document.getElementsByClassName("collab-lock")[0];if(!e)return null;var t=document.querySelector(".j-text").getBoundingClientRect();return {b:parseFloat(e.style.width), t:t.width};})()');
+      notiz('Bandbreite: ' + JSON.stringify(band));
+      pruefe('Das Band bleibt in der Zelle',
+        !!band && band.b < band.t * 0.8,
+        'es laeuft ueber die ganze Textbreite: ' + JSON.stringify(band));
+    }
+
 
     /* ══════════════════════════════════════════════════════════════════
        WER IST ALLES DA?

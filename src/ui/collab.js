@@ -300,7 +300,7 @@
      die Teile aneinandergereiht wieder genau den Ausgangstext ergeben –
      ohne das stünden alle Stellen dahinter daneben. */
   const ABSCHNITT_ENDE =
-    /(?:<\/(?:p|h[1-6]|li|ul|ol|div|table|tbody|tr|blockquote|pre)>|<br\s*\/?>)/gi;
+    /(?:<\/(?:p|h[1-6]|li|ul|ol|div|table|tbody|tr|td|th|blockquote|pre)>|<br\s*\/?>)/gi;
 
   /**
    * Zerlegt einen Text in Abschnitte, deren Verkettung wieder den Text
@@ -1494,6 +1494,40 @@
     return zeilen;
   }
 
+  /**
+   * Wie breit und wo beginnt das Band?
+   *
+   * Über die ganze Textbreite, nicht nur über die beschriebenen Zeichen –
+   * gesperrt ist die ZEILE, nicht der Satz.
+   *
+   * >>> In einer Tabelle aber nur über die ZELLE <<<
+   * Seit eine Zelle im flachen Text eine eigene Zeile ist (canvas/text.js),
+   * beansprucht ein Anschlag auch nur sie. Ein Band über die ganze Breite
+   * behauptete dann etwas Falsches: dass die ganze Reihe belegt sei,
+   * während die Nachbarzellen frei sind und man dort schreiben darf.
+   */
+  function bandMasse(pgEl, textDiv, from, zoom) {
+    const pageRect = pgEl.getBoundingClientRect();
+
+    let box = null;
+    try {
+      const range = (typeof flatRangeAt === 'function') ? flatRangeAt(textDiv, from) : null;
+      const knoten = range && range.startContainer
+        ? (range.startContainer.nodeType === 1
+            ? range.startContainer : range.startContainer.parentElement)
+        : null;
+      const zelle = (knoten && typeof knoten.closest === 'function')
+        ? knoten.closest('td, th') : null;
+      if (zelle && textDiv.contains(zelle)) box = zelle.getBoundingClientRect();
+    } catch (err) { box = null; }
+
+    if (!box) box = textDiv.getBoundingClientRect();
+    return {
+      left: (box.left - pageRect.left) / zoom,
+      width: box.width / zoom
+    };
+  }
+
   function _renderLocksNow() {
     if (!others.length) {
       aufraeumen(lockEls, new Set());
@@ -1514,14 +1548,8 @@
       const textDiv = pgEl ? pgEl.querySelector('.j-text') : null;
       if (!textDiv || typeof textDiv.getBoundingClientRect !== 'function') continue;
 
-      const pageRect = pgEl.getBoundingClientRect();
-      const textRect = textDiv.getBoundingClientRect();
-      // Das Band geht über die ganze Textbreite, nicht nur über die
-      // beschriebenen Zeichen – gesperrt ist die ZEILE, nicht der Satz.
-      const left = (textRect.left - pageRect.left) / zoom;
-      const width = textRect.width / zoom;
-
       for (const person of people) {
+        const { left, width } = bandMasse(pgEl, textDiv, person.lockFrom, zoom);
         let zeilen = [];
         try { zeilen = lockZeilen(pgEl, textDiv, person.lockFrom, person.lockTo, zoom); }
         catch (err) { continue; }

@@ -149,17 +149,49 @@ function rangeForTextOffset(rootEl, offset) {
 const FLAT_BLOCK_TAGS = new Set([
   'P', 'DIV', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6',
   'LI', 'UL', 'OL', 'BLOCKQUOTE', 'PRE', 'SECTION', 'FIGURE', 'TABLE', 'TR', 'HR',
+  /* Eine Zelle ist eine eigene Zeile – siehe der Kasten bei
+     FLAT_INLINE_DISPLAYS. Sie muss auch hier stehen: ohne berechneten
+     Stil (Prüfstände ohne Browser) entscheidet allein diese Liste, und
+     dann käme dort ein anderer flacher Text heraus als in der App. */
+  'TD', 'TH',
   'DL', 'DT', 'DD', 'ARTICLE', 'ASIDE', 'HEADER', 'FOOTER', 'NAV', 'MAIN',
   'ADDRESS', 'FIGCAPTION', 'FIELDSET', 'FORM', 'CENTER', 'DETAILS', 'SUMMARY',
   'CAPTION', 'THEAD', 'TBODY', 'TFOOT'
 ]);
 
-/* Was NICHT auf einer eigenen Zeile steht, obwohl es ein Element ist.
-   Nach der Darstellung geurteilt, nicht nach dem Namen. Tabellenzellen
-   gehören dazu: sie stehen nebeneinander, nicht untereinander. */
+/* ══════════════════════════════════════════════════════════════════════
+   WAS NICHT AUF EINER EIGENEN ZEILE STEHT
+
+   Nach der Darstellung geurteilt, nicht nach dem Namen.
+
+   >>> Warum eine TABELLENZELLE jetzt doch eine Zeile ist <<<
+   Hier stand sie in dieser Liste, mit der Begründung: sie stehen
+   nebeneinander, nicht untereinander. Auf dem Papier stimmt das – im
+   flachen Text richtet es Schaden an.
+
+   Ohne eigene Zeile laufen die Zellen einer Reihe zu EINER Zeichenkette
+   zusammen: aus |AA|BB|CC| wird „AABBCC". Das Ende der zweiten Zelle und
+   der Anfang der dritten sind damit dieselbe Zahl, und eine Zelle hat
+   überhaupt keine Grenze mehr, an der sich etwas festmachen liesse.
+
+   Für die Live-Bearbeitung heisst das: „nie zwei in derselben Zelle" war
+   gar nicht formulierbar. Gemessen mit zwei echten Fenstern: wer in der
+   mittleren Zelle tippte, beanspruchte sie samt dem ersten Zeichen der
+   NACHBARZELLE; stand die Marke am Zellenrand, beanspruchte er die
+   Nachbarzelle statt der eigenen. Beides ist genau der gemeldete Fehler.
+
+   Als eigene Zeile hat jede Zelle eine Grenze, und flatLineSpan
+   beschneidet jeden Anspruch darauf. Nebenbei wird auch das Messen der
+   Bildschirmzeile richtig: die Suche darin setzt voraus, dass eine Zeile
+   mit der Stelle nur nach unten wachsen kann – nebeneinanderstehende
+   Zellen verletzen das, untereinanderstehende nicht.
+
+   Auf dem Papier ändert sich nichts: der flache Text ist eine Rechengrösse
+   und wird nirgends angezeigt. Ausgabe, Suche und docx lesen das HTML.
+   ══════════════════════════════════════════════════════════════════════ */
 const FLAT_INLINE_DISPLAYS = new Set([
   'inline', 'inline-block', 'inline-flex', 'inline-grid', 'inline-table',
-  'contents', 'none', 'table-cell', 'table-column', 'table-column-group',
+  'contents', 'none', 'table-column', 'table-column-group',
   'ruby', 'ruby-base', 'ruby-text', 'ruby-base-container', 'ruby-text-container'
 ]);
 
