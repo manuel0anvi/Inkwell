@@ -1951,7 +1951,10 @@
     const ich = eigeneUid();
     for (const person of activeLocks(pageId)) {
       if (stelle < person.lockFrom || stelle > person.lockTo) continue;
-      if (!gewinntGegen(person.uid, ich)) continue;
+      /* Ohne eigene Kennung laesst sich nichts entscheiden – dann gilt
+         der fremde Anspruch. Lieber selbst warten als zu zweit
+         schreiben. */
+      if (ich && !gewinntGegen(person.uid, ich)) continue;
       return true;
     }
     return false;
@@ -2039,7 +2042,8 @@
       const bereich = person.lockFrom <= span.to && person.lockTo >= span.from;
       if (!marke && !bereich) continue;
 
-      if (!gewinntGegen(ich, person.uid)) return null;
+      // Ohne eigene Kennung wird nichts beansprucht – siehe fremderAnspruchDeckt
+      if (!ich || !gewinntGegen(ich, person.uid)) return null;
     }
 
     return span;

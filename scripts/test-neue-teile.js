@@ -719,7 +719,7 @@ console.log('\nWer schreibt, hat die Vollmacht ueber seine Zeile\n');
     /FREMD_LUFT/.test(collabQuelle), false);
   check('Wer unterliegt, beansprucht gar nichts',
     /function anspruchGegenFremde/.test(collabQuelle)
-    && /if \(!gewinntGegen\(ich, person\.uid\)\) return null;/.test(collabQuelle), true);
+    && /if \(!ich \|\| !gewinntGegen\(ich, person\.uid\)\) return null;/.test(collabQuelle), true);
 
   /* Und gestritten wird nur mit jemandem, der selbst einen Anspruch hat.
      Vor jeder herumliegenden Marke zurueckzuweichen hiess, die eigene

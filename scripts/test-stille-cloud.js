@@ -319,7 +319,7 @@ console.log('\n3. Die Zeilensperre: die Marke bleibt stehen, statt zu huepfen\n'
      gar nichts und wird von der vollen Sperre des Gewinners geblockt. */
   const gegen = funktion(collabQuelle, 'anspruchGegenFremde');
   check('Wer unterliegt, beansprucht gar nichts',
-    /if \(!gewinntGegen\(ich, person\.uid\)\) return null;/.test(gegen), true);
+    /if \(!ich \|\| !gewinntGegen\(ich, person\.uid\)\) return null;/.test(gegen), true);
   check('Zugeschnitten wird nichts mehr',
     /bis = Math\.min|von = Math\.max/.test(gegen), false);
   check('Wer gewinnt, behaelt die ganze Zeile',
