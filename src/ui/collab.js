@@ -2040,9 +2040,14 @@
     // Für den Rückfall in applyRemoteText mitschreiben
     letzteEigeneStelle.set(pageId, offset);
 
-    // Der Anker macht die Stelle beim anderen wiederauffindbar
+    /* Damit die Stelle beim anderen wiederzufinden ist. Zuerst als
+       Yjs-Stelle – die überlebt jede fremde Änderung –, und nur wenn
+       sich die nicht bilden lässt, als Stück Text. */
     let anker = '';
-    try { anker = ankerAt(flatTextOf(focused), offset); } catch (err) { anker = ''; }
+    try {
+      anker = relPosVonFlat(pageId, focused, offset);
+      if (!anker) anker = ankerAt(flatTextOf(focused), offset);
+    } catch (err) { anker = ''; }
 
     return { offset, anker, lock: lockSpanFor(pageId, focused, offset) };
   }
@@ -2159,20 +2164,124 @@
      die fremde Marke säße bis zur nächsten Meldung daneben. Beim Tippen
      zu zweit auf derselben Seite passiert das ununterbrochen.
 
-     >>> Warum nicht Y.RelativePosition <<<
-     Yjs hätte dafür genau das richtige Werkzeug. Es zählt aber im
-     Yjs-Text, und der hält hier den HTML-Text; gemeldet wird dagegen die
-     Stelle im SICHTBAREN Text. Beides ineinander umzurechnen ginge nur
-     über ein Zerlegen des HTML an beliebiger Stelle – brüchig, und bei
-     jeder Auszeichnung anders.
+     >>> Wie es gelöst ist: mit Y.RelativePosition <<<
+     Yjs weiß von jedem Zeichen des gemeinsamen Textes, wohin es durch
+     fremde Änderungen gewandert ist. Eine Y.RelativePosition zeigt
+     deshalb IMMER auf dieselbe Stelle im Text, gleichgültig wer davor
+     etwas einfügt oder löscht. Genau das wird gebraucht.
 
-     Stattdessen reist ein kurzes Stück Text mit: zwölf Zeichen davor und
-     zwölf danach. Passt es an der gemeldeten Stelle, ist alles gut.
-     Passt es nicht, wird die nächstgelegene Stelle gesucht, an der es
-     passt – und die Marke sitzt wieder richtig. Das heilt nicht nur das
-     gleichzeitige Tippen, sondern jede Art von Verschiebung, auch die
-     durch die eigenen Änderungen HIER.
+     Hier stand einmal, das ginge nicht: Yjs zählt im HTML-Quelltext,
+     gemeldet wird die Stelle im SICHTBAREN Text, und beides ineinander
+     umzurechnen sei brüchig. Diese Umrechnung gibt es seit dem Umbau –
+     flatHtmlMap in canvas/text.js legt die Zeichen beider Zählweisen
+     einmal nebeneinander, mit eigenem Prüfstand (test-textmap.js).
+
+     >>> Der Anker bleibt als Rückfall <<<
+     Eine Yjs-Stelle lässt sich nur bilden, wenn es für die Seite einen
+     gemeinsamen Text gibt und die Zuordnung aufgeht. Wo das nicht
+     zutrifft – ohne Live-Verbindung, bei einer älteren Fassung am
+     anderen Ende –, reist weiterhin ein kurzes Stück Text mit: zwölf
+     Zeichen davor und zwölf danach, an der nächstgelegenen passenden
+     Stelle wiedergesucht.
+
+     Was aber NICHT mehr geschieht: eine Yjs-Stelle, die sich nicht
+     auflösen lässt, wird nicht geraten. Sie gilt dann als unbekannt –
+     lieber keine Sperre als eine auf der falschen Zeile.
      ══════════════════════════════════════════════════════════════════ */
+
+  /* Daran ist eine mitgereiste Yjs-Stelle zu erkennen. Ein Anker aus
+     gewöhnlichem Text kann zwar auch mit ~ anfangen; er wird dann als
+     Yjs-Stelle geprüft, fällt beim Entschlüsseln durch und nimmt den
+     Weg über den Text – falsch werden kann dabei nichts. */
+  const REL_MARKE = '~';
+
+  /* Die Zuordnung flacher Text ↔ Quelltext für einen Zug. Sie liest das
+     ganze Feld; gefragt wird sie je Anwesendem und beim Zeichnen mehrfach
+     hintereinander, deshalb dasselbe Verfahren wie bei leuteCache. */
+  let karteCache = null;
+
+  function karteFuer(textDiv) {
+    if (!textDiv || typeof flatHtmlMap !== 'function') return null;
+
+    if (!karteCache) {
+      karteCache = new Map();
+      Promise.resolve().then(() => { karteCache = null; });
+    }
+    if (karteCache.has(textDiv)) return karteCache.get(textDiv);
+
+    let wert = null;
+    try {
+      const html = textDiv.innerHTML || '';
+      const karte = flatHtmlMap(textDiv, html);
+      wert = karte.ok ? { karte, html } : null;
+    } catch (err) { wert = null; }
+    karteCache.set(textDiv, wert);
+    return wert;
+  }
+
+  /**
+   * Die eigene Stelle als Yjs-Stelle – sie übersteht jede fremde Änderung.
+   *
+   * @returns {string} leer, wenn sie sich nicht bilden lässt
+   */
+  function relPosVonFlat(pageId, textDiv, offset) {
+    const entry = docs.get(pageId);
+    const gebiet = karteFuer(textDiv);
+    if (!entry || !gebiet || !yAvailable()) return '';
+
+    try {
+      const h = gebiet.karte.htmlVonFlat(offset);
+      if (!(h >= 0)) return '';
+
+      /* Das Feld ist dem gemeinsamen Text um das voraus, was noch nicht
+         eingetragen ist – Getipptes wird bis zu TEXT_FLUSH_MS gesammelt.
+         Die Stelle wird deshalb auf den Stand des gemeinsamen Textes
+         zurückgerechnet. Steht nichts aus, ändert das nichts. */
+      const ziel = entry.ytext.toString();
+      const imText = Math.max(0, Math.min(shiftedPos(gebiet.html, ziel, h), ziel.length));
+
+      const rp = window.Y.createRelativePositionFromTypeIndex(entry.ytext, imText);
+      return REL_MARKE + toBase64(window.Y.encodeRelativePosition(rp));
+    } catch (err) { return ''; }
+  }
+
+  /** Und zurück: wohin zeigt eine mitgereiste Yjs-Stelle in diesem Feld? */
+  function flatVonRelPos(pageId, textDiv, cx) {
+    if (typeof cx !== 'string' || cx.charAt(0) !== REL_MARKE) return null;
+
+    const entry = docs.get(pageId);
+    const gebiet = karteFuer(textDiv);
+    if (!entry || !gebiet || !yAvailable()) return null;
+
+    try {
+      const rp = window.Y.decodeRelativePosition(fromBase64(cx.slice(1)));
+      const abs = window.Y.createAbsolutePositionFromRelativePosition(rp, entry.ydoc);
+      if (!abs || abs.type !== entry.ytext) return null;
+
+      // Vom gemeinsamen Text auf das, was hier im Feld schon steht
+      const imFeld = shiftedPos(entry.ytext.toString(), gebiet.html, abs.index);
+      const f = gebiet.karte.flatVonHtml(imFeld);
+      return f >= 0 ? f : null;
+    } catch (err) { return null; }
+  }
+
+  /**
+   * Welche Stelle im hiesigen Text meint diese Meldung?
+   *
+   * @returns {number|null} null, wenn sie sich nicht belegen lässt
+   */
+  function gemeldeteStelle(pageId, textDiv, inhalt, offset, cx) {
+    const exakt = flatVonRelPos(pageId, textDiv, cx);
+    if (exakt !== null) return exakt;
+
+    /* Eine Yjs-Stelle, die sich nicht auflösen lässt, wird NICHT über den
+       Text gesucht. Sie enthält keinen Text, den man suchen könnte, und
+       die rohe Zahl stammt aus einem anderen Stand – genau daraus wurde
+       das Sperrband auf der falschen Zeile. */
+    if (typeof cx === 'string' && cx.charAt(0) === REL_MARKE) return null;
+
+    return stelleAusAnker(inhalt, offset, cx);
+  }
 
   // So viele Zeichen je Seite reisen als Anker mit
   const CTX = 12;
@@ -2363,12 +2472,12 @@
     const gemerkt = leuteCache.get(schluessel);
     if (gemerkt && gemerkt.inhalt === inhalt) return gemerkt.wert;
 
-    const wert = peopleOnPageBerechnen(pageId, inhalt);
+    const wert = peopleOnPageBerechnen(pageId, inhalt, textDiv);
     leuteCache.set(schluessel, { inhalt, wert });
     return wert;
   }
 
-  function peopleOnPageBerechnen(pageId, inhalt) {
+  function peopleOnPageBerechnen(pageId, inhalt, textDiv) {
     return peopleNow().filter(p => p.pageId === pageId).map(person => {
       if (inhalt === null || !Number.isFinite(person.offset) || person.offset < 0) return person;
 
@@ -2389,7 +2498,8 @@
          Zeichen – er wird nicht gefunden, und es bleibt bei der Stelle
          aus der Textänderung. Genau davor sollte der Vorrang schützen. */
       if (person.praesenz && person.praesenz.cx
-          && stelleAusAnker(inhalt, person.praesenz.offset, person.praesenz.cx) !== null) {
+          && gemeldeteStelle(pageId, textDiv, inhalt,
+               person.praesenz.offset, person.praesenz.cx) !== null) {
         // Umgerechnet wird sie gleich darunter, wie jede andere auch –
         // dann wandert die Sperre um denselben Betrag mit.
         person = { ...person, ...person.praesenz };
@@ -2426,7 +2536,8 @@
          Bisherigen – da ist nichts zu prüfen, und gar keine Sperre wäre
          schlechter als eine ungeprüfte. */
       const hatAnker = !!(person.cx && person.cx.length);
-      const gefunden = hatAnker ? stelleAusAnker(inhalt, person.offset, person.cx) : null;
+      const gefunden = hatAnker
+        ? gemeldeteStelle(pageId, textDiv, inhalt, person.offset, person.cx) : null;
 
       if (hatAnker && gefunden === null) {
         return { ...person, lockFrom: -1, lockTo: -1 };
@@ -4695,6 +4806,10 @@
     _feinDelta: feinDelta,
     _inAbschnitte: inAbschnitte,
     _stelleAusAnker: stelleAusAnker,
+    /* Die Yjs-Stelle, hin und zurück – scripts/test-collab-sync.js baut
+       damit die Meldung einer Gegenseite nach. */
+    _relPosVonFlat: relPosVonFlat,
+    _flatVonRelPos: flatVonRelPos,
     _shiftedPos: shiftedPos,
     _seedUpdate: seedUpdate
   };

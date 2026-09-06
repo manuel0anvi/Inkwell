@@ -229,6 +229,8 @@ function makeClient(name, uid, notebook) {
     notebook,
     fetched,
     textOf: (pageId) => elements.get(pageId).textDiv.innerHTML,
+    // Das Textfeld selbst – gebraucht, um eine Yjs-Stelle zu bilden
+    textDivOf: (pageId) => elements.get(pageId).textDiv,
     pageOf: (pageId) => notebook.pages.find(p => p.id === pageId),
     pageIds: () => notebook.pages.map(p => p.id),
     /** Setzt den sichtbaren Text einer Seite – wie ein Tastendruck hier. */
@@ -859,6 +861,83 @@ function check(label, actual, expected) {
   check('Ohne Anker im Text: die gemeldete Stelle', t1.Collab.caretOf('uidU'), stelle);
 
   presence.delete('uidU');
+  announcePresence();
+
+  /* ── 5m. Eine geloeschte Zeile verschiebt niemanden mehr ─────────────
+     Der gemeldete Fall, und der Grund fuer den Umbau:
+
+       A und B schreiben eine Zeile voneinander entfernt.
+       A loescht die Zeile dazwischen.
+       B's Marke und B's Sperre muessen mit dem Text mitwandern.
+
+     Frueher reiste dafuer ein Stueck Text als Anker mit. Wird eine ganze
+     Zeile geloescht, ist der Anker zerschnitten und nirgends mehr zu
+     finden – die alte Zahl blieb stehen, und die zeigte nach dem
+     Loeschen auf die Zeile DARUEBER. Beide standen dann auf derselben,
+     und was danach getippt wurde, verschob den Text von beiden.
+
+     Jetzt reist eine Yjs-Stelle mit. Yjs weiss von jedem Zeichen, wohin
+     es gewandert ist; geraten wird nichts mehr.
+     ─────────────────────────────────────────────────────────────────── */
+
+  console.log('\nEine geloeschte Zeile verschiebt die Marke des anderen');
+
+  bus.listeners.length = 0;
+  const x1 = makeClient('X', 'uidX', makeNotebook([]));
+  const y1 = makeClient('Y', 'uidY', makeNotebook([]));
+  await x1.Collab.start('doc11', x1.notebook, {}, true);
+  await y1.Collab.start('doc11', y1.notebook, {}, true);
+
+  // Reiner Text mit echten Umbruechen – so sieht eine getippte Seite aus
+  const vierZeilen = 'eins\nzwei\ndrei\nvier';
+  x1.setText('p1', vierZeilen);
+  x1.Collab.noteTextChange('p1', vierZeilen);
+  await wait(500);
+
+  check('Beide haben denselben Text', y1.textOf('p1'), vierZeilen);
+
+  /* Y steht am Anfang von „drei" und beansprucht diese Zeile. Genau so
+     meldet es reportCaret – nur wird die Meldung hier von Hand gebaut,
+     weil der nachgebaute DOM keine Auswahl kennt. */
+  const dreiAb = 'eins\nzwei\n'.length;               // 10
+  const yStelle = y1.Collab._relPosVonFlat('p1', y1.textDivOf('p1'), dreiAb);
+  check('Die Yjs-Stelle laesst sich bilden',
+    typeof yStelle === 'string' && yStelle.length > 1, true);
+
+  presence.set('uidZ', {
+    uid: 'uidZ', name: 'Yvonne', initials: 'Y', color: '#81b29a',
+    pageId: 'p1', offset: dreiAb, cx: yStelle,
+    lockFrom: dreiAb, lockTo: dreiAb + 4, lockAt: Date.now(), at: Date.now()
+  });
+  announcePresence();
+
+  check('Unveraendert: die Marke sitzt auf „drei"', x1.Collab.caretOf('uidZ'), dreiAb);
+  check('Und die Sperre ebenso', !!x1.Collab.lockOwner('p1', dreiAb, dreiAb), true);
+
+  // Jetzt loescht X die Zeile „zwei" – alles darunter rutscht um fuenf hoch
+  const dreiZeilen = 'eins\ndrei\nvier';
+  x1.setText('p1', dreiZeilen);
+  x1.Collab.noteTextChange('p1', dreiZeilen);
+  await wait(500);
+
+  check('Die Zeile ist weg', x1.textOf('p1'), dreiZeilen);
+  check('Die Marke wandert mit', x1.Collab.caretOf('uidZ'), dreiAb - 5);
+  check('Die Sperre wandert mit',
+    !!x1.Collab.lockOwner('p1', dreiAb - 5, dreiAb - 5), true);
+  check('Und liegt nicht mehr auf der Zeile darueber',
+    x1.Collab.lockOwner('p1', 0, 0), null);
+
+  /* Und dasselbe beim EINFUEGEN davor: der zweite Fall aus der Meldung,
+     „einer kommt in die naechste Zeile, weil Enter". */
+  const mitZusatz = 'eins und mehr\ndrei\nvier';
+  x1.setText('p1', mitZusatz);
+  x1.Collab.noteTextChange('p1', mitZusatz);
+  await wait(500);
+
+  check('Nach dem Einfuegen davor wandert sie zurueck',
+    x1.Collab.caretOf('uidZ'), dreiAb - 5 + ' und mehr'.length);
+
+  presence.delete('uidZ');
   announcePresence();
 
   /* ── 6. Ohne Live-Verbindung darf nichts krachen ─────────────────── */
