@@ -308,14 +308,31 @@ console.log('\n3. Die Zeilensperre: die Marke bleibt stehen, statt zu huepfen\n'
   }
 }
 {
-  /* Der Anspruch entsteht nur um die eigene Marke herum und weicht
-     zurueck, wo schon eine fremde sitzt. */
-  const ohne = funktion(collabQuelle, 'ohneFremdeStellen');
-  check('Der Anspruch weicht vor fremden Marken zurueck',
-    /if \(stelle > offset\) bis = Math\.min/.test(ohne)
-    && /else if \(stelle < offset\) von = Math\.max/.test(ohne), true);
-  check('Die eigene Stelle bleibt aber immer darin',
-    /if \(bis < offset \|\| von > offset\) return null;/.test(ohne), true);
+  /* ── Ein Zusammenstoss hat einen Gewinner, keine zwei Haelften ─────
+     Hier stand die Pruefung auf das Ausweichen: der Anspruch wich der
+     fremden Marke aus und behielt das Stueck bis dorthin. Es wich aber
+     JEDER – und danach hatte jeder eine Haelfte derselben Zeile, auf
+     der er schreiben durfte. Genau das war „beide schreiben auf der
+     gleichen Zeile".
+
+     Eine Zeile laesst sich nicht halbieren: wer unterliegt, beansprucht
+     gar nichts und wird von der vollen Sperre des Gewinners geblockt. */
+  const gegen = funktion(collabQuelle, 'anspruchGegenFremde');
+  check('Wer unterliegt, beansprucht gar nichts',
+    /if \(!gewinntGegen\(ich, person\.uid\)\) return null;/.test(gegen), true);
+  check('Zugeschnitten wird nichts mehr',
+    /bis = Math\.min|von = Math\.max/.test(gegen), false);
+  check('Wer gewinnt, behaelt die ganze Zeile',
+    /\n    return span;\n  \}$/.test(gegen), true);
+
+  /* Der Schiedsspruch muss auf beiden Rechnern dasselbe ergeben. Er darf
+     deshalb nur von den beiden Kennungen abhaengen – nicht von einer Uhr
+     und nicht davon, was hier gerade zuletzt eintraf. */
+  const schied = funktion(collabQuelle, 'gewinntGegen');
+  check('Der Schiedsspruch haengt allein an den Kennungen',
+    /return String\(eigene\) < String\(fremde\);/.test(schied), true);
+  check('Und nicht an einer Uhr',
+    /Date\.now|lockAt/.test(schied), false);
 }
 {
   /* Der Takt darf nicht versehentlich wieder auf true gesetzt werden. */

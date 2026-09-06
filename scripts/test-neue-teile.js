@@ -702,23 +702,31 @@ console.log('\nWer schreibt, hat die Vollmacht ueber seine Zeile\n');
     && /if \(!tippteHier\(pageId, offset\)\) \{ eigeneSperre\.delete\(pageId\); return null; \}/
       .test(collabQuelle), true);
 
-  /* Der Zuschnitt wich bis auf EIN Zeichen an die fremde Marke heran.
-     Die ist aber nie taufrisch (CARET_THROTTLE_MS in core/share.js) –
-     wer tippt, stand damit beim naechsten Anschlag mitten im Anspruch
-     dessen, der eben noch woanders war.
+  /* ── Der Zuschnitt ist ersatzlos entfallen ────────────────────────
+     Hier stand die Pruefung auf FREMD_LUFT: der Anspruch wich der
+     fremden Marke aus und behielt das Stueck bis kurz davor.
 
-     Zweierlei gehoert dazu: die Luft selbst, und dass sie nie ueber die
-     EIGENE Stelle hinausschneidet – sonst warf die Abfrage darunter den
-     ganzen Anspruch weg, und wer schrieb, hatte gar keine Zeile mehr. */
-  check('Um eine fremde Marke bleibt Luft',
-    /const FREMD_LUFT = \d+/.test(collabQuelle)
-    && /bis = Math\.min\(bis, Math\.max\(offset, stelle - 1 - FREMD_LUFT\)\)/.test(collabQuelle), true);
+     Das Ausweichen war genau der gemeldete Fehler, nur von der anderen
+     Seite gesehen. Es wich naemlich JEDER: sitzen zwei in derselben
+     Zeile, schneidet A vor B zurecht und B vor A – und danach hat jeder
+     eine Haelfte derselben Zeile, auf der er schreiben darf. Beide
+     Ansprueche sind fuer sich gueltig, keiner deckt die Stelle des
+     anderen, also laesst editBlockedBy beide durch.
 
-  /* Und zurueckgewichen wird nur vor jemandem, der selbst schreibt. Vor
-     jeder herumliegenden Marke zurueckzuweichen hiess, die eigene Zeile
-     an den abzugeben, der nur hinzeigt. */
+     Eine Zeile laesst sich nicht halbieren. Wer unterliegt, beansprucht
+     gar nichts und wird von der vollen Sperre des Gewinners geblockt. */
+  check('Es wird nicht mehr zugeschnitten',
+    /FREMD_LUFT/.test(collabQuelle), false);
+  check('Wer unterliegt, beansprucht gar nichts',
+    /function anspruchGegenFremde/.test(collabQuelle)
+    && /if \(!gewinntGegen\(ich, person\.uid\)\) return null;/.test(collabQuelle), true);
+
+  /* Und gestritten wird nur mit jemandem, der selbst einen Anspruch hat.
+     Vor jeder herumliegenden Marke zurueckzuweichen hiess, die eigene
+     Zeile an den abzugeben, der nur hinzeigt – activeLocks laesst
+     deshalb nur echte Ansprueche durch. */
   check('Ein Anspruch weicht nur einem Anspruch',
-    /for \(const person of activeLocks\(pageId\)\) \{\s*\n\s*const stelle = Number\(person\.offset\);/
+    /for \(const person of activeLocks\(pageId\)\) \{\s*\n(.*\n)*?\s*const stelle = Number\(person\.offset\);/
       .test(collabQuelle), true);
 
   /* lockAt kommt von der Uhr des Absenders. Geht die vor, hielte seine

@@ -940,6 +940,77 @@ function check(label, actual, expected) {
   presence.delete('uidZ');
   announcePresence();
 
+  /* ── 5n. Zwei Ansprueche auf dieselbe Zeile ──────────────────────────
+     Der zweite Teil der Meldung: „man sollte nie in der gleichen Zeile
+     schreiben".
+
+     >>> Der Fehler, der hier festgehalten wird <<<
+     Frueher wich jeder Anspruch der fremden Marke aus und behielt das
+     Stueck bis dorthin. Es wich aber JEDER – sitzen zwei in derselben
+     Zeile, schneidet A vor B zurecht und B vor A, und danach hat jeder
+     eine Haelfte derselben Zeile, auf der er schreiben darf. Beide
+     Ansprueche sind gueltig, keiner deckt die Stelle des anderen, also
+     laesst editBlockedBy beide durch: zwei Leute schreiben gleichzeitig
+     in dieselbe Zeile.
+
+     Eine Zeile laesst sich nicht halbieren. Entweder gehoert sie mir
+     oder dem anderen – und beide Rechner muessen dabei auf DASSELBE
+     Ergebnis kommen.
+     ─────────────────────────────────────────────────────────────────── */
+
+  console.log('\nZwei Ansprueche auf dieselbe Zeile');
+
+  /* Der Schiedsspruch fuer sich: er muss eindeutig sein. Genau einer von
+     zweien gewinnt, nie beide und nie keiner – daran haengt alles. */
+  const paare = [['uidA', 'uidB'], ['uidB', 'uidA'], ['uidM', 'uidZ'], ['abc', 'abd']];
+  const eindeutig = paare.every(([a, b]) =>
+    x1.Collab._gewinntGegen(a, b) !== x1.Collab._gewinntGegen(b, a));
+  check('Von zweien gewinnt immer genau einer', eindeutig, true);
+
+  /* Und beide Seiten rechnen dasselbe aus: was A ueber sich und B sagt,
+     muss das Gegenteil davon sein, was B ueber sich und A sagt. */
+  check('Beide Rechner kommen zum selben Ergebnis',
+    x1.Collab._gewinntGegen('uidA', 'uidB'), !x1.Collab._gewinntGegen('uidB', 'uidA'));
+
+  /* Jetzt am laufenden Client. x1 heisst 'uidX'. Ein Fremder, der in
+     derselben Zeile sitzt, bekommt sie – oder eben nicht. */
+  const zeile = { from: 0, to: 12 };
+
+  const fremderIn = (uid) => {
+    presence.set(uid, {
+      uid, name: uid, initials: 'F', color: '#c8a96e',
+      pageId: 'p1', offset: 4, lockFrom: 0, lockTo: 12,
+      lockAt: Date.now(), at: Date.now()
+    });
+    announcePresence();
+  };
+
+  // 'uidA' < 'uidX' – der Fremde gewinnt, x1 beansprucht gar nichts
+  fremderIn('uidA');
+  check('Gegen den Ueberlegenen bleibt nichts',
+    x1.Collab._anspruchGegenFremde(zeile, 'p1'), null);
+  presence.delete('uidA');
+
+  // 'uidZ' > 'uidX' – x1 gewinnt und behaelt die GANZE Zeile
+  fremderIn('uidZ');
+  check('Gegen den Unterlegenen bleibt die ganze Zeile',
+    x1.Collab._anspruchGegenFremde(zeile, 'p1'), zeile);
+  presence.delete('uidZ');
+
+  /* Wer weiter unten sitzt, streitet gar nicht mit: sein Anspruch
+     beruehrt diese Zeile nicht. */
+  presence.set('uidA', {
+    uid: 'uidA', name: 'A', initials: 'A', color: '#c8a96e',
+    pageId: 'p1', offset: 40, lockFrom: 30, lockTo: 42,
+    lockAt: Date.now(), at: Date.now()
+  });
+  announcePresence();
+  check('Eine andere Zeile nimmt einem nichts',
+    x1.Collab._anspruchGegenFremde(zeile, 'p1'), zeile);
+
+  presence.delete('uidA');
+  announcePresence();
+
   /* ── 6. Ohne Live-Verbindung darf nichts krachen ─────────────────── */
 
   console.log('\nOhne Live-Verbindung');

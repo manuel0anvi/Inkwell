@@ -1750,11 +1750,11 @@
        loest sich von selbst: sobald der Text wirklich in die Zeile
        darunter laeuft, steht die eigene Marke schon dort, und die
        Sperre wandert mit. Und wo wirklich zwei aufeinandertreffen,
-       schneidet ohneFremdeStellen den Anspruch ohnehin zurueck.
+       entscheidet anspruchGegenFremde, wem die Zeile gehoert.
        ══════════════════════════════════════════════════════════════ */
     let span = null;
     try { span = visualLineSpan(textDiv, offset, 0); } catch (err) { return null; }
-    span = ohneFremdeStellen(span, pageId, textDiv, offset);
+    span = anspruchGegenFremde(span, pageId);
 
     /* Was hier herauskommt, ist der eigene Anspruch – merken, damit
        eigeneSperreDeckt() ihn kennt (siehe dort). */
@@ -1886,7 +1886,7 @@
   /* ══════════════════════════════════════════════════════════════════
      WER SCHREIBT, HAT DIE VOLLMACHT ÜBER SEINE ZEILE
 
-     Gegenstück zu ohneFremdeStellen, auf der Empfängerseite: dort wird
+     Gegenstück zu anspruchGegenFremde, auf der Empfängerseite: dort wird
      verhindert, dass ein Zusammenstoss ENTSTEHT, hier, dass er noch
      etwas anrichtet, wenn er trotzdem entstanden ist – weil die fremde
      Sperre einen Augenblick älter ist, oder weil am anderen Ende eine
@@ -1901,8 +1901,8 @@
 
      Massgeblich ist deshalb der eigene ANSPRUCH: die Zeile, die man
      zuletzt selbst gemeldet hat. Er entsteht nur beim Tippen, er endet
-     mit dem Nachlauf, und ohneFremdeStellen hat ihm alles weggeschnitten,
-     wo schon eine fremde Marke sitzt. Wer in eine fremde Zeile klickt,
+     mit dem Nachlauf, und anspruchGegenFremde hat ihn ganz entfallen
+     lassen, wo ein anderer die Zeile gewinnt. Wer in eine fremde Zeile klickt,
      hat dort keinen Anspruch – der alte lag ja woanders.
      ══════════════════════════════════════════════════════════════════ */
   function eigeneSperreDeckt(pageId, stelle) {
@@ -1927,96 +1927,122 @@
        hinzeigt. Genau so wurde es gemeldet.
 
        Gefragt wird deshalb nach dem gemeldeten Bereich des anderen – und
-       da ohneFremdeStellen auf beiden Seiten zuschneidet, überschneiden
-       sich zwei ehrliche Ansprüche gar nicht mehr. Nebenbei kostet der
+       da anspruchGegenFremde auf beiden Seiten denselben Gewinner
+       ausrechnet, überschneiden sich zwei ehrliche Ansprüche gar nicht mehr. Nebenbei kostet der
        Vergleich zweier Zahlen nichts, wo vorher ein Dutzend Messungen im
        Text standen; das lief bei JEDEM Anschlag. */
     return !fremderAnspruchDeckt(pageId, stelle);
   }
 
-  /** Liegt diese Stelle im gemeldeten Anspruch eines anderen? */
+  /**
+   * Liegt diese Stelle im gemeldeten Anspruch eines anderen, der dem
+   * eigenen VORGEHT?
+   *
+   * >>> Warum der Unterlegene hier nicht zaehlt <<<
+   * Gefragt wird nur, wenn man selbst einen Anspruch auf diese Zeile
+   * hat – und den bekommt man nur, wenn man den Zusammenstoss gewonnen
+   * hat (anspruchGegenFremde). Der Anspruch des Unterlegenen steht dann
+   * noch eine Meldung lang da, bis er ihn zurueckzieht. Zaehlte er
+   * mit, waeren fuer diesen Augenblick BEIDE blockiert: der Verlierer
+   * durch den Gewinner, der Gewinner durch den Verlierer. Genau dieses
+   * kurze Stocken bei jedem Zusammentreffen soll nicht sein.
+   */
   function fremderAnspruchDeckt(pageId, stelle) {
+    const ich = eigeneUid();
     for (const person of activeLocks(pageId)) {
-      if (stelle >= person.lockFrom && stelle <= person.lockTo) return true;
+      if (stelle < person.lockFrom || stelle > person.lockTo) continue;
+      if (!gewinntGegen(person.uid, ich)) continue;
+      return true;
     }
     return false;
   }
 
   /* ══════════════════════════════════════════════════════════════════
-     WAS SCHON JEMAND ANDEREM GEHÖRT, WIRD NICHT BEANSPRUCHT
+     ZWEI ANSPRÜCHE AUF DIESELBE ZEILE – EINER MUSS WEICHEN
 
-     Eine Sperre umfasst die eigene Zeile UND die darauf folgende – damit
-     der andere sieht, dass hier gearbeitet wird. Genau daraus entstand
-     ein Zusammenstoss:
+     Hier stand ein Kasten über das Ausweichen: wessen Anspruch eine
+     fremde Marke berührte, der wich ihr aus und behielt nur das Stück
+     bis dorthin. Das ist ersatzlos entfallen, und zwar weil es den
+     Fehler erzeugte, den es verhindern sollte – siehe den Kasten bei
+     anspruchGegenFremde weiter unten.
 
-       Person A schreibt in Zeile 5.
-       Person B schreibt in Zeile 4 – ihre Sperre reicht bis Zeile 5.
-
-     Damit lag A mitten in Bs Sperre, obwohl A dort zuerst war und
-     gerade tippt. As Marke wurde herausgeworfen, kam beim nächsten
-     Anschlag zurück, flog wieder heraus: der Cursor hüpfte. Gemeldet
-     genau so.
-
-     Die Zusatzzeile ist eine Höflichkeit, kein Recht. Sitzt dort schon
-     eine fremde Marke, wird sie einfach nicht mitbeansprucht – die
-     eigene Zeile bleibt in jedem Fall.
-
-     >>> Und wenn beide gleichzeitig anfangen <<<
-     Dann schneidet jeder dem anderen die Zusatzzeile weg, und beide
-     behalten ihre eigene. Das ist das gewollte Ergebnis: wer schreibt,
-     behält seine Zeile.
-
-     >>> WARUM MIT LUFT UND NICHT AUF DAS ZEICHEN GENAU <<<
-     Zurückgewichen wurde bis auf ein Zeichen an die fremde Stelle heran.
-     Die ist aber nie taufrisch: sie kommt über die Anwesenheit, und die
-     wird in core/share.js gebremst. Wer TIPPT, ist längst weiter, als er
-     zuletzt gemeldet hat – wer bloss dasitzt, meldet dagegen genau.
-
-     Daraus wurde ein Zusammenstoss, der immer denselben traf: B legt
-     seinen Cursor rechts neben A auf dieselbe Zeile und beansprucht
-     alles ab A's Stelle VON VORHIN. A tippt zwei Zeichen weiter und steht
-     damit mitten in B's Anspruch – ausgesperrt wurde also der, der zuerst
-     da war und wirklich schrieb.
-
-     Ein paar Zeichen Abstand um die fremde Marke fangen den Meldeverzug
-     ab. Sie kosten nichts: an dieser Stelle schreibt ohnehin niemand.
+     Was an seine Stelle tritt, sind die beiden Funktionen darunter:
+     gewinntGegen entscheidet, wem die Zeile gehört, und zwar auf
+     beiden Rechnern gleich; anspruchGegenFremde wendet das an.
      ══════════════════════════════════════════════════════════════════ */
 
-  /* Ungefähr ein Wort – so weit ist jemand zwischen zwei Meldungen
-     gekommen (CARET_THROTTLE_MS in core/share.js). */
-  const FREMD_LUFT = 8;
-  function ohneFremdeStellen(span, pageId, textDiv, offset) {
+  /**
+   * Wer von zweien behält die Zeile?
+   *
+   * >>> Warum die Kennung entscheidet und nicht die Zeit <<<
+   * Beide Seiten müssen dasselbe Ergebnis ausrechnen, sonst hält sich
+   * jeder für den Gewinner – und genau das ist der Fehler, der hier
+   * behoben wird. Nach der Zeit zu gehen wäre naheliegend, taugt aber
+   * nicht: `lockAt` ist nicht der Beginn des Anspruchs, sondern der
+   * Zeitpunkt der letzten Meldung, und die wird beim Weitertippen
+   * ununterbrochen erneuert. Wer gerade zuletzt geschrieben hat, wechselt
+   * damit im Takt der Anwesenheit – die Zeile spränge hin und her.
+   *
+   * Die Kennung ist auf beiden Seiten bekannt, ändert sich nie, und
+   * beide vergleichen dieselben zwei Zeichenketten. Der Preis: in einem
+   * Zusammenstoss weicht immer derselbe. Das ist verschmerzbar, weil ein
+   * Zusammenstoss voraussetzt, dass beide im selben Augenblick in
+   * DERSELBEN Zeile tippen – und der Unterlegene erfährt sofort, warum
+   * (warnLocked), statt ins Leere zu schreiben.
+   */
+  function gewinntGegen(eigene, fremde) {
+    return String(eigene) < String(fremde);
+  }
+
+  /** Die eigene Kennung im Raum. */
+  function eigeneUid() {
+    return (room && room.me && room.me.uid) ? room.me.uid : '';
+  }
+
+  /* ══════════════════════════════════════════════════════════════════
+     EIN ZUSAMMENSTOSS HAT EINEN GEWINNER – KEINE ZWEI HÄLFTEN
+
+     Hier stand ohneFremdeStellen: traf der eigene Anspruch auf eine
+     fremde Marke in derselben Zeile, wich er ihr aus und beanspruchte
+     nur noch das Stück bis dorthin.
+
+     >>> Warum das der gemeldete Fehler war <<<
+     Es wich nämlich JEDER. Sitzen zwei in derselben Bildschirmzeile,
+     schneidet A seinen Anspruch vor B zurecht und B seinen vor A – und
+     danach hat jeder eine Hälfte derselben Zeile, auf der er schreiben
+     darf. Beide Ansprüche sind für sich genommen gültig, keiner deckt
+     die Stelle des anderen, also lässt editBlockedBy beide durch.
+
+     Das Ergebnis ist genau das, was nie passieren soll: zwei Leute
+     schreiben gleichzeitig in dieselbe Zeile. Yjs führt das zwar
+     verlustfrei zusammen, aber der Satz, den beide gerade umformulieren,
+     wird dabei zu einem Gemisch aus beiden Fassungen – und jede
+     Einfügung verschiebt die Marke des anderen mitten im Wort.
+
+     Eine Zeile lässt sich nicht halbieren. Entweder sie gehört mir, oder
+     sie gehört dem anderen. Wer unterliegt, beansprucht GAR NICHTS –
+     und wird damit von der vollen Sperre des Gewinners geblockt, so wie
+     jeder andere auch, der die Zeile nicht hat.
+     ══════════════════════════════════════════════════════════════════ */
+  function anspruchGegenFremde(span, pageId) {
     if (!span || !others.length) return span;
 
-    let von = span.from;
-    let bis = span.to;
+    const ich = eigeneUid();
 
-    /* ── Zurückgewichen wird nur vor jemandem, der SELBST SCHREIBT ────
-       Hier stand peopleOnPage: jede fremde Marke schnitt etwas weg, auch
-       eine, die bloss dalag. Damit gab man seine eigene Zeile an den ab,
-       der nur hinzeigt – und der durfte dann darin schreiben, während
-       man selbst noch daran arbeitete. Das ist der gemeldete Fall, nur
-       von der anderen Seite gesehen.
-
-       Ein Anspruch weicht einem Anspruch. Wer keinen hat (activeLocks
-       lässt ihn dann gar nicht erst durch), bekommt auch nichts. */
     for (const person of activeLocks(pageId)) {
+      /* Streit gibt es nur, wo sich etwas berührt: entweder überlappen
+         die beanspruchten Bereiche, oder die fremde Marke sitzt in der
+         Zeile, die hier beansprucht wird. */
       const stelle = Number(person.offset);
-      if (!Number.isFinite(stelle) || stelle < 0) continue;
-      // Nur, wer wirklich in dieser Zeile sitzt, schneidet etwas weg
-      if (stelle < von || stelle > bis) continue;
-      /* Zurückgewichen wird mit Luft – aber NIE über die eigene Stelle
-         hinaus. Ohne diese Klammer schnitt die Luft den Anspruch unter
-         die eigene Marke, die Abfrage darunter warf ihn ganz weg, und
-         wer schrieb, hatte plötzlich gar keine Zeile mehr. Gemessen im
-         Prüfstand: A tippte, B stand vier Zeichen hinter A's Zeile, und
-         A's Sperre verschwand. */
-      if (stelle > offset) bis = Math.min(bis, Math.max(offset, stelle - 1 - FREMD_LUFT));
-      else if (stelle < offset) von = Math.max(von, Math.min(offset, stelle + 1 + FREMD_LUFT));
+      const marke = Number.isFinite(stelle) && stelle >= 0
+        && stelle >= span.from && stelle <= span.to;
+      const bereich = person.lockFrom <= span.to && person.lockTo >= span.from;
+      if (!marke && !bereich) continue;
+
+      if (!gewinntGegen(ich, person.uid)) return null;
     }
 
-    if (bis < offset || von > offset) return null;   // nichts mehr übrig
-    return (von === span.from && bis === span.to) ? span : { from: von, to: bis };
+    return span;
   }
 
   /** Wo steht die eigene Marke auf DIESER Seite – falls sie dort steht. */
@@ -2199,6 +2225,10 @@
      ganze Feld; gefragt wird sie je Anwesendem und beim Zeichnen mehrfach
      hintereinander, deshalb dasselbe Verfahren wie bei leuteCache. */
   let karteCache = null;
+
+  /* Der Inhalt des Feldes hat sich geaendert – die Zuordnung gilt nicht
+     mehr. Wird zusammen mit leuteCache geleert: beide haengen am Text. */
+  function karteCacheLeeren() { karteCache = null; }
 
   function karteFuer(textDiv) {
     if (!textDiv || typeof flatHtmlMap !== 'function') return null;
@@ -2432,7 +2462,7 @@
      es lief oft: bei JEDEM Anschlag ruft app.js editBlockedBy, und darin
      hängen eigeneSperreDeckt, fremderAnspruchDeckt und lockOwner – jedes
      über activeLocks, jedes mit einem eigenen Durchgang. Dazu kommt
-     lockSpanFor über ohneFremdeStellen. Vier Durchgänge für dieselbe
+     lockSpanFor über anspruchGegenFremde. Vier Durchgänge für dieselbe
      Auskunft, viermal je Zeichen. Und beim Zeichnen der Marken und
      Bänder noch einmal zwei.
 
@@ -2458,7 +2488,7 @@
      ══════════════════════════════════════════════════════════════════ */
   let leuteCache = null;
 
-  function leuteCacheLeeren() { leuteCache = null; }
+  function leuteCacheLeeren() { leuteCache = null; karteCacheLeeren(); }
 
   function peopleOnPage(pageId, textDiv) {
     const inhalt = (textDiv && typeof flatTextOf === 'function')
@@ -2603,7 +2633,7 @@
    * @param {number} [zeilenDanach=1] Wie viele Zeilen NACH der eigenen noch
    *   dazugehören. 1 ist der Anspruch beim Schreiben (eigene Zeile plus die
    *   nächste), 0 fragt nach der blossen Zeile, in der die Stelle liegt –
-   *   das braucht ohneFremdeStellen, um die Zeile eines anderen ganz
+   *   das braucht anspruchGegenFremde, um die Zeile eines anderen ganz
    *   auszusparen und nicht nur den Punkt, an dem seine Marke gerade steht.
    */
   /* ══════════════════════════════════════════════════════════════════
@@ -4810,6 +4840,9 @@
        damit die Meldung einer Gegenseite nach. */
     _relPosVonFlat: relPosVonFlat,
     _flatVonRelPos: flatVonRelPos,
+    /* Der Schiedsspruch über eine Zeile, die zwei beanspruchen. */
+    _gewinntGegen: gewinntGegen,
+    _anspruchGegenFremde: anspruchGegenFremde,
     _shiftedPos: shiftedPos,
     _seedUpdate: seedUpdate
   };
