@@ -465,12 +465,16 @@ const HTML_ENTITAETEN = {
 /**
  * Die Zeichen eines HTML-Quelltextes, die ausserhalb der Tags stehen.
  *
- * @returns {{text:string, stelle:number[]}} text  entschluesselt
+ * @returns {{text:string, stelle:number[], ende:number[]}}
+ *   text    entschluesselt
  *   stelle  wo das Zeichen im Quelltext beginnt, je Zeichen eines
+ *   ende    wo seine Quelle aufhoert – bei einer Entitaet hinter dem
+ *           Semikolon, sonst ein Zeichen weiter
  */
 function htmlZeichen(html) {
   const text = [];
   const stelle = [];
+  const ende = [];
   const n = html.length;
   let i = 0;
 
@@ -518,7 +522,7 @@ function htmlZeichen(html) {
           /* Je CODEEINHEIT ein Eintrag, nicht je Zeichen: der flache Text
              zaehlt genauso, und ein Zeichen jenseits der Grundebene
              (&#128512;) belegt dort zwei Stellen. */
-          for (let k = 0; k < wert.length; k++) { text.push(wert[k]); stelle.push(i); }
+          for (let k = 0; k < wert.length; k++) { text.push(wert[k]); stelle.push(i); ende.push(semi + 1); }
           i = semi + 1;
           continue;
         }
@@ -527,10 +531,11 @@ function htmlZeichen(html) {
 
     text.push(c);
     stelle.push(i);
+    ende.push(i + 1);
     i++;
   }
 
-  return { text: text.join(''), stelle };
+  return { text: text.join(''), stelle, ende };
 }
 
 /** Die erste Stelle in einer aufsteigenden Liste, die nicht kleiner ist. */
@@ -557,20 +562,68 @@ function flatHtmlMap(root, html) {
   const info = flatTextParts(root);
   const quelle = htmlZeichen(String(html == null ? '' : html));
 
-  /* Die Zeichen aus dem DOM. Die Zeilengrenzen, die flatTextParts selbst
-     erzeugt, sind NICHT dabei – im Quelltext stehen sie als Tag und
-     haben dort kein eigenes Zeichen. */
-  const flatVon = [];
+  /* ══════════════════════════════════════════════════════════════════
+     AUCH DIE ZEILENGRENZEN BEKOMMEN EINE STELLE
+
+     Hier wurden nur die ZEICHEN zugeordnet. Eine Zeilengrenze hat im
+     Quelltext kein eigenes Zeichen – dort steht ein Tag –, und sie fiel
+     deshalb auf den Anfang des naechsten Zeichens.
+
+     >>> Was das angerichtet hat <<<
+     Damit waren „Ende von Absatz 1" und „Anfang von Absatz 2" dieselbe
+     Stelle. Wer am Zeilenende schrieb – also praktisch jeder, immer –,
+     meldete Stelle 6, und beim anderen kam 7 heraus: seine Marke wurde
+     eine Zeile tiefer gezeichnet, am Anfang der naechsten Zeile, und das
+     Sperrband saass um ein Zeichen daneben. Gemeldet als „sein Cursor
+     kommt dorthin, wo ich hinklicke" – er stand ja genau da, wo man
+     selbst gerade hinzeigte.
+
+     Die Grenze bekommt deshalb eine eigene Stelle im Quelltext: das
+     ENDE des Zeichens davor. Das liegt noch VOR dem schliessenden Tag,
+     also eindeutig im ersten Absatz, und der Rueckweg findet sie wieder.
+     ══════════════════════════════════════════════════════════════════ */
+  const htmlLaenge = String(html == null ? '' : html).length;
+
+  const htmlVon = [];        // je Stelle des flachen Textes eine im Quelltext
   let daten = '';
+  let vorherEnde = 0;        // wo die Quelle des letzten Zeichens aufhoert
+  let z = 0;                 // Zeiger in die Zeichen des Quelltextes
+  let naechste = 0;          // naechste noch nicht zugeordnete flache Stelle
+
+  /**
+   * Die Zeilengrenzen bis zur naechsten Textstelle eintragen.
+   *
+   * Sie erben das Ende des Zeichens davor. Mehrere hintereinander – eine
+   * leere Zeile ist genau das – bekommen aufsteigende Stellen, sonst
+   * waeren sie nicht auseinanderzuhalten und der Rueckweg lieferte
+   * immer die erste. Platz dafuer ist immer: zwischen zwei Zeichen mit
+   * einer Grenze dazwischen steht mindestens ein Tag.
+   */
+  const grenzenBis = (bisFlach, bisHtml) => {
+    for (let f = naechste, i = 0; f < bisFlach; f++, i++) {
+      htmlVon.push(Math.min(vorherEnde + i, Math.max(vorherEnde, bisHtml - 1)));
+    }
+  };
+
   for (const part of info.parts) {
     if (part.type !== 'text') continue;
+
+    grenzenBis(part.at, (z < quelle.stelle.length) ? quelle.stelle[z] : htmlLaenge);
+
     const wert = part.node.nodeValue || '';
-    for (let k = 0; k < wert.length; k++) flatVon.push(part.at + k);
+    for (let k = 0; k < wert.length; k++) {
+      htmlVon.push(quelle.stelle[z]);
+      vorherEnde = quelle.ende[z];
+      z++;
+    }
     daten += wert;
+    naechste = part.at + wert.length;
   }
 
-  const ok = daten === quelle.text;
-  const htmlLaenge = String(html == null ? '' : html).length;
+  // Und die Grenzen hinter dem letzten Textstueck
+  grenzenBis(info.text.length, htmlLaenge);
+
+  const ok = daten === quelle.text && htmlVon.length === info.text.length;
 
   return {
     ok,
@@ -578,25 +631,21 @@ function flatHtmlMap(root, html) {
     /**
      * Zu einer Stelle im flachen Text die Stelle im Quelltext.
      *
-     * Liegt sie auf einer Zeilengrenze – im Quelltext ein Tag, kein
-     * Zeichen –, kommt der Anfang des naechsten echten Zeichens heraus.
-     * Das ist die Stelle, an der auch der naechste Anschlag landet.
+     * Der flache Text zaehlt jede Stelle einzeln, htmlVon steht in
+     * derselben Reihenfolge – nachzuschlagen ist es also unmittelbar.
      */
     htmlVonFlat(pos) {
       if (!ok) return -1;
       const f = Math.max(0, Number(pos) || 0);
-      const k = ersteAbList(flatVon, f);
-      if (k >= flatVon.length) return htmlLaenge;
-      return quelle.stelle[k];
+      return f < htmlVon.length ? htmlVon[f] : htmlLaenge;
     },
 
     /** Und zurueck: zu einer Stelle im Quelltext die im flachen Text. */
     flatVonHtml(pos) {
       if (!ok) return -1;
       const h = Math.max(0, Number(pos) || 0);
-      const k = ersteAbList(quelle.stelle, h);
-      if (k >= flatVon.length) return info.text.length;
-      return flatVon[k];
+      const k = ersteAbList(htmlVon, h);
+      return k < htmlVon.length ? k : info.text.length;
     }
   };
 }

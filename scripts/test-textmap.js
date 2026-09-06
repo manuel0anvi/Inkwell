@@ -171,12 +171,16 @@ function check(label, actual, expected) {
 }
 
 /**
- * Der Rundgang: jede Stelle des flachen Textes ins HTML und zurueck.
+ * Der Rundgang: JEDE Stelle des flachen Textes ins HTML und zurueck.
  * Was dabei herauskommt, muss wieder dieselbe Stelle sein.
  *
- * Ausgenommen sind die Zeilengrenzen, die es im Quelltext als eigenes
- * Zeichen nicht gibt (dort steht ein Tag) – fuer sie ist die Stelle des
- * naechsten echten Zeichens die richtige Antwort.
+ * >>> Warum die Zeilengrenzen ausdruecklich dazugehoeren <<<
+ * Hier wurden sie uebersprungen, mit der Begruendung, im Quelltext
+ * stehe an ihrer Stelle ein Tag und kein Zeichen. Das war bequem und
+ * hat den schwersten Fehler zugedeckt: Ende der einen Zeile und Anfang
+ * der naechsten fielen auf dieselbe Stelle zusammen. Wer am Zeilenende
+ * schrieb – also praktisch jeder, immer –, dessen Marke wurde beim
+ * anderen eine Zeile tiefer gezeichnet.
  */
 function rundgang(label, html) {
   const dom = ausHtml(html);
@@ -190,8 +194,7 @@ function rundgang(label, html) {
   }
 
   const daneben = [];
-  for (let f = 0; f < flach.length; f++) {
-    if (flach[f] === '\n') continue;             // Zeilengrenze, siehe oben
+  for (let f = 0; f <= flach.length; f++) {
     const zurueck = karte.flatVonHtml(karte.htmlVonFlat(f));
     if (zurueck !== f) daneben.push([f, zurueck]);
   }
@@ -226,9 +229,23 @@ console.log('\nAbsaetze');
   // <p>=0..2, a=3 b=4 c=5, </p>=6..9, <p>=10..12, d=13 e=14 f=15
   check('Erstes Zeichen', karte.htmlVonFlat(0), 3);
   check('Letztes der ersten Zeile', karte.htmlVonFlat(2), 5);
-  check('Ueber die Zeilengrenze hinweg: der Anfang der naechsten',
-    karte.htmlVonFlat(4), 13);
+  check('Erstes Zeichen der zweiten Zeile', karte.htmlVonFlat(4), 13);
   check('Und zurueck', karte.flatVonHtml(13), 4);
+
+  /* ══ Das Ende der einen Zeile ist NICHT der Anfang der naechsten ══
+     Der Fehler, der hier festgehalten wird: die Zeilengrenze fiel auf
+     den Anfang des naechsten Zeichens. Damit meldete, wer am Zeilenende
+     schrieb, eine Stelle, die beim anderen eine Zeile tiefer landete –
+     „sein Cursor kommt dorthin, wo ich hinklicke".
+
+     Die Grenze liegt jetzt am ENDE des Zeichens davor, also noch vor
+     dem </p> und damit eindeutig in der ersten Zeile. */
+  check('Die Zeilengrenze liegt hinter dem c, nicht vor dem d',
+    karte.htmlVonFlat(3), 6);
+  check('Und findet sich wieder', karte.flatVonHtml(6), 3);
+  check('Ende der Zeile und Anfang der naechsten sind VERSCHIEDEN',
+    karte.htmlVonFlat(3) !== karte.htmlVonFlat(4), true);
+
   /* Eine Stelle MITTEN im Tag gehoert zur naechsten Zeile – dort landet
      auch das Naechste, was jemand tippt. */
   check('Mitten im Tag', karte.flatVonHtml(8), 4);
@@ -282,6 +299,13 @@ console.log('\nWie es im Heft aussieht');
 rundgang('Auszeichnungen', '<p>ganz <b>dick</b> gedruckt</p>');
 rundgang('Liste', '<ul><li>Eins</li><li>Zwei</li><li>Drei</li></ul>');
 rundgang('Leere Zeile dazwischen', '<p>abc</p><p><br></p><p>def</p>');
+/* Mehrere Grenzen hintereinander muessen auseinanderzuhalten sein –
+   sonst faellt der Rueckweg immer auf die erste. Zwei leere Zeilen
+   entstehen durch zweimal Enter, das ist nichts Ausgefallenes. */
+rundgang('Zwei leere Zeilen', '<p>abc</p><p><br></p><p><br></p><p>def</p>');
+rundgang('Leere Zeile am Anfang', '<p><br></p><p>abc</p>');
+rundgang('Leere Zeile am Ende', '<p>abc</p><p><br></p>');
+rundgang('Nur leere Zeilen', '<p><br></p><p><br></p>');
 rundgang('Ueberschrift und Absatz', '<h1 class="j-title-1">Titel</h1><p>Darunter</p>');
 rundgang('Tabelle', '<table class="j-table"><tbody><tr><td>A</td><td>B</td></tr></tbody></table>');
 rundgang('Kommentar im Quelltext', '<p>davor</p><!-- Notiz --><p>danach</p>');

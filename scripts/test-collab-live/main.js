@@ -639,6 +639,66 @@ app.on('ready', async () => {
        auf der Liste, käme drüben eine Reihe loser Wörter an – und
        zurückverwandeln kann das niemand.
        ══════════════════════════════════════════════════════════════════ */
+
+    /* ══════════════════════════════════════════════════════════════════
+       AM ZEILENENDE STEHT DIE MARKE NOCH IN DIESER ZEILE
+
+       Gemeldet: „wenn ich den Cursor irgendwohin setze, kommt das Zeichen
+       von seinem Cursor dorthin – sein Cursor sollte aber dort bleiben,
+       wo er schreibt."
+
+       >>> Was wirklich geschah <<<
+       Die Marke folgte dem Klick nicht. Sie stand nur systematisch EINE
+       ZEILE ZU TIEF, jeweils ganz links – und wer dorthin klickte, fand
+       sie genau bei sich.
+
+       Schuld war die Umrechnung zwischen flachem Text und Quelltext
+       (flatHtmlMap). Eine Zeilengrenze hat im Quelltext kein eigenes
+       Zeichen, dort steht ein Tag; sie fiel deshalb auf den Anfang des
+       naechsten Zeichens. „Ende von Absatz 1" und „Anfang von Absatz 2"
+       waren damit dieselbe Stelle. Wer am Zeilenende schrieb – also
+       praktisch jeder, immer –, meldete Stelle 6, und beim anderen kam
+       7 heraus.
+
+       In reinem Text fiel es nicht auf: dort ist der Umbruch ein echtes
+       Zeichen. Erst mit Absaetzen, also nach jeder Formatierung, brach es.
+       ══════════════════════════════════════════════════════════════════ */
+    abschnitt('Am Zeilenende bleibt die Marke in ihrer Zeile');
+    {
+      const mitAbsaetzen = (eins) =>
+        '<p>' + eins + '</p><p>Zwei</p><p>Drei</p><p>Vier</p>';
+
+      await A(`pruefstand.setzeText(${JSON.stringify(mitAbsaetzen('Einsa'))}, 5)`);
+      await warte(400);
+      // A steht am ENDE der ersten Zeile – die haeufigste Stelle ueberhaupt
+      await A(`pruefstand.setzeText(${JSON.stringify(mitAbsaetzen('Einsab'))}, 6)`);
+      await warte(600);
+
+      const marken = await B('pruefstand.fremdeMarken()');
+      const baender = await B('pruefstand.baender()');
+      const zeileM = marken.length ? await B(`pruefstand.zeileVon(${marken[0].top})`) : null;
+      const zeileB = baender.length ? await B(`pruefstand.zeileVon(${baender[0].top})`) : null;
+      notiz('Marke auf Zeile ' + zeileM + ', Band auf Zeile ' + zeileB);
+
+      pruefe('Die Marke steht in der Zeile, in der A schreibt',
+        zeileM === 0, 'sie steht auf Zeile ' + zeileM + ' statt 0');
+      pruefe('Und nicht am Zeilenanfang, sondern hinter dem Getippten',
+        marken.length > 0 && marken[0].left > 72,
+        'sie steht ganz links (' + (marken[0] || {}).left + ') – das ist der Anfang der naechsten Zeile');
+      pruefe('Das Band liegt auf derselben Zeile',
+        zeileB === 0, 'es liegt auf Zeile ' + zeileB);
+
+      /* Und die eigene Marke von B darf daran nichts aendern: sie
+         irgendwohin zu setzen ist kein Ereignis fuer die fremde. */
+      await B('pruefstand.markeAuf(17)');
+      await warte(500);
+      const danach = await B('pruefstand.fremdeMarken()');
+      pruefe('Ein eigener Klick verschiebt die fremde Marke nicht',
+        danach.length > 0 && danach[0].top === marken[0].top
+          && danach[0].left === marken[0].left,
+        JSON.stringify(marken[0]) + ' → ' + JSON.stringify(danach[0]));
+    }
+
     abschnitt('Eine Tabelle kommt als Tabelle an');
 
     await A('pruefstand.setzeTabelle(3, 4)');
