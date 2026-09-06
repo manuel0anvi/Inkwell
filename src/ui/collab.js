@@ -1460,7 +1460,24 @@
   function lockZeilen(pgEl, textDiv, from, to, zoom) {
     const text = flatTextOf(textDiv);
     const ersteR = caretRectAt(textDiv, from, text);
-    const letzteR = caretRectAt(textDiv, Math.max(from, to), text);
+
+    /* ══════════════════════════════════════════════════════════════
+       DAS ENDE WIRD AM LETZTEN ZEICHEN GEMESSEN, NICHT DAHINTER
+
+       caretRectAt fragt bewusst nach dem Zeichen HINTER einer Stelle –
+       fuer eine Schreibmarke ist das richtig, denn dort erscheint das
+       naechste Getippte. Fuer das ENDE eines Bandes ist es falsch:
+       steht das Ende am Zeilenschluss, liegt das Zeichen dahinter
+       schon eine Zeile tiefer, und das Band bekam eine zweite Zeile,
+       in der kein einziges gesperrtes Zeichen steht.
+
+       Sichtbar wurde das erst, seit die Stellen genau sind: vorher
+       waren sie um ein paar Zeichen verschoben und trafen den
+       Zeilenschluss selten. Gemessen mit npm run test:live – das Band
+       wuchs beim Tippen von einer Zeile auf zwei und zurueck.
+       ══════════════════════════════════════════════════════════════ */
+    const ende = to > from ? to - 1 : to;
+    const letzteR = caretRectAt(textDiv, Math.max(from, ende), text);
     if (!ersteR || !letzteR) return [];
 
     const erste = lineBoxOf(pgEl, textDiv, ersteR, zoom);
@@ -2234,22 +2251,48 @@
      mehr. Wird zusammen mit leuteCache geleert: beide haengen am Text. */
   function karteCacheLeeren() { karteCache = null; }
 
-  function karteFuer(textDiv) {
+  /* ══════════════════════════════════════════════════════════════════
+     DER BEZUGSTEXT IST NICHT textDiv.innerHTML
+
+     Hier stand einmal der Quelltext aus dem Feld selbst. Das sieht
+     richtig aus und ist es nicht: der Browser gibt beim AUSLESEN seine
+     eigene Schreibweise zurück – Anführungszeichen um Attributwerte,
+     deren Reihenfolge, wie er ein leeres Element schließt. Er schreibt
+     also nicht dasselbe zurück, was man ihm gegeben hat.
+
+     Der gemeinsame Text kommt dagegen aus der App. Beide Zeichenketten
+     meinen denselben Inhalt, unterscheiden sich aber an Dutzenden
+     Stellen in den Tags – und der Vergleich, der die eine auf die andere
+     umrechnen sollte, sucht genau EINE Änderung. Er fand Unsinn, und die
+     ausgerechnete Stelle sprang bei jedem Anschlag woandershin. Sichtbar
+     wurde das als Flackern des Sperrbands; der Prüfstand mit zwei echten
+     Fenstern hat es sofort gemeldet (npm run test:live).
+
+     Genommen wird deshalb, was die App selbst geschrieben hat: das
+     Wartende, wenn Getipptes noch nicht eingetragen ist, sonst der
+     gemeinsame Text. Auf die Schreibweise der Tags kommt es dabei gar
+     nicht an – flatHtmlMap vergleicht nur, was AUSSERHALB der Tags
+     steht, und das ist auf beiden Seiten dasselbe.
+     ══════════════════════════════════════════════════════════════════ */
+  function karteFuer(pageId, textDiv) {
     if (!textDiv || typeof flatHtmlMap !== 'function') return null;
 
     if (!karteCache) {
       karteCache = new Map();
       Promise.resolve().then(() => { karteCache = null; });
     }
-    if (karteCache.has(textDiv)) return karteCache.get(textDiv);
+    if (karteCache.has(pageId)) return karteCache.get(pageId);
 
     let wert = null;
     try {
-      const html = textDiv.innerHTML || '';
+      const entry = docs.get(pageId);
+      const html = pendingText.has(pageId)
+        ? String(pendingText.get(pageId) || '')
+        : (entry ? entry.ytext.toString() : '');
       const karte = flatHtmlMap(textDiv, html);
       wert = karte.ok ? { karte, html } : null;
     } catch (err) { wert = null; }
-    karteCache.set(textDiv, wert);
+    karteCache.set(pageId, wert);
     return wert;
   }
 
@@ -2260,21 +2303,40 @@
    */
   function relPosVonFlat(pageId, textDiv, offset) {
     const entry = docs.get(pageId);
-    const gebiet = karteFuer(textDiv);
-    if (!entry || !gebiet || !yAvailable()) return '';
+    if (!entry || !yAvailable()) return '';
+
+    /* ══════════════════════════════════════════════════════════════
+       NUR MELDEN, WENN FELD UND GEMEINSAMER TEXT DENSELBEN STAND HABEN
+
+       Getipptes wird bis zu TEXT_FLUSH_MS gesammelt; solange etwas
+       aussteht, ist das Feld dem gemeinsamen Text um ein paar Zeichen
+       voraus. Eine Yjs-Stelle kann aber nur auf Zeichen zeigen, die im
+       gemeinsamen Text schon stehen – sie beschriebe also einen
+       ANDEREN Augenblick als die Zahl, die daneben gemeldet wird.
+
+       Der Empfänger rechnet aus der Differenz beider den Versatz, um
+       den er das Sperrband verschiebt (peopleOnPageBerechnen). Beim
+       Tippen war dieser Versatz deshalb dauernd um die noch nicht
+       eingetragenen Zeichen daneben, das Band rutschte in den Absatz
+       darüber und wuchs von einer auf drei Zeilen – bei jedem Anschlag
+       neu. Genau das hat npm run test:live als Flackern gemeldet.
+
+       Steht etwas aus, geht die Meldung deshalb über den Anker wie
+       bisher. Verloren ist dabei nichts: die Stelle reist ohnehin mit
+       JEDER Textänderung mit, und dort ist gerade nichts ausstehend –
+       flushPending hat eben geleert.
+       ══════════════════════════════════════════════════════════════ */
+    if (pendingText.has(pageId)) return '';
+
+    const gebiet = karteFuer(pageId, textDiv);
+    if (!gebiet) return '';
 
     try {
       const h = gebiet.karte.htmlVonFlat(offset);
       if (!(h >= 0)) return '';
 
-      /* Das Feld ist dem gemeinsamen Text um das voraus, was noch nicht
-         eingetragen ist – Getipptes wird bis zu TEXT_FLUSH_MS gesammelt.
-         Die Stelle wird deshalb auf den Stand des gemeinsamen Textes
-         zurückgerechnet. Steht nichts aus, ändert das nichts. */
-      const ziel = entry.ytext.toString();
-      const imText = Math.max(0, Math.min(shiftedPos(gebiet.html, ziel, h), ziel.length));
-
-      const rp = window.Y.createRelativePositionFromTypeIndex(entry.ytext, imText);
+      const rp = window.Y.createRelativePositionFromTypeIndex(
+        entry.ytext, Math.min(h, entry.ytext.length));
       return REL_MARKE + toBase64(window.Y.encodeRelativePosition(rp));
     } catch (err) { return ''; }
   }
@@ -2284,7 +2346,7 @@
     if (typeof cx !== 'string' || cx.charAt(0) !== REL_MARKE) return null;
 
     const entry = docs.get(pageId);
-    const gebiet = karteFuer(textDiv);
+    const gebiet = karteFuer(pageId, textDiv);
     if (!entry || !gebiet || !yAvailable()) return null;
 
     try {
@@ -2293,7 +2355,10 @@
       if (!abs || abs.type !== entry.ytext) return null;
 
       // Vom gemeinsamen Text auf das, was hier im Feld schon steht
-      const imFeld = shiftedPos(entry.ytext.toString(), gebiet.html, abs.index);
+      const quelle = entry.ytext.toString();
+      const imFeld = gebiet.html === quelle
+        ? abs.index
+        : shiftedPos(quelle, gebiet.html, abs.index);
       const f = gebiet.karte.flatVonHtml(imFeld);
       return f >= 0 ? f : null;
     } catch (err) { return null; }
@@ -2531,7 +2596,30 @@
          getippt, das hier noch fehlt, enthält der Anker genau diese
          Zeichen – er wird nicht gefunden, und es bleibt bei der Stelle
          aus der Textänderung. Genau davor sollte der Vorrang schützen. */
+      /* ══════════════════════════════════════════════════════════════
+         EINE GERATENE STELLE VERDRAENGT KEINE EXAKTE
+
+         Die Anwesenheit ist jünger, die Textänderung genauer. Solange
+         beide über den Anker gingen, war die jüngere schlicht die
+         bessere. Seit die Textänderung eine Yjs-Stelle mitbringt, ist
+         sie auf das Zeichen genau – die Anwesenheit dagegen nur dann,
+         wenn beim Absender gerade nichts ausstand (relPosVonFlat).
+
+         Beim Tippen wechselten sich damit beide ab, und mit ihnen der
+         Versatz, um den das Sperrband verschoben wird: es sprang im
+         Takt der Meldungen um ein Zeichen hin und her und wuchs dabei
+         über die Umbruchstelle von einer Zeile auf zwei. Die Bänder
+         werden nach ihrer ANZAHL wiederverwendet – wechselt die, wird
+         eines weggeworfen und ein neues eingeblendet. Das ist das
+         Flackern, das npm run test:live misst.
+
+         Die jüngere Stelle übernimmt deshalb nur noch, wenn sie
+         mindestens so genau ist wie die, die schon dasteht.
+         ══════════════════════════════════════════════════════════════ */
+      const istExakt = (wert) => typeof wert === 'string' && wert.charAt(0) === REL_MARKE;
+
       if (person.praesenz && person.praesenz.cx
+          && (istExakt(person.praesenz.cx) || !istExakt(person.cx))
           && gemeldeteStelle(pageId, textDiv, inhalt,
                person.praesenz.offset, person.praesenz.cx) !== null) {
         // Umgerechnet wird sie gleich darunter, wie jede andere auch –
