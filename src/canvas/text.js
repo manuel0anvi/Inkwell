@@ -393,6 +393,182 @@ function flatRangeAt(root, pos) {
   return range;
 }
 
+/* ══════════════════════════════════════════════════════════════════════
+   ZWISCHEN FLACHEM TEXT UND HTML-QUELLTEXT UMRECHNEN
+
+   >>> Wozu das gebraucht wird <<<
+   In Inkwells laufen zwei Zaehlweisen nebeneinander. Die Schreibmarken
+   und die Zeilensperre rechnen im FLACHEN Text (flatTextOf): jedes
+   Zeichen zaehlt eins, jede Zeilengrenze eins. Der gemeinsame Text der
+   Live-Bearbeitung (ui/collab.js) ist dagegen der HTML-QUELLTEXT der
+   Seite – dort zaehlen `<p>` und `&amp;` mit.
+
+   Solange sich die beiden nicht ineinander umrechnen liessen, konnte
+   eine gemeldete Stelle nicht mitwandern, wenn jemand anders weiter oben
+   etwas einfuegte oder loeschte. Yjs weiss genau, wohin jedes Zeichen des
+   Quelltextes gewandert ist – nur stand die Marke in der ANDEREN
+   Zaehlweise und musste per Textsuche geraten werden. Genau daraus wurde
+   „einer loescht eine Zeile, und danach schreiben beide auf derselben".
+
+   >>> Wie die Zuordnung entsteht <<<
+   Die Zeichen ausserhalb der Tags sind in beiden Zaehlweisen dieselben,
+   in derselben Reihenfolge: im Quelltext verschluesselt (`&amp;`), im DOM
+   als Textknoten. Beide werden einmal durchlaufen und Zeichen fuer
+   Zeichen nebeneinandergelegt. Damit ist die Zuordnung eindeutig – ohne
+   den Serialisierer des Browsers nachzubauen, was nie genau genug waere.
+
+   >>> Was geschieht, wenn sie nicht zusammenpassen <<<
+   Der Quelltext kann zu einem aelteren Stand gehoeren, oder die
+   Bereinigung hat etwas veraendert. Dann sagt die Zuordnung das
+   ausdruecklich: `ok` ist falsch, und der Aufrufer nimmt den alten Weg
+   ueber den Anker. Lieber ungenau als falsch.
+   ══════════════════════════════════════════════════════════════════════ */
+
+/* Mehr braucht es nicht: der Editor erzeugt nur diese, und alles Uebrige
+   kommt als Zahl (&#8230;) durch die Bereinigung. */
+const HTML_ENTITAETEN = {
+  amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: '\u00a0'
+};
+
+/**
+ * Die Zeichen eines HTML-Quelltextes, die ausserhalb der Tags stehen.
+ *
+ * @returns {{text:string, stelle:number[]}} text  entschluesselt
+ *   stelle  wo das Zeichen im Quelltext beginnt, je Zeichen eines
+ */
+function htmlZeichen(html) {
+  const text = [];
+  const stelle = [];
+  const n = html.length;
+  let i = 0;
+
+  while (i < n) {
+    const c = html[i];
+
+    if (c === '<') {
+      // Ein Kommentar geht bis -->, ein Tag bis zum > ausserhalb der Anfuehrungszeichen
+      if (html.startsWith('<!--', i)) {
+        const ende = html.indexOf('-->', i + 4);
+        i = ende === -1 ? n : ende + 3;
+        continue;
+      }
+      let j = i + 1;
+      let anfuehrung = '';
+      while (j < n) {
+        const d = html[j];
+        if (anfuehrung) { if (d === anfuehrung) anfuehrung = ''; }
+        else if (d === '"' || d === "'") anfuehrung = d;
+        else if (d === '>') break;
+        j++;
+      }
+      i = j < n ? j + 1 : n;
+      continue;
+    }
+
+    if (c === '&') {
+      const semi = html.indexOf(';', i + 1);
+      /* Eine Entitaet ist kurz. Ein einzelnes & ohne Semikolon ist
+         gewoehnlicher Text und wird auch so gezaehlt. */
+      if (semi !== -1 && semi - i <= 10) {
+        const roh = html.slice(i + 1, semi);
+        let wert = null;
+        if (roh[0] === '#') {
+          const zahl = (roh[1] === 'x' || roh[1] === 'X')
+            ? parseInt(roh.slice(2), 16)
+            : parseInt(roh.slice(1), 10);
+          if (Number.isFinite(zahl) && zahl >= 0 && zahl <= 0x10ffff) {
+            try { wert = String.fromCodePoint(zahl); } catch (err) { wert = null; }
+          }
+        } else if (Object.prototype.hasOwnProperty.call(HTML_ENTITAETEN, roh)) {
+          wert = HTML_ENTITAETEN[roh];
+        }
+        if (wert !== null) {
+          /* Je CODEEINHEIT ein Eintrag, nicht je Zeichen: der flache Text
+             zaehlt genauso, und ein Zeichen jenseits der Grundebene
+             (&#128512;) belegt dort zwei Stellen. */
+          for (let k = 0; k < wert.length; k++) { text.push(wert[k]); stelle.push(i); }
+          i = semi + 1;
+          continue;
+        }
+      }
+    }
+
+    text.push(c);
+    stelle.push(i);
+    i++;
+  }
+
+  return { text: text.join(''), stelle };
+}
+
+/** Die erste Stelle in einer aufsteigenden Liste, die nicht kleiner ist. */
+function ersteAbList(liste, wert) {
+  let lo = 0;
+  let hi = liste.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    if (liste[mid] < wert) lo = mid + 1;
+    else hi = mid;
+  }
+  return lo;
+}
+
+/**
+ * Ordnet flachen Text und HTML-Quelltext einander zu.
+ *
+ * @param {HTMLElement} root  das Textfeld
+ * @param {string} html  der Quelltext, zu dem umgerechnet werden soll
+ * @returns {{ok:boolean, htmlVonFlat:function(number):number,
+ *            flatVonHtml:function(number):number}}
+ */
+function flatHtmlMap(root, html) {
+  const info = flatTextParts(root);
+  const quelle = htmlZeichen(String(html == null ? '' : html));
+
+  /* Die Zeichen aus dem DOM. Die Zeilengrenzen, die flatTextParts selbst
+     erzeugt, sind NICHT dabei – im Quelltext stehen sie als Tag und
+     haben dort kein eigenes Zeichen. */
+  const flatVon = [];
+  let daten = '';
+  for (const part of info.parts) {
+    if (part.type !== 'text') continue;
+    const wert = part.node.nodeValue || '';
+    for (let k = 0; k < wert.length; k++) flatVon.push(part.at + k);
+    daten += wert;
+  }
+
+  const ok = daten === quelle.text;
+  const htmlLaenge = String(html == null ? '' : html).length;
+
+  return {
+    ok,
+
+    /**
+     * Zu einer Stelle im flachen Text die Stelle im Quelltext.
+     *
+     * Liegt sie auf einer Zeilengrenze – im Quelltext ein Tag, kein
+     * Zeichen –, kommt der Anfang des naechsten echten Zeichens heraus.
+     * Das ist die Stelle, an der auch der naechste Anschlag landet.
+     */
+    htmlVonFlat(pos) {
+      if (!ok) return -1;
+      const f = Math.max(0, Number(pos) || 0);
+      const k = ersteAbList(flatVon, f);
+      if (k >= flatVon.length) return htmlLaenge;
+      return quelle.stelle[k];
+    },
+
+    /** Und zurueck: zu einer Stelle im Quelltext die im flachen Text. */
+    flatVonHtml(pos) {
+      if (!ok) return -1;
+      const h = Math.max(0, Number(pos) || 0);
+      const k = ersteAbList(quelle.stelle, h);
+      if (k >= flatVon.length) return info.text.length;
+      return flatVon[k];
+    }
+  };
+}
+
 /** Setzt die eigene Schreibmarke auf eine Position im flachen Text. */
 function setFlatCaret(root, pos) {
   const range = flatRangeAt(root, pos);
