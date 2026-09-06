@@ -4813,12 +4813,69 @@
       seitenImVergleich: snapshot ? Object.keys(snapshot.pages).length : 0,
       andereGeradeDa: others.map(p => ({
         name: p.name, seite: p.pageId, zeichen: p.offset,
+        /* Woher die Stelle kommt: als Yjs-Stelle (genau) oder als Stück
+           Text (gesucht). Läuft am anderen Ende eine ältere Fassung,
+           steht hier „Anker". */
+        stelleArt: (typeof p.cx === 'string' && p.cx.charAt(0) === REL_MARKE)
+          ? 'Yjs' : (p.cx ? 'Anker' : '–'),
         sperrt: (Number.isFinite(p.lockFrom) && p.lockFrom >= 0)
           ? p.lockFrom + '–' + p.lockTo : '–',
         sperreGilt: !!activeLocks(p.pageId).includes(p)
       })),
       letzterFehler: lastError || '(keiner)'
     };
+
+    /* ══════════════════════════════════════════════════════════════════
+       WAS AUF DER OFFENEN SEITE WIRKLICH GESPERRT IST
+
+       Gemeldet worden ist „es ist immer die ganze Seite blockiert, das
+       Band zeigt aber nur eine Zeile". Band und Sperre kommen aus
+       derselben Quelle, sie KÖNNEN also nicht auseinanderlaufen – wenn
+       doch, steht es hier schwarz auf weiß.
+
+       Und zwei Fragen daneben, die von außen gleich aussehen und ganz
+       verschiedene Ursachen haben: darf ich überhaupt schreiben
+       (nurLesen), und geht die Umrechnung der Stellen auf?
+       ══════════════════════════════════════════════════════════════════ */
+    try {
+      const pgEl = document.querySelector('[data-pgid="' + cssEscapeId(S.activePgId || '') + '"]');
+      const textDiv = pgEl ? pgEl.querySelector('.j-text') : null;
+
+      if (textDiv && typeof flatTextOf === 'function') {
+        const inhalt = flatTextOf(textDiv);
+        const eintrag = docs.get(S.activePgId);
+        const gebiet = karteFuer(S.activePgId, textDiv);
+
+        report.offeneSeite = {
+          kennung: S.activePgId,
+          zeichen: inhalt.length,
+          zeilen: inhalt.split('\n').length,
+          umrechnungGeht: !!gebiet,
+          gemeinsamerText: eintrag ? eintrag.ytext.length : '(keiner)',
+          nochNichtEingetragen: pendingText.has(S.activePgId)
+        };
+
+        // Die gesperrten Bereiche zusammenfassen, statt jede Stelle zu nennen
+        const bereiche = [];
+        let lauf = null;
+        for (let i = 0; i <= inhalt.length; i++) {
+          const wer = lockOwner(S.activePgId, i, i);
+          if (wer && lauf && lauf.wer === wer.name) { lauf.bis = i; continue; }
+          if (wer) { lauf = { wer: wer.name, von: i, bis: i }; bereiche.push(lauf); continue; }
+          lauf = null;
+        }
+        report.gesperrteStellen = bereiche.length
+          ? bereiche.map(b => b.wer + ': ' + b.von + '–' + b.bis
+              + (b.von === 0 && b.bis === inhalt.length ? '  (die GANZE Seite)' : ''))
+          : '(nichts gesperrt)';
+
+        const baender = document.querySelectorAll('.collab-lock').length;
+        report.gezeichneteBaender = baender;
+      }
+    } catch (err) {
+      report.offeneSeite = 'nicht auszulesen: ' + err.message;
+    }
+
     console.table ? console.table(report.andereGeradeDa) : null;
     console.log('[Collab]', report);
     return report;
