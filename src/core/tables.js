@@ -408,7 +408,31 @@ function tableBar() {
   return tblBar;
 }
 
+/* ══════════════════════════════════════════════════════════════════
+   OHNE SCHREIBRECHT GIBT ES DIE LEISTE NICHT
+
+   Jeder Knopf darin fragte für sich nach S.readOnly und sagte brav
+   „Du darfst dieses Dokument nur lesen." Die Leiste selbst erschien
+   trotzdem, sobald die Marke in eine Zelle kam — sechs Knöpfe, von
+   denen keiner etwas tut. Genau so wurde es gemeldet.
+
+   Eine Leiste, die nur noch Fehlermeldungen gibt, ist schlechter als
+   keine: sie verspricht etwas, das es nicht gibt, und verdeckt dabei
+   die Tabelle darunter. Der Riegel gehört deshalb HIERHER, an die
+   eine Stelle, die sie zeigt — die Schreibmarke, das Rollen, das
+   Ändern der Fenstergröße und das Einsetzen laufen alle hier durch.
+
+   Die Abfragen in den Knöpfen bleiben trotzdem stehen. Sie sind die
+   Wache, die wirklich zählt: das Recht kann sich ändern, während die
+   Leiste schon offen dasteht (der Besitzer stuft herab, der Besitzer
+   verliert die Verbindung). Dasselbe Muster wie am Text, wo
+   contenteditable und 'beforeinput' beide fragen.
+
+   Die Greifstreifen zum Ziehen von Spalten und Zeilen brauchen hier
+   nichts: setzeGriffe() steigt bei S.readOnly schon selbst aus.
+   ══════════════════════════════════════════════════════════════════ */
 function positionTableBar(cell) {
+  if (typeof S !== 'undefined' && S.readOnly) { versteckeTableBar(); return; }
   const bar = tableBar();
   const table = cell && cell.closest('table');
   /* isConnected und nicht nur „gibt es eine Tabelle": eine herausgelöste
@@ -1073,6 +1097,11 @@ window.addEventListener('resize', () => {
 /* Wird die Seite neu aufgebaut (Abgleich, Seitenwechsel, Heftwechsel),
    zeigt _zelle auf eine Zelle, die es nicht mehr gibt. Die Leiste bliebe
    sonst stehen und haenge an einem Leichnam. */
+/* Von aussen: core/dialogs.js nimmt sie beim Herabstufen auf „nur
+   lesen" weg — dort bewegt sich die Schreibmarke nicht, und ohne
+   diesen Griff bliebe die Leiste stehen. */
+window.versteckeTableBar = versteckeTableBar;
+
 window.versteckeTableBarWennWeg = function () {
   if (tblBar && tblBar._zelle && !tblBar._zelle.isConnected) versteckeTableBar();
 };

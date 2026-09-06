@@ -418,6 +418,69 @@ app.on('ready', async () => {
         removeRow(t, zeile);
         if (removeRow(t, t.querySelector('tr')) !== false) throw new Error('die letzte Zeile wurde entfernt');
       } finally { t.remove(); }`);
+    /* ══════════════════════════════════════════════════════════════════
+       DIE LEISTE AN DER TABELLE, OHNE SCHREIBRECHT
+
+       Gemeldet: „bei Tabellen kann man sie im Nur-Lesen nicht
+       bearbeiten, das ist gut — aber wenn man draufdrückt, kommt
+       trotzdem die Leiste oben mit den Buttons, auch wenn sie nichts
+       machen."
+
+       Jeder Knopf fragte für sich nach S.readOnly und sagte brav „nur
+       lesen"; die Leiste selbst erschien trotzdem. Der Riegel sitzt
+       jetzt in positionTableBar (core/tables.js) — an der einen
+       Stelle, durch die alle Wege laufen.
+
+       Geprüft wird beides. Nur „sie ist weg" wäre auch dann grün,
+       wenn die Leiste überhaupt nicht mehr käme.
+       ══════════════════════════════════════════════════════════════════ */
+    await schritt('Mit Schreibrecht steht die Leiste an der Tabelle', `
+      const zelle = document.querySelector('.j-text table.j-table td');
+      if (!zelle) throw new Error('keine Tabelle auf dem Blatt');
+      const marke = (z) => {
+        z.closest('.j-text').focus();
+        const r = document.createRange();
+        r.selectNodeContents(z); r.collapse(true);
+        const sel = window.getSelection();
+        sel.removeAllRanges(); sel.addRange(r);
+        document.dispatchEvent(new Event('selectionchange'));
+      };
+      marke(zelle);
+      await new Promise(r => setTimeout(r, 120));
+      const bar = document.querySelector('.j-table-bar');
+      if (!bar) throw new Error('die Leiste wurde gar nicht gebaut');
+      if (getComputedStyle(bar).display === 'none')
+        throw new Error('sie bleibt versteckt, obwohl geschrieben werden darf');
+      if (!bar.querySelectorAll('.j-table-btn').length)
+        throw new Error('sie ist leer');`, 400);
+
+    await schritt('Ohne Schreibrecht bleibt sie weg', `
+      const zelle = document.querySelector('.j-text table.j-table td');
+      if (!zelle) throw new Error('keine Tabelle auf dem Blatt');
+      const marke = (z) => {
+        z.closest('.j-text').focus();
+        const r = document.createRange();
+        r.selectNodeContents(z); r.collapse(true);
+        const sel = window.getSelection();
+        sel.removeAllRanges(); sel.addRange(r);
+        document.dispatchEvent(new Event('selectionchange'));
+      };
+      try {
+        applyReadOnlyChrome(true, { role: 'view', ownerName: 'Wer', title: 'Probe' });
+        await new Promise(r => setTimeout(r, 120));
+        const bar = document.querySelector('.j-table-bar');
+        if (bar && getComputedStyle(bar).display !== 'none')
+          throw new Error('sie steht beim Herabstufen noch da');
+        // und beim Hineinklicken darf sie auch nicht wiederkommen
+        marke(zelle);
+        await new Promise(r => setTimeout(r, 120));
+        const wieder = document.querySelector('.j-table-bar');
+        if (wieder && getComputedStyle(wieder).display !== 'none')
+          throw new Error('ein Klick in die Zelle holt sie zurueck');
+      } finally {
+        applyReadOnlyChrome(false, null);
+      }`, 400);
+
     await schritt('Eine Formel wird vermessen', `
       typeof measureFormula === 'function' ? JSON.stringify(measureFormula('x^2 + y^2')) : 'ok'`);
 

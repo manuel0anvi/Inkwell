@@ -351,6 +351,10 @@ function applyEditableToPages(readOnly) {
        ist schlechter als keine. */
     if (typeof window.deselectObject === 'function') window.deselectObject();
     if (typeof window.deselectStroke === 'function') window.deselectStroke();
+    /* Die Leiste an der Tabelle ebenso. Sie hängt an der Schreibmarke,
+       und die bewegt sich beim Herabstufen nicht — ohne diesen Griff
+       bliebe sie über der Tabelle stehen (core/tables.js). */
+    if (typeof window.versteckeTableBar === 'function') window.versteckeTableBar();
   }
 }
 
