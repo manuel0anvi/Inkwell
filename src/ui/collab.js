@@ -1136,6 +1136,96 @@
     return out;
   }
 
+  /* ══════════════════════════════════════════════════════════════════
+     GESPERRT IST DIE ZEILE – UND DIE DARÜBER UND DARUNTER
+
+     >>> Warum drei und nicht eine <<<
+     Eine einzelne Zeile schützt zu spät. Wer am Ende seiner Zeile
+     weiterschreibt oder Enter drückt, schiebt den Text darunter nach
+     unten und landet selbst in der Zeile danach – beides trifft den
+     anderen, ohne dass man je in seine Zeile getippt hätte. Bis der
+     Zusammenstoss bemerkt wird, ist er schon geschehen.
+
+     Mit einem Abstand von einer Zeile nach oben und unten ist die
+     Nachbarschaft von vornherein frei. Wer sie betritt, wird abgewiesen,
+     bevor etwas verrutscht.
+
+     >>> Der Anspruch selbst bleibt EINE Zeile <<<
+     Gemeldet wird weiterhin nur die eigene Zeile, und auch der Streit
+     zweier Ansprüche wird nur darüber entschieden (anspruchGegenFremde,
+     fremderAnspruchDeckt). Sonst sperrten sich zwei, die eine Zeile
+     auseinander sitzen, gegenseitig aus: jeder läge im Schutzstreifen
+     des anderen, und keiner dürfte mehr schreiben. Der Streifen ist
+     Schutz vor FREMDEN, nicht gegen die eigene Zeile.
+
+     >>> Und in einer Tabelle zählt, was WIRKLICH darüber liegt <<<
+     Im flachen Text ist die Zeile vor einer Zelle die Zelle LINKS
+     daneben – sie steht auf derselben Höhe. Würde sie mitgesperrt,
+     wäre die halbe Reihe belegt, obwohl niemand dort schreibt. Deshalb
+     wird nachgemessen: eine Nachbarzeile zählt nur, wenn sie auch
+     wirklich eine Zeilenhöhe höher oder tiefer liegt.
+     ══════════════════════════════════════════════════════════════════ */
+
+  let bereichCache = null;
+
+  /** Der Bereich, den der Anspruch dieser Person hier wirklich sperrt. */
+  function sperrBereich(pageId, person) {
+    const kern = { from: person.lockFrom, to: person.lockTo };
+    if (!(kern.from >= 0) || !(kern.to >= kern.from)) return null;
+
+    if (!bereichCache) {
+      bereichCache = new Map();
+      Promise.resolve().then(() => { bereichCache = null; });
+    }
+    const schluessel = String(pageId) + '#' + kern.from + '#' + kern.to;
+    if (bereichCache.has(schluessel)) return bereichCache.get(schluessel);
+
+    let wert = kern;
+    try { wert = mitNachbarzeilen(pageId, kern); } catch (err) { wert = kern; }
+    bereichCache.set(schluessel, wert);
+    return wert;
+  }
+
+  function mitNachbarzeilen(pageId, kern) {
+    const pgEl = document.querySelector('[data-pgid="' + cssEscapeId(pageId) + '"]');
+    const textDiv = pgEl ? pgEl.querySelector('.j-text') : null;
+    if (!textDiv || typeof flatTextOf !== 'function' || typeof caretRectAt !== 'function') return kern;
+
+    const text = flatTextOf(textDiv);
+    const zoom = (typeof getZoom === 'function') ? getZoom() : 1;
+    const lh = (parseInt(textDiv.style.lineHeight) || 32) * zoom;
+
+    const mitte = (stelle) => {
+      const r = caretRectAt(textDiv, stelle, text);
+      return r ? r.top + r.height / 2 : null;
+    };
+
+    /* Eine Nachbarzeile zaehlt nur, wenn sie ungefaehr eine Zeilenhoehe
+       daneben liegt – nicht, wenn sie bloss im Text daneben steht. */
+    const liegtDaneben = (a, b) => {
+      if (a === null || b === null) return false;
+      const d = Math.abs(a - b);
+      return d > lh * 0.5 && d < lh * 1.5;
+    };
+
+    let von = kern.from;
+    let bis = kern.to;
+
+    const mitteOben = mitte(kern.from);
+    if (von > 0) {
+      const oben = visualLineSpan(textDiv, von - 1, 0);
+      if (oben && oben.from < von && liegtDaneben(mitte(oben.from), mitteOben)) von = oben.from;
+    }
+
+    const mitteUnten = mitte(kern.to);
+    if (bis < text.length) {
+      const unten = visualLineSpan(textDiv, Math.min(bis + 1, text.length), 0);
+      if (unten && unten.to > bis && liegtDaneben(mitte(unten.to), mitteUnten)) bis = unten.to;
+    }
+
+    return (von === kern.from && bis === kern.to) ? kern : { from: von, to: bis };
+  }
+
   /**
    * Wer sperrt diesen Bereich? null, wenn er frei ist.
    *
@@ -1147,10 +1237,36 @@
     const start = Math.min(from, to);
     const end = Math.max(from, to);
     for (const person of activeLocks(pageId)) {
+      const bereich = sperrBereich(pageId, person);
+      if (!bereich) continue;
       // Berührung genügt: an der Grenze einzufügen verändert die Zeile mit
+      if (start <= bereich.to && end >= bereich.from) return person;
+    }
+    return null;
+  }
+
+  /**
+   * Wer beansprucht diese Stelle als SEINE ZEILE? Ohne den Schutzstreifen.
+   *
+   * Der Unterschied zu lockOwner zählt an genau einer Stelle: die Zeile,
+   * in der man selbst gerade arbeitet, darf der Streifen eines anderen
+   * nicht sperren – seine Zeile dagegen schon. Siehe editBlockedBy.
+   */
+  function kernOwner(pageId, from, to) {
+    const start = Math.min(from, to);
+    const end = Math.max(from, to);
+    for (const person of activeLocks(pageId)) {
       if (start <= person.lockTo && end >= person.lockFrom) return person;
     }
     return null;
+  }
+
+  /** Liegt das alles in der Zeile, in der man selbst gerade steht? */
+  function eigeneZeileDeckt(textDiv, from, to) {
+    let span = null;
+    try { span = visualLineSpan(textDiv, Math.min(from, to), 0); } catch (err) { return false; }
+    if (!span) return false;
+    return Math.min(from, to) >= span.from && Math.max(from, to) <= span.to;
   }
 
   /**
@@ -1187,6 +1303,14 @@
     if (range.collapsed) {
       if (inputType === 'deleteContentBackward') from = Math.max(0, from - 1);
       else if (inputType === 'deleteContentForward') to = to + 1;
+
+      /* ── Enter schiebt alles darunter eine Zeile tiefer ─────────────
+         Steht die Marke am Zeilenende, ist das Zeichen dahinter schon
+         die nächste Zeile – und die gehört womöglich einem anderen.
+         Gemeldet: „er sollte gar nicht erst Enter drücken können, wenn
+         er damit in meine Zeile kommt." Mitten in einer Zeile ändert
+         das nichts: dort liegt das Zeichen dahinter in derselben. */
+      else if (inputType === 'insertParagraph') to = to + 1;
     }
 
     /* Die eigene Zeile gehört einem selbst, auch wenn eine fremde Sperre
@@ -1194,6 +1318,29 @@
        in Zeile 5 schreibt, dauernd „X bearbeitet diese Zeile" zu lesen,
        weil X in Zeile 4 sitzt und die Sperre eine Zeile weiter reicht. */
     if (eigeneSperreDeckt(pageId, from) && eigeneSperreDeckt(pageId, to)) return null;
+
+    // Die ZEILE eines anderen sperrt immer – dort schreibt er gerade
+    const besitzer = kernOwner(pageId, from, to);
+    if (besitzer) return besitzer;
+
+    /* ══════════════════════════════════════════════════════════════════
+       DER SCHUTZSTREIFEN SPERRT NIE DIE EIGENE ZEILE
+
+       Der Streifen über und unter einem fremden Anspruch hält andere auf
+       Abstand. Ohne diese Ausnahme hielte er auch den auf, der längst da
+       ist: zwei, die nur eine Zeile auseinander sitzen, lägen jeder im
+       Streifen des anderen – und keiner käme je wieder heraus, denn der
+       EIGENE Anspruch entsteht erst durch das Schreiben, das hier gerade
+       abgewiesen würde. Im Prüfstand mit zwei Fenstern war das sofort zu
+       sehen: von „unten" kam nur „nten" an, das erste Zeichen fiel weg.
+
+       Deshalb: in der Zeile, in der man selbst steht, darf man
+       schreiben, solange sie nicht die Zeile eines anderen IST (das ist
+       oben schon entschieden). Der Streifen greift überall sonst – und
+       vor allem bei Enter, das mit `to + 1` über die eigene Zeile
+       hinausreicht und damit genau dort landet, wovor er schützt.
+       ══════════════════════════════════════════════════════════════════ */
+    if (eigeneZeileDeckt(textDiv, from, to)) return null;
 
     return lockOwner(pageId, from, to);
   }
@@ -1549,9 +1696,19 @@
       if (!textDiv || typeof textDiv.getBoundingClientRect !== 'function') continue;
 
       for (const person of people) {
+        /* Gezeichnet wird, was WIRKLICH gesperrt ist – also samt der
+           Zeile darüber und darunter. Sonst sagt das Band etwas anderes
+           als die Sperre, und man wird an einer Stelle abgewiesen, an
+           der nichts zu sehen war. Genau so gemeldet. */
+        const bereich = sperrBereich(person.pageId || pageId, person) || person;
+        const von = Number.isFinite(bereich.from) ? bereich.from : person.lockFrom;
+        const bis = Number.isFinite(bereich.to) ? bereich.to : person.lockTo;
+
+        // Die Breite richtet sich nach der eigenen Zeile – in einer
+        // Tabelle ist das die Zelle, siehe bandMasse
         const { left, width } = bandMasse(pgEl, textDiv, person.lockFrom, zoom);
         let zeilen = [];
-        try { zeilen = lockZeilen(pgEl, textDiv, person.lockFrom, person.lockTo, zoom); }
+        try { zeilen = lockZeilen(pgEl, textDiv, von, bis, zoom); }
         catch (err) { continue; }
         if (!zeilen.length) continue;
 
@@ -4881,13 +5038,33 @@
     return report;
   }
 
-  /* Die Prüfung auch ohne Konsole erreichbar: Strg+Alt+P. Die Ausgabe
-     geht über das Fenster ans Terminal (main.js, console-message), dort
-     ist sie also auch ohne Entwicklerwerkzeuge zu sehen. */
+  /* ══════════════════════════════════════════════════════════════════
+     STRG+ALT+P ZEIGT DEN BERICHT, STATT IHN WEGZUSCHREIBEN
+
+     Hier stand checkCaret(), und die Ausgabe ging über console.log ans
+     Terminal. Für die Fehlersuche war das gedacht – nur sieht ein
+     Nutzer, der die App wie üblich per Symbol startet, überhaupt kein
+     Terminal. Gemeldet worden ist es genau so: „wenn ich Strg+Alt+P
+     drücke, passiert nichts."
+
+     Es passierte durchaus etwas, nur nirgends sichtbar. Der Bericht
+     steht jetzt in einem Fenster, und zwar in einem Eingabefeld: dort
+     ist er schon ausgewählt und mit Strg+C zu kopieren. Genau das
+     braucht man, um ihn weiterzugeben.
+     ══════════════════════════════════════════════════════════════════ */
   document.addEventListener('keydown', (e) => {
     if (!e.ctrlKey || !e.altKey || String(e.key).toLowerCase() !== 'p') return;
     e.preventDefault();
-    try { checkCaret(); } catch (err) { console.log('[Collab] Prüfung fehlgeschlagen: ' + err.message); }
+
+    let bericht = null;
+    try { bericht = status(); } catch (err) {
+      bericht = { fehler: 'Bericht fehlgeschlagen: ' + err.message };
+    }
+    try { checkCaret(); } catch (err) { /* nur die Zusatzprüfung */ }
+
+    const text = JSON.stringify(bericht);
+    if (typeof txtModal === 'function') txtModal(t('collabReportTitle'), text);
+    else if (typeof showAlert === 'function') showAlert(text);
   });
 
   /**

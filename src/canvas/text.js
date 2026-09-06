@@ -214,6 +214,32 @@ const FLAT_INLINE_DISPLAYS = new Set([
  * Gefragt wird deshalb der Browser: er weiß, was er umbricht. Nur wenn
  * es ihn nicht gibt (Tests, loser Knoten), zählt wieder die Namensliste.
  */
+/* ══════════════════════════════════════════════════════════════════════
+   BEDIENELEMENTE IM TEXT SIND KEIN TEXT
+
+   Die Anfasser an einer Tabelle (core/tables.js) stehen IM Textfeld, in
+   der Zelle. Sie tragen keinen Text, sondern nur eine Breite – und weil
+   sie absolut positioniert sind, macht der Browser Bloecke aus ihnen.
+   Damit bekamen sie im flachen Text eine eigene Zeile.
+
+   >>> Warum das mehr als unsauber ist <<<
+   Die Anfasser erscheinen nur, solange die Marke in der Tabelle steht.
+   Der flache Text hinge damit davon ab, wo jemand gerade hinzeigt – zwei
+   Rechner zaehlten verschieden, und jede gemeldete Stelle saesse beim
+   anderen um die Zahl der Anfasser daneben. Gemessen im Pruefstand mit
+   zwei Fenstern: aus „AA\nBB" wurde „AA\n\nBB", sobald die Marke in der
+   Tabelle stand.
+
+   Sie werden deshalb uebersprungen, genau wie <style> und <script>.
+   ══════════════════════════════════════════════════════════════════════ */
+const FLAT_BEDIEN = /(?:^|\s)j-tbl-(?:griff|zeilengriff)(?:\s|$)/;
+
+function istBedienelement(node) {
+  if (!node || node.nodeType !== Node.ELEMENT_NODE) return false;
+  const klasse = typeof node.className === 'string' ? node.className : '';
+  return !!klasse && FLAT_BEDIEN.test(klasse);
+}
+
 function istFlatBlockEl(node) {
   if (!node || node.nodeType !== Node.ELEMENT_NODE) return false;
   if (node.tagName === 'BR') return false;
@@ -265,7 +291,14 @@ function flatTextParts(root) {
      einen: eine Leerzeile, die niemand sieht. */
   const istHuelle = (el) => {
     const kids = el.childNodes;
-    for (let i = 0; i < kids.length; i++) if (istBlock(kids[i])) return true;
+    for (let i = 0; i < kids.length; i++) {
+      /* Ein Bedienelement zaehlt hier so wenig wie im Durchlauf selbst.
+         Ohne diese Zeile galt eine Tabellenzelle als blosse Huelle,
+         sobald ein Anfasser darin stand – sie bekam dann keinen eigenen
+         Umbruch, und die Zellen liefen wieder zu einer Zeile zusammen. */
+      if (istBedienelement(kids[i])) continue;
+      if (istBlock(kids[i])) return true;
+    }
     return false;
   };
 
@@ -298,6 +331,7 @@ function flatTextParts(root) {
       }
       if (child.nodeType !== Node.ELEMENT_NODE) continue;
       if (child.tagName === 'STYLE' || child.tagName === 'SCRIPT') continue;
+      if (istBedienelement(child)) continue;
 
       if (child.tagName === 'BR') {
         if (letztesImBlock(child, block)) continue;

@@ -391,6 +391,32 @@ check('Kopfzellen ebenso',
   flatTextOf(el('div', el('table', el('tbody',
     el('tr', el('th', 'Eins'), el('th', 'Zwei')))))), 'Eins\nZwei');
 
+/* ══ Die Anfasser der Tabelle sind kein Text ════════════════════════
+   >>> Der Fehler, den das festhält <<<
+   Die Anfasser zum Ziehen der Spaltenbreite (core/tables.js) stehen IM
+   Textfeld, in der Zelle. Sie sind absolut positioniert, und daraus
+   macht der Browser Blöcke – im flachen Text bekamen sie deshalb eine
+   eigene Zeile.
+
+   Sie erscheinen aber nur, solange die Marke in der Tabelle steht. Der
+   flache Text hing damit davon ab, wo jemand gerade hinzeigt: zwei
+   Rechner zählten verschieden, und jede gemeldete Stelle saß beim
+   anderen um die Zahl der Anfasser daneben. Gemessen mit zwei echten
+   Fenstern – aus „AA\nBB" wurde „AA\n\nBB", sobald jemand die Tabelle
+   anfasste.
+   ══════════════════════════════════════════════════════════════════ */
+
+const griff = el('span');
+griff.className = 'j-tbl-griff';
+griff.style.display = 'block';       // so rechnet der Browser einen absolut gesetzten <span>
+const zeilengriff = el('span');
+zeilengriff.className = 'j-tbl-zeilengriff';
+zeilengriff.style.display = 'block';
+
+check('Ein Anfasser bekommt keine eigene Zeile',
+  flatTextOf(el('div', el('table', el('tbody',
+    el('tr', el('td', 'AA', griff, zeilengriff), el('td', 'BB')))))), 'AA\nBB');
+
 /* Ein <br> am Ende zählt weiterhin nicht doppelt – auch dann nicht,
    wenn es in einer Auszeichnung steckt statt unmittelbar im Absatz. */
 check('<br> am Absatzende bleibt der Platzhalter',

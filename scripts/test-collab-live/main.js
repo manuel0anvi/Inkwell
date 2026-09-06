@@ -187,22 +187,27 @@ app.on('ready', async () => {
     const baender = await B('pruefstand.baender()');
     notiz('Bänder: ' + JSON.stringify(baender));
     /* ══════════════════════════════════════════════════════════════
-       GESPERRT IST GENAU EINE ZEILE
+       GESPERRT IST DIE ZEILE – UND DIE DARÜBER UND DARUNTER
 
-       Hier stand „zwei Zeilen: die eigene und die nächste". Das war die
-       Absicht, solange gedacht war, dass ein Anschlag am Zeilenende in
-       die Zeile darunter läuft. In der Anwendung war es eine Zeile zu
-       viel: das Band sperrt auch (trifftSperrband), und auf einer Seite
-       mit wenig Text war damit alles zu, sobald einer eine Taste
-       anfasste. Gemeldet als „der andere kann nicht mal die Marke
-       setzen" (src/ui/collab.js, lockSpanFor). */
-    pruefe('Gesperrt ist genau die eigene Zeile',
-      baender.length === 1, baender.length + ' Band/Bänder');
+       Hier stand erst „die eigene und die naechste", dann „genau eine".
+       Beides war zu wenig, und der Grund steht in der Meldung, die zu
+       dieser Fassung gefuehrt hat: wer am Ende seiner Zeile
+       weiterschreibt oder Enter drueckt, schiebt den Text darunter nach
+       unten und landet selbst in der naechsten Zeile – beides trifft
+       den anderen, ohne dass je in seine Zeile getippt worden waere.
+
+       Der Schutzstreifen von einer Zeile nach oben und unten faengt das
+       ab, BEVOR etwas verrutscht. Dass damit nicht gleich die halbe
+       Seite zu ist, sorgt der Anspruch selbst: der bleibt eine Zeile,
+       und nur darueber wird der Streit zweier Ansprueche entschieden
+       (src/ui/collab.js, sperrBereich). */
+    pruefe('Gesperrt ist die Zeile samt Nachbarzeilen',
+      baender.length === 3, baender.length + ' Band/Bänder statt 3');
 
     if (baender.length) {
       const z0 = await B(`pruefstand.zeileVon(${baender[0].top})`);
-      pruefe('Das Band liegt auf Zeile 2 – gemessen ' + z0,
-        Math.abs(z0 - 2) < 0.01, 'es liegt ' + (z0 - 2) + ' Zeilen daneben');
+      pruefe('Das Band beginnt eine Zeile darueber (Zeile 1) – gemessen ' + z0,
+        Math.abs(z0 - 1) < 0.01, 'es liegt ' + (z0 - 1) + ' Zeilen daneben');
     }
 
     /* Und die Zeile DARUNTER ist frei – genau das war vorher nicht so.
@@ -697,6 +702,65 @@ app.on('ready', async () => {
         danach.length > 0 && danach[0].top === marken[0].top
           && danach[0].left === marken[0].left,
         JSON.stringify(marken[0]) + ' → ' + JSON.stringify(danach[0]));
+    }
+
+    /* ══════════════════════════════════════════════════════════════════
+       ENTER AN DER GRENZE WIRD ABGEWIESEN
+
+       Gemeldet: „wenn er mit Enter oder einfach weiterschreiben zu
+       meiner Zeile kommt, sollte er nicht weitermachen koennen – jeder
+       Versuch sollte gestoppt werden."
+
+       Tippen mitten in einer freien Zeile aendert nichts an fremdem
+       Text und bleibt erlaubt. Enter dagegen schiebt alles darunter
+       eine Zeile tiefer: steht die Marke am Zeilenende, ist das
+       Zeichen dahinter schon die gesperrte Zeile. Genau darauf prueft
+       editBlockedBy (src/ui/collab.js).
+       ══════════════════════════════════════════════════════════════════ */
+    abschnitt('Enter an der Grenze wird abgewiesen');
+    {
+      // A schreibt auf Zeile 3 – gesperrt sind damit die Zeilen 2, 3 und 4
+      const vier = '<p>Eins</p><p>Zwei</p><p>Drei</p><p>Vier</p>';
+      await A(`pruefstand.setzeText(${JSON.stringify(vier)}, 12)`);
+      await warte(500);
+      await A(`pruefstand.setzeText(${JSON.stringify('<p>Eins</p><p>Zwei</p><p>Dreix</p><p>Vier</p>')}, 14)`);
+      await warte(600);
+
+      const frage = (stelle, art) => B(`(function(){
+        pruefstand.markeAuf(${stelle});
+        var td = document.querySelector('.j-text');
+        var wer = window.Collab.editBlockedBy('p1', td, ${JSON.stringify(art)});
+        return wer ? wer.name : null;
+      })()`);
+
+      notiz('gesperrt: ' + await B('(function(){var a=[];for(var i=0;i<=25;i++){if(window.Collab.lockOwner("p1",i,i))a.push(i);}return a.length?a[0]+"–"+a[a.length-1]:"nichts";})()'));
+
+      pruefe('Mitten in der freien Zeile 1 darf getippt werden',
+        await frage(2, 'insertText') === null, 'dort wurde abgewiesen');
+
+      pruefe('Enter am Ende von Zeile 1 wird abgewiesen',
+        await frage(4, 'insertParagraph') !== null,
+        'Enter ging durch, obwohl es die gesperrte Zeile 2 nach unten schiebt');
+
+      pruefe('Tippen in der gesperrten Zeile wird abgewiesen',
+        await frage(11, 'insertText') !== null, 'dort ging es durch');
+
+      /* ── Und die eigene Zeile bleibt einem, auch im Schutzstreifen ───
+         Die Zeile darueber gehoert zum Streifen. Wer aber SELBST dort
+         steht und schreibt, wird nicht abgewiesen – sonst koennten zwei,
+         die eine Zeile auseinander sitzen, beide nicht mehr schreiben:
+         jeder laege im Streifen des anderen, und der eigene Anspruch
+         entsteht erst durch das Schreiben, das gerade abgewiesen wuerde.
+         Gemessen in scripts/test-collab-tasten: von „unten" kam nur
+         „nten" an. */
+      pruefe('In der eigenen Zeile darf man schreiben, auch im Streifen',
+        await frage(6, 'insertText') === null,
+        'wer selbst dort steht, wurde ausgesperrt');
+
+      /* Enter dagegen reicht ueber die eigene Zeile hinaus – und landet
+         damit in der Zeile des anderen. */
+      pruefe('Enter aus der Nachbarzeile in seine Zeile wird abgewiesen',
+        await frage(9, 'insertParagraph') !== null, 'Enter ging durch');
     }
 
     abschnitt('Eine Tabelle kommt als Tabelle an');
