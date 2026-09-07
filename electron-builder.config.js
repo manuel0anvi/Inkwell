@@ -53,12 +53,18 @@ module.exports = {
   /* ── Der Installierer muss die ALTE Installation finden ─────────────
      >>> Warum hier eine feste Kennung steht <<<
      electron-builder leitet die Kennung, unter der Windows eine
-     Installation fuehrt, aus der appId ab (UUID v5). Die appId hiess bis
-     einschliesslich 1.1.1 "com.inkwell.app" und heisst seit der
+     Installation fuehrt, aus der appId ab (UUID v5, Namensraum
+     50e065bc-3134-11e6-9bab-38c9862bdaf3 - siehe ELECTRON_BUILDER_NS_UUID
+     in app-builder-lib/out/targets/nsis/NsisTarget.js). Die appId hiess
+     bis einschliesslich 1.1.1 "com.inkwell.app" und heisst seit der
      Umbenennung "com.inkwells.app" - zwei verschiedene Kennungen:
 
-         com.inkwell.app   A07D0FC5-B61A-55E8-BC91-8AB2C00FDFA9
-         com.inkwells.app  B59081C2-AA4F-5227-900F-CFC147B9D9BA
+         com.inkwell.app   347a11a8-8881-56e0-8e18-ec105f5fe2ad
+         com.inkwells.app  9b6bb7d6-2201-5483-b1a3-83bb76ea7ff3
+
+     Dass die veroeffentlichte 1.1.1 die ERSTE traegt, sagt ihr eigener
+     Dateiname: sie heisst "Inkwell.Setup.1.1.1.exe", stammt also von vor
+     der Umbenennung - die aendert appId und productName zusammen.
 
      Ohne diese Zeile faende der Installierer die vorhandene Fassung
      nicht und legte eine ZWEITE daneben: "Inkwell" bliebe stehen,
@@ -69,9 +75,17 @@ module.exports = {
 
      Eingetragen ist deshalb die Kennung der ALTEN appId. Sie bleibt in
      alle Zukunft stehen - sie ist jetzt die Kennung dieser App, und ein
-     Wechsel wuerde denselben Bruch ein zweites Mal ausloesen. */
+     Wechsel wuerde denselben Bruch ein zweites Mal ausloesen.
+
+     >>> Auf den Entwicklerrechnern einmal von Hand aufraeumen <<<
+     Wer hier schon eine SELBST gebaute Fassung nach der Umbenennung
+     installiert hat, fuehrt sie unter der zweiten Kennung. Die findet
+     der neue Installierer nicht - dort bleibt der alte Eintrag
+     "Inkwells 1.1.1" stehen und muss einmal von Hand deinstalliert
+     werden. Nutzer draussen trifft das nicht, die kommen alle von der
+     veroeffentlichten 1.1.1. */
   nsis: {
-    guid: 'A07D0FC5-B61A-55E8-BC91-8AB2C00FDFA9',
+    guid: '347a11a8-8881-56e0-8e18-ec105f5fe2ad',
     oneClick: false,
     allowToChangeInstallationDirectory: true,
     createDesktopShortcut: true,
