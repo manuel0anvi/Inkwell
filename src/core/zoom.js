@@ -47,6 +47,43 @@ let _lastVerticalMode = window.innerHeight > window.innerWidth;
    ══════════════════════════════════════════════════════════════════════ */
 let _wirksam = _zoom;
 
+/* ══════════════════════════════════════════════════════════════════════
+   WÄHREND DIE FINGER ZIEHEN, WIRD NUR SKALIERT
+
+   >>> Warum das Zoomen mit zwei Fingern geruckelt hat <<<
+   An jedem einzelnen touchmove hing die volle Nacharbeit eines
+   Zoomwechsels – und die ist teuer. getCanvasDpr() richtet sich nach dem
+   Zoom, also bekam bei fast jeder Fingerbewegung JEDE Zeichenfläche eine
+   neue Auflösung: Bitmap neu anlegen, alle Striche der Seite neu malen.
+   Dazu ein erzwungener Umbruch (offsetHeight in passeRollhoeheAn) und
+   zwei Durchgänge über alle .j-canvas. Bei zwanzig Meldungen in der
+   Sekunde ist das mehr Arbeit, als ein Bild lang Zeit hat.
+
+   Zu sehen war nicht die Arbeit, sondern was sie verdrängt: das Blatt
+   folgte den Fingern stockend.
+
+   >>> Was stattdessen geschieht <<<
+   Solange die Geste läuft, wird nur das getan, was man auch sieht: der
+   Maßstab am Blatt. Alles Übrige wartet bis zum Loslassen und läuft
+   dann EINMAL. Dazwischen ist die Zeichenfläche eine hochskalierte
+   Bitmap – kurz etwas weicher, dafür flüssig. Beim Loslassen wird sie
+   scharf.
+   ══════════════════════════════════════════════════════════════════════ */
+let _gesteLaeuft = false;
+
+/** Eine Zoom-Geste fängt an: ab jetzt nur noch das Nötigste. */
+function beginneZoomGeste() { _gesteLaeuft = true; }
+
+/** Sie ist vorbei – jetzt alles nachziehen, was aufgeschoben wurde. */
+function beendeZoomGeste() {
+  if (!_gesteLaeuft) return;
+  _gesteLaeuft = false;
+  _applyZoom();
+}
+
+/** Läuft gerade eine? Für Prüfstände und die Fehlersuche. */
+function zoomGesteLaeuft() { return _gesteLaeuft; }
+
 /** Der grösste Zoom, bei dem die Seite noch ganz in den Rahmen passt. */
 function getFitZoom() {
   const sc = E('pg-scroll');
@@ -125,7 +162,8 @@ function _applyZoom() {
   if (!pw) return;
   pw.style.transform = 'scale(' + z + ')';
   pw.style.transformOrigin = 'top center';
-  passeRollhoeheAn();
+  // Liest offsetHeight, erzwingt also einen Umbruch – siehe _gesteLaeuft
+  if (!_gesteLaeuft) passeRollhoeheAn();
   /* ══ WER DIE FINGERBEWEGUNG BEKOMMT: BROWSER ODER STRICH ══
      touch-action entscheidet, ob der Browser aus einem gezogenen Finger
      ein Scrollen macht. Tut er das, bricht er den Strich nach wenigen
@@ -142,15 +180,23 @@ function _applyZoom() {
      hier kommen, weil app.js das Schieben dann selbst uebernimmt. */
   const ta = z > 1.21 ? 'none' : 'pan-y';
   pw.style.touchAction = ta;
-  document.querySelectorAll('.j-canvas').forEach(c => c.style.touchAction = z > 1.21 ? 'none' : '');
+  /* Während der Geste bleibt es beim Wert von vorhin: wer schon zwei
+     Finger auf dem Blatt hat, dem nimmt ein Wechsel hier nichts und
+     gibt nichts – der Browser hat die Geste längst uns zugeteilt. */
+  if (!_gesteLaeuft) {
+    document.querySelectorAll('.j-canvas').forEach(c => c.style.touchAction = z > 1.21 ? 'none' : '');
+  }
   const sc = E('pg-scroll');
   if (sc) { sc.style.overflow = ''; sc.style.touchAction = ta; }
   const prozent = Math.round((z / BASE_ZOOM) * 100) + '%';
   const lbl = E('btn-zoom-reset');
   if (lbl) lbl.textContent = prozent;
   if (z <= 1.21 && typeof window.resetPan === 'function') window.resetPan();
-  rerenderCanvasesForZoom();
-  if (typeof updateCursor === 'function') updateCursor();
+  /* Das Teure: neue Auflösung und alle Striche neu. Erst beim Loslassen. */
+  if (!_gesteLaeuft) {
+    rerenderCanvasesForZoom();
+    if (typeof updateCursor === 'function') updateCursor();
+  }
   meldeZoom();
 }
 

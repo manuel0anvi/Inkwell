@@ -1641,6 +1641,48 @@ E('btn-zoom-reset')?.addEventListener('click', zoomReset);
 
   const sc = E('pg-scroll');
 
+  /* Der zuletzt gemeldete Stand der beiden Finger, und das angemeldete
+     Bild dazu – siehe der Kasten im touchmove-Hoerer. */
+  let _pinchZuletzt = null, _pinchBild = 0;
+
+  function planePinch() {
+    if (_pinchBild) return;
+    _pinchBild = requestAnimationFrame(() => {
+      _pinchBild = 0;
+      const s = _pinchZuletzt;
+      if (!s || !_pinchDist) return;
+
+      if (isVerticalMode()) _verticalAutoFit = false;
+      // Vor setZoom lesen: _applyZoom schreibt transform neu und wirft die
+      // Verschiebung dabei weg
+      const vorher = getPanOffset();
+      setZoom(_pinchZoom * (s.d / _pinchDist));
+
+      /* ── Zwei Finger bewegen die Seite auch ───────────────────────
+         Hier wurde nur gezoomt. Solange der Finger noch scrollen durfte,
+         fiel das nicht auf; seit er zeichnet, ist das Schieben mit zwei
+         Fingern der einzige Weg, ueber der Seite weiterzukommen – und
+         genau das verspricht der Hinweis beim Einschalten. */
+      const dx = s.mx - _pinchMidX, dy = s.my - _pinchMidY;
+      _pinchMidX = s.mx; _pinchMidY = s.my;
+      if (_zoom > panThreshold()) {
+        setPan(vorher.x + dx / _zoom, vorher.y + dy / _zoom);
+      } else {
+        resetPan();
+        sc.scrollTop -= dy;
+        sc.scrollLeft -= dx;
+      }
+      pruefeLetzteLeer();
+    });
+  }
+
+  /** Die Geste ist vorbei: aufgeschobene Nacharbeit nachholen. */
+  function pinchBeenden() {
+    if (_pinchBild) { cancelAnimationFrame(_pinchBild); _pinchBild = 0; }
+    _pinchZuletzt = null;
+    if (typeof beendeZoomGeste === 'function') beendeZoomGeste();
+  }
+
   sc.addEventListener('touchstart', e => {
     if (penIsActive()) { e.preventDefault(); return; }
 
@@ -1667,6 +1709,8 @@ E('btn-zoom-reset')?.addEventListener('click', zoomReset);
       _pinchZoom = _zoom;
       const m = mitte(e); _pinchMidX = m.x; _pinchMidY = m.y;
       _panActive = false;
+      // Ab jetzt nur noch skalieren, alles Übrige beim Loslassen
+      if (typeof beginneZoomGeste === 'function') beginneZoomGeste();
       e.preventDefault();
     } else if (e.touches.length === 1 && _zoom > panThreshold()) {
       _panActive = true;
@@ -1687,29 +1731,19 @@ E('btn-zoom-reset')?.addEventListener('click', zoomReset);
         && e.touches.length === 1 && S.isDrawing) { e.preventDefault(); return; }
 
     if (e.touches.length === 2 && _pinchDist > 0) {
-      const d = Math.hypot(e.touches[1].clientX - e.touches[0].clientX, e.touches[1].clientY - e.touches[0].clientY);
-      if (isVerticalMode()) _verticalAutoFit = false;
-      // Vor setZoom lesen: _applyZoom schreibt transform neu und wirft die
-      // Verschiebung dabei weg
-      const vorher = getPanOffset();
-      setZoom(_pinchZoom * (d / _pinchDist));
-
-      /* ── Zwei Finger bewegen die Seite auch ───────────────────────
-         Hier wurde nur gezoomt. Solange der Finger noch scrollen durfte,
-         fiel das nicht auf; seit er zeichnet, ist das Schieben mit zwei
-         Fingern der einzige Weg, ueber der Seite weiterzukommen – und
-         genau das verspricht der Hinweis beim Einschalten. */
+      /* ── Ein Bild, eine Rechnung ──────────────────────────────────
+         Der Finger meldet sich oefter, als der Bildschirm zeichnet –
+         auf einem Stiftgeraet leicht doppelt so oft. Jede Meldung
+         einzeln zu verarbeiten heisst, mehrmals fuer dasselbe Bild zu
+         rechnen und den Umbruch mehrmals zu erzwingen. Gemerkt wird
+         deshalb nur der letzte Stand, gerechnet wird einmal je Bild. */
       const m = mitte(e);
-      const dx = m.x - _pinchMidX, dy = m.y - _pinchMidY;
-      _pinchMidX = m.x; _pinchMidY = m.y;
-      if (_zoom > panThreshold()) {
-        setPan(vorher.x + dx / _zoom, vorher.y + dy / _zoom);
-      } else {
-        resetPan();
-        sc.scrollTop -= dy;
-        sc.scrollLeft -= dx;
-      }
-      pruefeLetzteLeer();
+      _pinchZuletzt = {
+        d: Math.hypot(e.touches[1].clientX - e.touches[0].clientX,
+                      e.touches[1].clientY - e.touches[0].clientY),
+        mx: m.x, my: m.y
+      };
+      planePinch();
       e.preventDefault();
     } else if (e.touches.length === 1 && _panActive && _zoom > panThreshold()) {
       const dx = (e.touches[0].clientX - _panStartX) / _zoom;
@@ -1721,9 +1755,18 @@ E('btn-zoom-reset')?.addEventListener('click', zoomReset);
   }, { passive: false });
 
   sc.addEventListener('touchend', e => {
-    if (e.touches.length < 2) _pinchDist = 0;
+    if (e.touches.length < 2) { _pinchDist = 0; pinchBeenden(); }
     if (e.touches.length === 0) _panActive = false;
     pruefeLetzteLeer();
+  }, { passive: true });
+
+  /* Ein abgebrochener Zug – der Finger rutscht vom Rand, ein Anruf kommt
+     herein – meldet kein touchend. Ohne das hier bliebe die Geste offen
+     und die Zeichenflächen für immer in der groben Auflösung stehen. */
+  sc.addEventListener('touchcancel', () => {
+    _pinchDist = 0;
+    _panActive = false;
+    pinchBeenden();
   }, { passive: true });
 
   // Also block touch on the pages-wrap level (belt+suspenders)
