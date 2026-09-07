@@ -594,7 +594,7 @@
   /* ── Ein Dokument öffnen ────────────────────────────────────────── */
 
   /* ══════════════════════════════════════════════════════════════════
-     GLEICHE FASSUNG ODER GAR NICHT
+     GLEICHER FORMATSTAND ODER GAR NICHT
 
      Die Prüfung steht in openSharedDocument und nicht an den beiden
      Wegen davor (Kachel und Link), weil BEIDE hier hindurchkommen. Eine
@@ -603,7 +603,14 @@
      Sie steht ganz am Anfang, vor dem Laden: was hier abgewiesen wird,
      soll gar nicht erst über die Leitung gehen.
 
-     Warum das nötig ist, steht bei versionPasst() in core/share.js.
+     >>> Nicht die Fassung der App <<<
+     Verglichen wird der Formatstand des Dokuments, nicht die Nummer der
+     Auslieferung: 1.1.4 und 1.2.0 dürfen zusammenarbeiten, solange sich
+     am geteilten Raum nichts geändert hat. Der Satz unten nennt trotzdem
+     die App-Fassungen – die versteht der Nutzer, eine Formatnummer nicht.
+
+     Warum es die Sperre überhaupt gibt, steht bei versionPasst() in
+     core/share.js.
      ══════════════════════════════════════════════════════════════════ */
   async function versionsSperre(head) {
     const api = window.InkwellsShare;

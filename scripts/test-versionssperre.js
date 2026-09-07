@@ -2,11 +2,21 @@
 'use strict';
 
 /* ══════════════════════════════════════════════════════════════════════
-   GLEICHE FASSUNG ODER GAR NICHT
+   GLEICHER FORMATSTAND ODER GAR NICHT
 
    Prüft versionPasst() aus core/share.js – die Sperre, die ein geteiltes
-   Dokument zumacht, wenn Besitzer und Gast nicht dieselbe Fassung von
-   Inkwells haben.
+   Dokument zumacht, wenn Dokument und Gast nicht denselben FORMATSTAND
+   haben.
+
+   >>> Was sich geändert hat <<<
+   Verglichen wurde die Fassung der App. Das sperrte bei JEDER
+   Auslieferung alle voneinander aus, auch wenn sich am geteilten Raum
+   nichts geändert hatte – und weil der Kopf seine Angabe nur beim
+   vollständigen Neu-Teilen bekam, sperrte sich am Ende der Besitzer
+   selbst aus seinem eigenen Dokument aus. Jetzt entscheidet
+   FORMAT_STAND, eine Zahl, die nur bei einer echten Formatänderung
+   steigt; die App-Fassungen wandern nur noch in den Satz mit, den ein
+   Ausgesperrter zu sehen bekommt.
 
    >>> Warum in BEIDE Richtungen gesperrt wird <<<
    Ein geteiltes Dokument ist kein Dateiformat, das man verträglich
@@ -56,12 +66,28 @@ function check(label, actual, expected) {
   }
 }
 
-/** Baut versionPasst() mit einer vorgegebenen eigenen Fassung. */
-function mitEigener(version) {
+/* Der Stand, den die Quelle wirklich fuehrt. Nicht abgeschrieben,
+   sondern ausgelesen: wird er hochgezaehlt, prueft der Prueftstand
+   danach den neuen und nicht mehr eine Zahl von gestern. */
+const FORMAT_STAND = (() => {
+  const m = /const FORMAT_STAND = (\d+);/.exec(quelle);
+  if (!m) throw new Error('FORMAT_STAND nicht gefunden');
+  return Number(m[1]);
+})();
+
+/**
+ * Baut versionPasst() mit einer vorgegebenen eigenen Fassung.
+ *
+ * @param {string} version  die App-Fassung, die hier zu laufen scheint
+ * @param {number} [stand]  der eigene Formatstand; ohne Angabe der echte
+ */
+function mitEigener(version, stand = FORMAT_STAND) {
   const ctx = {
     console, Math, Number, String, JSON, Promise,
     // eigeneAppVersion() wird ersetzt: hier gibt es kein window.api
-    eigeneAppVersion: async () => version
+    eigeneAppVersion: async () => version,
+    // und der Stand, gegen den verglichen wird
+    FORMAT_STAND: stand
   };
   vm.createContext(ctx);
   vm.runInContext(extract('versionPasst'), ctx);
@@ -70,50 +96,102 @@ function mitEigener(version) {
 
 (async () => {
 
-  console.log('Dieselbe Fassung – herein');
+  console.log('Derselbe Formatstand – herein');
   {
-    const passt = mitEigener('1.1.1');
-    check('Genau gleich', (await passt({ appVersion: '1.1.1' })).ok, true);
+    const passt = mitEigener('1.1.2', 1);
+    check('Gleicher Stand', (await passt({ formatStand: 1, appVersion: '1.1.2' })).ok, true);
   }
 
-  console.log('\nVerschiedene Fassungen – zu, egal welche Richtung');
+  console.log('\nDIE APP-FASSUNG ENTSCHEIDET NICHTS MEHR');
   {
-    const alt = mitEigener('1.1.0');
-    const u1 = await alt({ appVersion: '1.1.1' });
+    /* Der eigentliche Grund fuer den ganzen Umbau. Vorher sperrte jede
+       Auslieferung alle voneinander aus – auch eine, die am geteilten
+       Raum keinen Strich geaendert hatte. Wer die App eine Woche nicht
+       aktualisiert hatte, kam an das gemeinsame Dokument nicht mehr
+       heran.
+
+       Solange der Stand derselbe ist, duerfen die Fassungen beliebig
+       weit auseinanderliegen. */
+    const passt = mitEigener('1.4.0', 1);
+    const urteil = await passt({ formatStand: 1, appVersion: '1.1.2' });
+    check('1.4.0 und 1.1.2 bei gleichem Stand: offen', urteil.ok, true);
+    check('Und niemand wird als der Aeltere benannt', urteil.wer, '');
+
+    const rueck = mitEigener('1.1.2', 1);
+    check('Auch andersherum', (await rueck({ formatStand: 1, appVersion: '1.4.0' })).ok, true);
+  }
+
+  console.log('\nVerschiedener Stand – zu, egal welche Richtung');
+  {
+    // Das Dokument ist weiter als ich: ich bin der Aeltere
+    const alt = mitEigener('1.1.2', 1);
+    const u1 = await alt({ formatStand: 2, appVersion: '1.2.0' });
     check('Ich bin aelter: gesperrt', u1.ok, false);
     check('Und der Satz meint mich', u1.wer, 'ich');
-    check('Beide Fassungen stehen im Urteil', [u1.meine, u1.ihre], ['1.1.0', '1.1.1']);
+    check('Beide Fassungen stehen im Urteil fuer den Satz',
+      [u1.meine, u1.ihre], ['1.1.2', '1.2.0']);
 
-    const neu = mitEigener('1.2.0');
-    const u2 = await neu({ appVersion: '1.1.1' });
+    // Und der Gegenfall: das Dokument ist zurueck, ich bin weiter
+    const neu = mitEigener('1.2.0', 2);
+    const u2 = await neu({ formatStand: 1, appVersion: '1.1.2' });
     check('Ich bin neuer: trotzdem gesperrt', u2.ok, false);
     check('Und der Satz meint den Besitzer', u2.wer, 'besitzer');
   }
 
-  console.log('\nDie Zahlen werden als ZAHLEN verglichen');
-  {
-    /* 1.10.0 kommt NACH 1.9.0. Als Zeichenkette waere es davor, und der
-       Satz saehe genau verkehrt herum aus. */
-    const zehn = mitEigener('1.10.0');
-    check('1.10.0 ist neuer als 1.9.0', (await zehn({ appVersion: '1.9.0' })).wer, 'besitzer');
-
-    const neun = mitEigener('1.9.0');
-    check('Und andersherum', (await neun({ appVersion: '1.10.0' })).wer, 'ich');
-  }
-
   console.log('\nWo NICHT gesperrt wird');
   {
-    /* Ein Dokument aus der Zeit vor der Sperre traegt keine Angabe.
+    /* Ein Dokument aus der Zeit vor der Sperre traegt keinen Stand.
        Wuerde es hier zugehen, waere jedes bestehende Dokument mit einem
-       Schlag fuer alle zu – und niemand kaeme mehr an seine Sachen. */
-    const passt = mitEigener('1.1.1');
-    check('Kopf ohne Angabe', (await passt({})).ok, true);
-    check('Leere Angabe', (await passt({ appVersion: '' })).ok, true);
-    check('Nur Leerzeichen', (await passt({ appVersion: '   ' })).ok, true);
+       Schlag fuer alle zu – und niemand kaeme mehr an seine Sachen.
+       Die App-Fassung im Kopf aendert daran nichts: sie entscheidet
+       nicht mehr mit. */
+    const passt = mitEigener('1.1.2', 1);
+    check('Kopf ohne alles', (await passt({})).ok, true);
+    check('Kein Stand, aber eine fremde Fassung',
+      (await passt({ appVersion: '0.9.0' })).ok, true);
+    check('Stand 0', (await passt({ formatStand: 0, appVersion: '0.9.0' })).ok, true);
 
-    // Und wenn die eigene Fassung nicht zu ermitteln ist: auch offen
-    const ohne = mitEigener('');
-    check('Eigene Fassung unbekannt', (await ohne({ appVersion: '1.1.1' })).ok, true);
+    /* Was keine brauchbare Zahl ist, zaehlt wie keine Angabe – so
+       normalisiert es auch describeDoc. Ein Kopf, an dem jemand
+       herumgespielt hat, macht damit kein Dokument unzugaenglich. */
+    check('Stand als Zeichenkette', (await passt({ formatStand: '2' })).ok, true);
+    check('Stand als Kommazahl', (await passt({ formatStand: 1.5 })).ok, true);
+    check('Stand negativ', (await passt({ formatStand: -3 })).ok, true);
+  }
+
+  console.log('\nDer Stand im Kopf bleibt aktuell');
+  {
+    /* >>> Warum das hier steht <<<
+       Den Stand bekam der Kopf nur beim vollstaendigen Neu-Teilen. Er
+       blieb auf dem Wert von damals stehen, waehrend die App weiterzog –
+       und sperrte am Ende den Besitzer aus seinem eigenen Dokument aus,
+       ohne Ausweg im Fenster. Deshalb zieht jetzt jedes gewoehnliche
+       Speichern des Besitzers den Stand nach (besitzerStempel).
+
+       Geprueft wird an der Quelle: ein Aufruf, der hier verschwindet,
+       faellt sonst erst Wochen spaeter auf, wenn wieder jemand vor
+       seinem eigenen Dokument steht. */
+    const src = fs.readFileSync(
+      path.join(__dirname, '..', 'src', 'core', 'share.js'), 'utf8');
+
+    check('Beim Teilen wandert der Stand in den Kopf',
+      /formatStand: FORMAT_STAND/.test(src), true);
+
+    const stempel = (src.match(/besitzerStempel\(/g) || []).length;
+    check('Und besitzerStempel wird ueberall gerufen, wo der Kopf fortgeschrieben wird',
+      stempel >= 4, true);   // Erklaerung + drei Aufrufe
+
+    /* Nur der Besitzer. Stuenden die beiden Felder im Merkzettel eines
+       BEARBEITERS, wiese editorUpdate() in website/firestore.rules sein
+       ganzes Speichern ab – es zaehlt die erlaubten Felder einzeln auf. */
+    check('Der Stempel bleibt dem Besitzer vorbehalten',
+      /if \(!isOwner\) return \{\};/.test(src), true);
+
+    const regeln = fs.readFileSync(
+      path.join(__dirname, '..', 'website', 'firestore.rules'), 'utf8');
+    const erlaubt = /hasOnly\(\[([^\]]*)\]\)/.exec(regeln);
+    check('Und formatStand steht NICHT in der Liste des Bearbeiters',
+      !!erlaubt && !/formatStand/.test(erlaubt[1]), true);
   }
 
   console.log('\nDie Sperre haengt am Oeffnen, nicht am Weg dorthin');
