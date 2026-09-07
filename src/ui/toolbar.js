@@ -1322,7 +1322,10 @@ function updateCursor() {
       ec.style.width = size + 'px';
       ec.style.height = size + 'px';
     }
-    QA('.j-canvas').forEach(c => c.style.cursor = 'crosshair');
+    /* Kein Fadenkreuz daneben: der Kreis IST der Zeiger, und er zeigt
+       zugleich, wie breit radiert wird. Zwei Zeichen übereinander
+       verdecken nur die Stelle, um die es geht. */
+    QA('.j-canvas').forEach(c => c.style.cursor = 'none');
   } else {
     if (ec) ec.style.display = 'none';
     const cur = S.mode === 'cursor' ? 'text' : 'crosshair';
@@ -1330,18 +1333,58 @@ function updateCursor() {
   }
 }
 
-window.addEventListener('pointermove', e => {
+/* ══════════════════════════════════════════════════════════════════════
+   DER RADIERER ZEIGT SICH ALS KREIS – AUCH UNTER DER MAUS
+
+   Zwei Meldungen, eine Stelle.
+
+   >>> „Der Kreis bleibt stehen, wenn ich den Stift wegnehme" <<<
+   Er hing allein an pointermove. Hebt man den Stift vom Bildschirm, hört
+   die Meldung einfach auf – und das Letzte, was sie wusste, blieb stehen.
+   Es fehlte die Gegenrichtung: das Ende des Schwebens.
+
+   >>> „Der Radierer sollte auch mit der Maus gehen, mit demselben Kreis" <<<
+   Gefragt wurde nach `pointerType === 'pen'`; die Maus fiel durch und
+   bekam nur das Fadenkreuz des Systems zu sehen. Jetzt zeigt der Kreis
+   die Größe an, die wirklich radiert wird – bei beiden gleich.
+
+   Der FINGER bleibt draußen: er verdeckt die Stelle selbst, ein Kreis
+   darunter wäre nicht zu sehen.
+   ══════════════════════════════════════════════════════════════════════ */
+
+function radiererKreisZeigen(e) {
   const ec = E('eraser-cursor');
-  if (ec && S.mode === 'eraser') {
-    if (e.pointerType === 'pen' && e.target.closest('.j-page')) {
-      ec.style.display = 'block';
-      ec.style.left = e.clientX + 'px';
-      ec.style.top = e.clientY + 'px';
-    } else {
-      ec.style.display = 'none';
-    }
-  }
-});
+  if (!ec) return;
+
+  const passt = S.mode === 'eraser'
+    && (e.pointerType === 'pen' || e.pointerType === 'mouse')
+    && e.target && typeof e.target.closest === 'function'
+    && e.target.closest('.j-page');
+
+  if (!passt) { ec.style.display = 'none'; return; }
+
+  ec.style.display = 'block';
+  ec.style.left = e.clientX + 'px';
+  ec.style.top = e.clientY + 'px';
+}
+
+function radiererKreisWeg() {
+  const ec = E('eraser-cursor');
+  if (ec) ec.style.display = 'none';
+}
+
+window.addEventListener('pointermove', radiererKreisZeigen);
+
+/* Das Schweben hört auf – Stift abgehoben, Maus aus dem Fenster.
+
+   Ohne relatedTarget ist der Zeiger wirklich fort und nicht bloss über
+   ein anderes Element gewandert; darauf zu prüfen ist nötig, weil
+   pointerout bei JEDEM Elementwechsel kommt und der Kreis sonst bei
+   jeder Bewegung kurz verschwände. */
+window.addEventListener('pointerout', (e) => { if (!e.relatedTarget) radiererKreisWeg(); });
+window.addEventListener('pointercancel', radiererKreisWeg);
+window.addEventListener('blur', radiererKreisWeg);
+document.addEventListener('pointerleave', radiererKreisWeg);
 
 /** Malt dieses Werkzeug, statt Text zu setzen? */
 function isDrawMode(mode) {
