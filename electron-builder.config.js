@@ -50,7 +50,28 @@ module.exports = {
       }
     ]
   },
+  /* ── Der Installierer muss die ALTE Installation finden ─────────────
+     >>> Warum hier eine feste Kennung steht <<<
+     electron-builder leitet die Kennung, unter der Windows eine
+     Installation fuehrt, aus der appId ab (UUID v5). Die appId hiess bis
+     einschliesslich 1.1.1 "com.inkwell.app" und heisst seit der
+     Umbenennung "com.inkwells.app" - zwei verschiedene Kennungen:
+
+         com.inkwell.app   A07D0FC5-B61A-55E8-BC91-8AB2C00FDFA9
+         com.inkwells.app  B59081C2-AA4F-5227-900F-CFC147B9D9BA
+
+     Ohne diese Zeile faende der Installierer die vorhandene Fassung
+     nicht und legte eine ZWEITE daneben: "Inkwell" bliebe stehen,
+     "Inkwells" kaeme dazu, zwei Eintraege in der App-Liste, zwei
+     Verknuepfungen. Und weil die neue Fassung beim Start den Datenordner
+     umbenennt (migriereAltenDatenordner in main.js), startete die alte
+     danach mit leeren Einstellungen.
+
+     Eingetragen ist deshalb die Kennung der ALTEN appId. Sie bleibt in
+     alle Zukunft stehen - sie ist jetzt die Kennung dieser App, und ein
+     Wechsel wuerde denselben Bruch ein zweites Mal ausloesen. */
   nsis: {
+    guid: 'A07D0FC5-B61A-55E8-BC91-8AB2C00FDFA9',
     oneClick: false,
     allowToChangeInstallationDirectory: true,
     createDesktopShortcut: true,
