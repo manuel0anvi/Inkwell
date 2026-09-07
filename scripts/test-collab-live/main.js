@@ -763,6 +763,77 @@ app.on('ready', async () => {
         await frage(9, 'insertParagraph') !== null, 'Enter ging durch');
     }
 
+    /* ══════════════════════════════════════════════════════════════════
+       EINE STELLE, DIE ES HIER NICHT GIBT, WIRD NICHT GEZEICHNET
+
+       Gemeldet: „wenn ich irgendwo druecke, geht der Cursor meines
+       Kollegen dorthin, wo mein Cursor ist – er sollte dort bleiben, wo
+       er schreibt."
+
+       >>> Was wirklich geschah <<<
+       Meldet der andere eine Stelle, die im hiesigen Text noch gar nicht
+       existiert (seine Aenderung ist unterwegs), klemmte caretRectAt sie
+       ans Textende. Das Ende ist aber, wonach es aussieht: das letzte
+       Element im Feld. Und ein Klick auf freie Flaeche legt dort einen
+       FREI STEHENDEN Absatz an – absolut positioniert, genau an der
+       Klickstelle. Die fremde Marke sprang damit auf den eigenen Klick.
+
+       Nachgemessen: Text fuenf Zeichen, gemeldete Stelle 45, gezeichnet
+       bei [499,797] – dem Punkt des freien Absatzes, auf das Pixel genau.
+       ══════════════════════════════════════════════════════════════════ */
+    abschnitt('Eine Stelle hinter dem Textende wird nicht gezeichnet');
+    {
+      const seite = '<p>Eins</p><p class="j-frei" style="left:400px;top:600px"><br></p>';
+      await B(`pruefstand.setzeText(${JSON.stringify(seite)}, 0)`);
+      await warte(500);
+
+      const laenge = (await B('pruefstand.text()')).length;
+
+      /* Ein Anwesender, dessen Stelle es hier nicht gibt – so sieht es
+         aus, solange seine Aenderung noch unterwegs ist. */
+      const geist = (stelle) => {
+        karten.set('uidGeist', {
+          uid: 'uidGeist', name: 'Geist', initials: 'G', color: '#8a2e46',
+          pageId: 'p1', offset: stelle, lockFrom: stelle, lockTo: stelle + 3,
+          lockAt: Date.now(), cx: '', objLock: '', objLockAt: 0, at: Date.now()
+        });
+        schickePraesenz();
+        return warte(500);
+      };
+
+      await geist(laenge + 40);
+      const nurGeist = (l) => l.filter(m => /Geist/.test(m.name || ''));
+      const weit = nurGeist(await B('pruefstand.fremdeMarken()'));
+      const baenderWeit = await B('pruefstand.baender()');
+      const freiPunkt = await B('(function(){var f=document.querySelector("p.j-frei");if(!f)return null;var r=f.getBoundingClientRect();return [Math.round(r.left),Math.round(r.top)];})()');
+      notiz('Stelle ' + (laenge + 40) + ' bei Text der Laenge ' + laenge
+        + ': ' + JSON.stringify(weit) + ', freier Absatz bei ' + JSON.stringify(freiPunkt));
+      pruefe('Keine Marke fuer eine Stelle, die es nicht gibt',
+        weit.length === 0,
+        'sie wurde gezeichnet – und zwar am letzten Element: ' + JSON.stringify(weit));
+      pruefe('Und auch kein Sperrband', baenderWeit.length === 0,
+        JSON.stringify(baenderWeit));
+
+      /* Und genau auf der Leerzeile des freien Absatzes: die Stelle gibt
+         es, sie ist nur die, die der eigene Klick eben angelegt hat. Fuer
+         den Nutzer sieht es genauso aus – die Marke springt auf den Klick. */
+      await geist(laenge);
+      const aufFrei = nurGeist(await B('pruefstand.fremdeMarken()'));
+      pruefe('Auch nicht auf dem leeren Absatz, den ein Klick anlegt',
+        aufFrei.length === 0, JSON.stringify(aufFrei));
+
+      /* Und der Gegenbeweis: eine Stelle, die es gibt, wird gezeichnet –
+         sonst pruefte das oben nur, dass ueberhaupt nichts erscheint. */
+      await geist(2);
+      const drin = nurGeist(await B('pruefstand.fremdeMarken()'));
+      pruefe('Eine Stelle im Text dagegen schon', drin.length === 1,
+        JSON.stringify(drin));
+
+      karten.delete('uidGeist');
+      schickePraesenz();
+      await warte(300);
+    }
+
     abschnitt('Eine Tabelle kommt als Tabelle an');
 
     await A('pruefstand.setzeTabelle(3, 4)');

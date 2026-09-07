@@ -955,6 +955,18 @@
     }
   }
 
+  /** Zeigt diese Stelle in einen leeren, frei stehenden Absatz? */
+  function aufLeeremFreiabsatz(textDiv, stelle) {
+    if (typeof flatRangeAt !== 'function') return false;
+    try {
+      const range = flatRangeAt(textDiv, stelle);
+      const knoten = range && range.startContainer;
+      const el = knoten && (knoten.nodeType === 1 ? knoten : knoten.parentElement);
+      const frei = (el && typeof el.closest === 'function') ? el.closest('p.j-frei') : null;
+      return !!frei && !(frei.textContent || '').trim();
+    } catch (err) { return false; }
+  }
+
   function _renderCaretsNow() {
     if (!others.length) {
       aufraeumen(caretEls, new Set());
@@ -979,12 +991,58 @@
       for (const person of peopleOnPage(pageId, textDiv)) {
       if (!Number.isFinite(person.offset) || person.offset < 0) continue;
 
+      /* ══════════════════════════════════════════════════════════════
+         EINE STELLE, DIE ES HIER NICHT GIBT, WIRD NICHT GEZEICHNET
+
+         Zeigt die Stelle über das Ende hinaus – auch der Anker hat sie
+         nicht wiedergefunden –, sind die Fassungen auseinander.
+
+         >>> Warum sie dann WEGBLEIBEN muss <<<
+         Hier wurde das nur gemeldet und trotzdem gezeichnet. caretRectAt
+         klemmt eine zu grosse Stelle ans Textende, und das Ende ist,
+         wonach es aussieht: das letzte Element im Feld. Legt jemand mit
+         einem Klick einen frei stehenden Absatz an – und genau das tut
+         ein Klick auf freie Fläche (canvas/text.js) –, steht dieses
+         Element absolut an der Klickstelle.
+
+         Die fremde Marke sprang damit genau dorthin, wo man selbst eben
+         hingeklickt hatte. Nachgemessen mit zwei Fenstern: Text fünf
+         Zeichen lang, Stelle 45, gezeichnet bei [499,797] – dem Punkt
+         des frei stehenden Absatzes, auf das Pixel genau.
+
+         Gemeldet wurde es als „der Cursor meines Kollegen geht dorthin,
+         wo mein Cursor ist – er sollte dort bleiben, wo er schreibt."
+
+         Eine Marke an der falschen Stelle ist schlechter als keine: sie
+         behauptet etwas. Der Fall ist ohnehin vorübergehend, die nächste
+         Meldung rückt sie wieder zurecht.
+         ══════════════════════════════════════════════════════════════ */
+      if (person.offset > inhalt.length) { meldeVersatz(person, inhalt.length); continue; }
+
+      /* ══════════════════════════════════════════════════════════════
+         UND NICHT AUF EINEM LEEREN, FREI STEHENDEN ABSATZ
+
+         Dieselbe Falle, nur eine Stelle früher. Ein Klick auf freie
+         Fläche legt einen frei stehenden Absatz an – leer, absolut
+         positioniert, genau an der Klickstelle (canvas/text.js). Im
+         flachen Text ist das eine gültige LEERE ZEILE, und eine leere
+         Zeile hat kein Zeichen, an dem sich messen liesse: caretRectAt
+         nimmt dann das umgebende Element. Das ist hier der freie Absatz,
+         und der steht auf dem eigenen Klick.
+
+         Die Abfrage darüber greift nur, wenn die fremde Stelle HINTER
+         dem Text liegt. Zeigt sie genau auf diese neue Leerzeile – und
+         das tut sie, sobald sie vorher am Textende stand –, ist sie
+         gültig und wurde gezeichnet. Für den Nutzer sieht beides gleich
+         aus: die Marke des anderen springt auf den eigenen Klick.
+
+         In einem leeren Absatz, den man selbst eben angelegt hat, kann
+         niemand schreiben – wer dort schriebe, hätte Zeichen darin.
+         ══════════════════════════════════════════════════════════════ */
+      if (aufLeeremFreiabsatz(textDiv, person.offset)) continue;
+
       let rect = null;
       try {
-        /* Zeigt die Stelle immer noch über das Ende hinaus – auch der
-           Anker hat sie nicht wiedergefunden –, sind die Fassungen
-           auseinander. Einmal sagen, nicht dauernd. */
-        if (person.offset > inhalt.length) meldeVersatz(person, inhalt.length);
         rect = caretRectAt(textDiv, person.offset, inhalt);
       } catch (err) { continue; }
 
@@ -1703,6 +1761,14 @@
         const bereich = sperrBereich(person.pageId || pageId, person) || person;
         const von = Number.isFinite(bereich.from) ? bereich.from : person.lockFrom;
         const bis = Number.isFinite(bereich.to) ? bereich.to : person.lockTo;
+
+        /* Dieselbe Falle wie bei der Marke: was hinter dem Textende
+           liegt, klemmt caretRectAt ans letzte Element – und das steht
+           nach einem Klick auf freie Fläche genau an der Klickstelle.
+           Siehe der Kasten in _renderCaretsNow. */
+        let laenge = 0;
+        try { laenge = flatTextOf(textDiv).length; } catch (err) { laenge = 0; }
+        if (von > laenge) continue;
 
         // Die Breite richtet sich nach der eigenen Zeile – in einer
         // Tabelle ist das die Zelle, siehe bandMasse
