@@ -2052,7 +2052,7 @@ function pageIsVisuallyEmpty(page) {
   // Seite fälschlich "leer"
   if (window.PageCanvases) PageCanvases.ensure(page.id);
 
-  const canvas = E('pg-scroll')?.querySelector('[data-pgid="' + page.id + '"]')?.querySelector('.j-canvas');
+  const canvas = E('pg-scroll')?.querySelector('[data-pgid="' + page.id + '"]')?.querySelector('.j-canvas:not(.live-canvas)');
   if (!canvas) return false;
 
   const ctx = canvas.getContext('2d');

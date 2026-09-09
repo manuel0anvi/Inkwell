@@ -1346,7 +1346,14 @@ document.addEventListener('keydown', e => {
 /* ── APPLY MODE ── */
 function applyMode() {
   const ic = S.mode === 'cursor';
-  QA('.j-canvas').forEach(c => c.style.pointerEvents = ic ? 'none' : 'auto');
+  /* ── Die Vorschau-Flaeche bleibt aussen vor ────────────────────────
+     Sie traegt pointer-events:none als Inline-Stil, und ein Inline-Stil
+     ist genau das, was hier geschrieben wird: ein 'auto' von hier haette
+     sie selbst durchgestrichen. Sie liegt ueber der ganzen Seite – jeder
+     Druck waere in ihr steckengeblieben, statt zum Blatt durchzukommen.
+     Frueher fiel das nicht auf, weil es sie zwischen zwei Strichen gar
+     nicht gab; jetzt bleibt sie liegen (clearLiveCanvas). */
+  QA('.j-canvas:not(.live-canvas)').forEach(c => c.style.pointerEvents = ic ? 'none' : 'auto');
   QA('.j-text').forEach(t => {
     t.style.pointerEvents = 'auto';
     t.contentEditable = ic ? 'true' : 'false';
@@ -1361,6 +1368,32 @@ function applyMode() {
   if (typeof window.updateToolbarOverflow === 'function') window.updateToolbarOverflow();
 }
 
+/* ══════════════════════════════════════════════════════════════════════
+   DER STIFT ZEIGT EINEN PUNKT, KEIN FADENKREUZ
+
+   Hier stand 'crosshair'. Ein Fadenkreuz ist das Zeichen fürs Zielen –
+   für einen Zirkel, ein Diagramm, eine Auswahl. Wer schreibt, zielt
+   nicht: er setzt die Spitze auf. Und die vier Balken des Kreuzes reichen
+   weit über die Stelle hinaus, an der die Spitze aufsetzt, und verdecken
+   genau das, was man beim Schreiben sehen will – das eben Geschriebene
+   daneben. Gemeldet wurde genau das.
+
+   Der Punkt sitzt dort, wo der Strich anfängt, und ist so gross wie eine
+   Stiftspitze. Dunkel mit hellem Hof, damit er auf weissem Papier und
+   auf dunklem gleichermassen zu sehen ist – ein Zeiger, den man auf der
+   Hälfte der Untergründe verliert, ist keiner.
+
+   Ein <svg> als Data-URI statt einer Bilddatei: so gibt es nichts
+   nachzuladen, und der Zeiger ist beim allerersten Strich schon da.
+   ══════════════════════════════════════════════════════════════════════ */
+const STIFT_ZEIGER = (() => {
+  const svg = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16">'
+    + '<circle cx="8" cy="8" r="3.4" fill="rgba(20,16,10,.88)"'
+    + ' stroke="rgba(255,255,255,.92)" stroke-width="1.4"/></svg>';
+  // Der Griffpunkt liegt in der Mitte des Punktes, nicht in seiner Ecke
+  return 'url("data:image/svg+xml;utf8,' + encodeURIComponent(svg) + '") 8 8, crosshair';
+})();
+
 function updateCursor() {
   const ec = E('eraser-cursor');
   if (S.mode === 'eraser') {
@@ -1374,11 +1407,11 @@ function updateCursor() {
     /* Kein Fadenkreuz daneben: der Kreis IST der Zeiger, und er zeigt
        zugleich, wie breit radiert wird. Zwei Zeichen übereinander
        verdecken nur die Stelle, um die es geht. */
-    QA('.j-canvas').forEach(c => c.style.cursor = 'none');
+    QA('.j-canvas:not(.live-canvas)').forEach(c => c.style.cursor = 'none');
   } else {
     if (ec) ec.style.display = 'none';
-    const cur = S.mode === 'cursor' ? 'text' : 'crosshair';
-    QA('.j-canvas').forEach(c => c.style.cursor = cur);
+    const cur = S.mode === 'cursor' ? 'text' : STIFT_ZEIGER;
+    QA('.j-canvas:not(.live-canvas)').forEach(c => c.style.cursor = cur);
   }
 }
 

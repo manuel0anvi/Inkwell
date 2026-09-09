@@ -205,7 +205,7 @@ E('pgctx-clear').addEventListener('click', async () => {
   _pgCtxPage.textContent = ''; _pgCtxPage.inkStrokes = []; _pgCtxPage.objects = [];
   delete S.strokeHistory[_pgCtxPage.id];
   const t = _pgCtxEl.querySelector('.j-text'); if (t) t.innerHTML = '';
-  const canvas = _pgCtxEl.querySelector('.j-canvas');
+  const canvas = _pgCtxEl.querySelector('.j-canvas:not(.live-canvas)');
   if (canvas) { const ctx = canvas.getContext('2d'); ctx.clearRect(0, 0, canvas.width, canvas.height); }
   _pgCtxEl.querySelector('.j-objects').innerHTML = '';
   if (window.Collab) Collab.noteTextChange(_pgCtxPage.id, '');

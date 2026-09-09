@@ -184,7 +184,7 @@ function _applyZoom() {
      Finger auf dem Blatt hat, dem nimmt ein Wechsel hier nichts und
      gibt nichts – der Browser hat die Geste längst uns zugeteilt. */
   if (!_gesteLaeuft) {
-    document.querySelectorAll('.j-canvas').forEach(c => c.style.touchAction = z > 1.21 ? 'none' : '');
+    document.querySelectorAll('.j-canvas:not(.live-canvas)').forEach(c => c.style.touchAction = z > 1.21 ? 'none' : '');
   }
   const sc = E('pg-scroll');
   if (sc) { sc.style.overflow = ''; sc.style.touchAction = ta; }

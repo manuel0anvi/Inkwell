@@ -365,8 +365,11 @@ function attachInput(canvas, textDiv, objLayer, page) {
       const start = pts[0], end = pts[pts.length - 1];
       stroke.path = [start, end];
 
-      clearLiveCanvas();
-      redrawStrokes(canvas, S.strokeHistory[page.id]);
+      /* Der Strich liegt noch auf der Vorschau, nicht auf der Seite –
+         also wird auch nur sie neu gezeichnet. Ein redrawStrokes hier
+         brachte ihn ein zweites Mal auf die Seite, und beim Marker
+         hiesse zweimal: doppelt so kraeftig. */
+      stiftVorschau(stroke);
     }, LINE_HOLD_MS);
   }
 
@@ -659,6 +662,85 @@ function attachInput(canvas, textDiv, objLayer, page) {
     return s || c;
   }
 
+  /* ══════════════════════════════════════════════════════════════════
+     DER LAUFENDE STRICH WIRD IN EINEM ZUG GEZEICHNET
+
+     >>> Warum die duenne Linie pixelig aussah <<<
+     Gemeldet: „mit einer ganz duennen Einstellung sieht das Geschriebene
+     komisch aus, so pixelig." Der Grund stand in liveDrawIncr: bei jeder
+     Bewegung wurde nur das NEUE Stueck auf die Seite gemalt, ueber das
+     vorige hinweg. Die Kantenglaettung deckt sich dabei jedes Mal mit
+     sich selbst – dieselben Randpixel bekommen zwei, drei, vier Anstriche
+     und laufen voll. Bei 1,2 px Strichbreite ist der Rand fast der ganze
+     Strich: er wird fleckig, dicker als bestellt und ausgefranst.
+
+     Und er BLIEB so. redrawStrokes lief beim Abheben nur fuer Marker und
+     Radierer; die zusammengestueckelte Fassung stand also auf der Seite,
+     bis irgendetwas anderes sie neu zeichnete – ein Zoom, ein Blaettern.
+     Danach sah derselbe Strich ploetzlich sauber aus.
+
+     Jetzt entsteht der laufende Strich auf der VORSCHAU-Flaeche, und zwar
+     jedes Bild als EIN Pfad von Anfang bis Ende: eine Glaettung, keine
+     Ueberdeckung. Beim Abheben wird die Flaeche geleert und die Seite
+     einmal richtig neu gezeichnet – was man beim Schreiben sieht, ist
+     damit genau das, was stehen bleibt.
+     ══════════════════════════════════════════════════════════════════ */
+  function stiftVorschau(stroke) {
+    if (!stroke) return;
+    const pw = page.w || CFG.PAGE_W;
+    const ph = page.h || CFG.PAGE_H;
+    const lctx = getLiveCtx(div, pw, ph);
+    // Die 38 % gehoeren dem Marker; alles andere deckt
+    setLiveOpacity(stroke.isHL ? 0.38 : 1);
+    lctx.clearRect(0, 0, pw, ph);
+    lctx.save();
+    applyStrokeStyles(lctx, stroke);
+    traceStrokePath(lctx, stroke);
+    lctx.restore();
+  }
+
+  /* ══════════════════════════════════════════════════════════════════
+     AUS ZITTERN WIRD SCHRIFT
+
+     Zwei kleine Handgriffe, die zusammen den Unterschied machen zwischen
+     „gescanntem Gekritzel" und dem, was Word und OneNote aus derselben
+     Hand machen:
+
+     1. WAS ZU NAH LIEGT, KOMMT NICHT DAZU. Eine ruhig gehaltene Spitze
+        meldet 240-mal je Sekunde eine Stelle, die sich um Bruchteile
+        eines Pixels bewegt hat. Diese Punkte tragen nichts bei – sie
+        machen die Kurve nur unruhig und den Strich lang.
+
+     2. DER VORLETZTE PUNKT RUECKT ZU SEINEN NACHBARN. Ein leichter
+        Mittelwert (1:2:1) nimmt das Zittern heraus, das jede Hand hat.
+
+     >>> Warum der VORLETZTE und nicht der letzte <<<
+     Der letzte Punkt ist die Stelle, an der die Spitze GERADE steht.
+     Wer den verschiebt, laesst den Strich hinter dem Stift herlaufen –
+     und genau darueber wurde schon einmal geklagt. Der vorletzte liegt
+     bereits fest, ihn zurechtzuruecken sieht niemand als Verzoegerung.
+     Jeder Punkt wird dabei genau einmal angefasst, nicht bei jeder
+     Bewegung erneut: sonst wanderte die Schrift mit der Zeit in sich
+     zusammen.
+     ══════════════════════════════════════════════════════════════════ */
+  const PUNKT_MIN_ABSTAND = 0.6;   // Bildschirm-Pixel
+
+  function weitGenugWeg(pts, c) {
+    const letzter = pts[pts.length - 1];
+    if (!letzter) return true;
+    const zoom = (typeof getZoom === 'function' ? getZoom() : 1) || 1;
+    const schwelle = PUNKT_MIN_ABSTAND / zoom;
+    return Math.hypot(c.x - letzter.x, c.y - letzter.y) >= schwelle;
+  }
+
+  function glaetteVorletzten(pts) {
+    const n = pts.length;
+    if (n < 3) return;
+    const a = pts[n - 3], b = pts[n - 2], c = pts[n - 1];
+    b.x = (a.x + 2 * b.x + c.x) / 4;
+    b.y = (a.y + 2 * b.y + c.y) / 4;
+  }
+
   /**
    * Einen Strich beginnen – mit Stift, Maus oder Finger.
    *
@@ -728,16 +810,15 @@ function attachInput(canvas, textDiv, objLayer, page) {
       S.strokeHistory[page.id].push(stroke); S._cur = stroke;
       _halteBei = null;
       armLineTimer(stroke, c);
-      if (stroke.isHL) {
-        const pw = page.w || CFG.PAGE_W;
-        const ph = page.h || CFG.PAGE_H;
-        const lctx = getLiveCtx(div, pw, ph);
-        lctx.save(); lctx.fillStyle = stroke.color;
-        lctx.beginPath(); lctx.arc(c.x, c.y, stroke.width / 2, 0, Math.PI * 2); lctx.fill(); lctx.restore();
-      } else {
+      /* Der Radierer arbeitet auf der Seite selbst – er nimmt weg
+         (destination-out), und wegnehmen kann man nur dort, wo etwas
+         liegt. Alles andere entsteht auf der Vorschau (stiftVorschau). */
+      if (stroke.isEraser) {
         const ctx = canvas.getContext('2d'); ctx.save(); ctx.fillStyle = stroke.color;
-        if (stroke.isEraser) ctx.globalCompositeOperation = 'destination-out';
+        ctx.globalCompositeOperation = 'destination-out';
         ctx.beginPath(); ctx.arc(c.x, c.y, stroke.width / 2, 0, Math.PI * 2); ctx.fill(); ctx.restore();
+      } else {
+        stiftVorschau(stroke);
       }
     }
   }
@@ -891,15 +972,16 @@ function attachInput(canvas, textDiv, objLayer, page) {
     }
 
     let c = null;
+    let gewachsen = false;
     for (const ev of meldungen) {
       c = amLinealAusrichten(coords(ev), canvas, page);
       /* Steht die Gerade fest, zählt nur noch ihr Ende – die Punkte
          dazwischen wirft der Zweig unten ohnehin weg. */
       if (stroke._lineLocked) continue;
+      if (!weitGenugWeg(stroke.path, c)) continue;
       stroke.path.push({ x: c.x, y: c.y, p: c.p });
-      // Nur das neue Stück nachziehen. Der Marker und die festgestellte
-      // Gerade brauchen die ganze Fläche – die kommen unten dran.
-      if (!stroke._shapeDetected && !stroke.isHL) liveDrawIncr(ctx, c);
+      glaetteVorletzten(stroke.path);
+      gewachsen = true;
     }
     if (!c) return;
 
@@ -909,18 +991,13 @@ function attachInput(canvas, textDiv, objLayer, page) {
     if (stroke._lineLocked && !stroke._shapeDetected) {
       const start = stroke.path[0] || { x: c.x, y: c.y, p: c.p };
       stroke.path = [start, { x: c.x, y: c.y, p: c.p }];
-      clearLiveCanvas();
-      redrawStrokes(canvas, S.strokeHistory[page.id]);
-    } else if (stroke.isHL && !stroke._shapeDetected) {
-      const pw = page.w || CFG.PAGE_W;
-      const ph = page.h || CFG.PAGE_H;
-      const lctx = getLiveCtx(div, pw, ph);
-      lctx.clearRect(0, 0, pw, ph);
-      lctx.save();
-      applyStrokeStyles(lctx, stroke);
-      traceStrokePath(lctx, stroke);
-      lctx.restore();
+      gewachsen = true;
     }
+
+    /* Nichts dazugekommen heisst nichts zu zeichnen. Ohne diese Frage
+       liefe bei jeder ruhig gehaltenen Spitze die ganze Vorschau neu –
+       fuer ein Bild, das genauso aussieht wie das davor. */
+    if (gewachsen && !stroke._shapeDetected) stiftVorschau(stroke);
   }, { passive: false });
 
   div.addEventListener('pointerup', e => {
@@ -931,7 +1008,15 @@ function attachInput(canvas, textDiv, objLayer, page) {
     stopLineTimer(S._cur);
     clearLiveCanvas();
     if (S.mode === 'eraser' && S._restoreMode) { switchMode(S._restoreMode); S._restoreMode = null; }
-    if (S._cur?.isHL || S._cur?.isEraser) redrawStrokes(canvas, S.strokeHistory[page.id]);
+
+    /* ── Und jetzt gehoert er der Seite ───────────────────────────────
+       Hier stand `if (isHL || isEraser)`. Der gewoehnliche Strich lag zu
+       diesem Zeitpunkt naemlich schon auf der Seite – Stueck fuer Stueck
+       waehrend des Zeichnens hingemalt, und genau davon war er fleckig
+       (siehe stiftVorschau). Jetzt liegt er auf der Vorschau, und die ist
+       eine Zeile darueber gerade geleert worden. Ohne dieses Neuzeichnen
+       waere der Strich beim Abheben schlicht verschwunden. */
+    if (S._cur && !S._cur._lasso) redrawStrokes(canvas, S.strokeHistory[page.id]);
 
     const finished = S._cur;
 
@@ -1180,7 +1265,14 @@ function getLiveCtx(parentDiv, dw = CFG.PAGE_W, dh = CFG.PAGE_H) {
   if (!_liveCanvas) {
     _liveCanvas = document.createElement('canvas');
     _liveCanvas.className = 'j-canvas live-canvas';
-    _liveCanvas.style.cssText = 'pointer-events:none;z-index:11;position:absolute;inset:0;opacity:0.38;';
+    /* ── Wo die Vorschau liegt ────────────────────────────────────────
+       Hier stand z-index 11 – UNTER dem Text (1000) und unter der
+       Zeichenflaeche (1100). Der laufende Strich lag damit woanders als
+       der fertige: geschrieben ueber getippten Text, sprang er beim
+       Abheben davor. Eine Zahl ueber der Zeichenflaeche zeigt ihn dort,
+       wo er nachher wirklich steht; Bilder im vorderen Band (2000)
+       bleiben weiter obenauf, auch das wie beim fertigen Strich. */
+    _liveCanvas.style.cssText = 'pointer-events:none;z-index:1101;position:absolute;inset:0;opacity:0.38;';
     _liveCanvas.width = Math.round(dw * dpr); _liveCanvas.height = Math.round(dh * dpr);
     _liveCanvas.style.width = dw + 'px'; _liveCanvas.style.height = dh + 'px';
     const ctx = _liveCanvas.getContext('2d');
@@ -1200,11 +1292,29 @@ function getLiveCtx(parentDiv, dw = CFG.PAGE_W, dh = CFG.PAGE_H) {
   if (_liveCanvas.parentElement !== parentDiv) parentDiv.appendChild(_liveCanvas);
   return _liveCanvas.getContext('2d');
 }
+/* ══════════════════════════════════════════════════════════════════════
+   GELEERT, NICHT WEGGEWORFEN
+
+   Hier wurde die Flaeche bei jedem Abheben aus dem Dokument genommen und
+   verworfen; die naechste getLiveCtx baute eine neue. Solange nur Marker
+   und Schlinge sie benutzten, fiel das nicht auf – jetzt laeuft JEDER
+   Strich darueber, und eine Seite in voller Aufloesung sind gut zwanzig
+   Megabyte, die dann bei jedem einzelnen Wort neu angefordert und wieder
+   freigegeben wuerden. Das ist genau die Sorte Arbeit, die sich als
+   Stocken beim Aufsetzen bemerkbar macht.
+
+   Es gibt ohnehin nur EINE solche Flaeche; sie wandert mit (getLiveCtx
+   haengt sie an die Seite um, auf der gerade gezeichnet wird). Geleert
+   liegt sie unsichtbar da und kostet nichts.
+   ══════════════════════════════════════════════════════════════════════ */
 function clearLiveCanvas() {
-  if (_liveCanvas) {
-    _liveCanvas.remove();
-    _liveCanvas = null;
-  }
+  if (!_liveCanvas) return;
+  const ctx = _liveCanvas.getContext('2d');
+  ctx.save();
+  // Ohne die Einheitsmatrix waere die Flaeche um den DPR-Faktor zu klein
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.clearRect(0, 0, _liveCanvas.width, _liveCanvas.height);
+  ctx.restore();
 }
 
 /* Die Vorschau-Fläche liegt mit 38 % Deckkraft da – das ist der Marker.
@@ -1496,17 +1606,18 @@ function buildStroke(c) {
   return { ...start, color: '#000', width: 4, isHL: false };
 }
 /* ══════════════════════════════════════════════════════════════════════
-   WAS BEIM SCHREIBEN ZU SEHEN IST, BLEIBT AUCH STEHEN
+   NUR NOCH FUER DEN RADIERER
 
-   Hier stand `s.width * (0.5 + cur.p)`: der Strich unter dem Stift wurde
-   mit dem Druck dicker und dünner. Fertig gezeichnet wird er aber überall
-   sonst mit `s.width` – gleichmässig (canvas/drawing.js,
-   applyStrokeStyles). Beim Abheben sprang die eben geschriebene Zeile
-   deshalb sichtbar auf eine andere Dicke.
+   Das neue Stueck Strich auf die Seite malen – das machte einmal jedes
+   Werkzeug, und davon wurde die duenne Linie fleckig (stiftVorschau).
+   Der Radierer braucht es weiter: er nimmt weg (destination-out), und
+   wegnehmen laesst sich nur dort, wo etwas liegt.
 
-   Der Druck geht damit verloren; er war ohnehin nur geliehen, denn
-   gespeichert wurde er nie. Und ein Strich, der beim Loslassen die Form
-   wechselt, fühlt sich falscher an als einer ohne Druckstärke.
+   Die Breite kommt aus `s.width`. Hier stand `s.width * (0.5 + cur.p)`,
+   also mit dem Druck dicker und duenner – fertig gezeichnet wird aber
+   ueberall sonst gleichmaessig (canvas/drawing.js, applyStrokeStyles),
+   und ein Strich, der beim Abheben seine Form wechselt, fuehlt sich
+   falscher an als einer ohne Druckstaerke.
    ══════════════════════════════════════════════════════════════════════ */
 function liveDrawIncr(ctx, c) { const s = S._cur; if (!s) return; const pts = s.path; if (pts.length < 2) return; const prev = pts[pts.length - 2], cur = pts[pts.length - 1]; ctx.save(); ctx.strokeStyle = s.color; ctx.lineWidth = s.width; ctx.lineCap = 'round'; ctx.lineJoin = 'round'; if (s.isHL) ctx.globalAlpha = 0.38; if (s.isEraser) ctx.globalCompositeOperation = 'destination-out'; ctx.beginPath(); if (pts.length >= 3) { const pp = pts[pts.length - 3]; ctx.moveTo((pp.x + prev.x) / 2, (pp.y + prev.y) / 2); ctx.quadraticCurveTo(prev.x, prev.y, (prev.x + cur.x) / 2, (prev.y + cur.y) / 2); } else { ctx.moveTo(prev.x, prev.y); ctx.lineTo(cur.x, cur.y); } ctx.stroke(); ctx.restore(); }
 
