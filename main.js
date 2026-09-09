@@ -598,6 +598,11 @@ function createWindow() {
   win.loadURL(`${uiOrigin}/index.html`);
   Menu.setApplicationMenu(null);
 
+  /* Ohne das pruefte Chromium bis zur ersten Meldung aus der Oberflaeche
+     in der Sprache des Systems – auf einem italienischen Rechner also
+     eine Seite lang alles rot. */
+  setzeRechtschreibung('');
+
   /* Firebase öffnet für die Anmeldung ein Fenster auf seiner eigenen
      Adresse und redet per postMessage mit uns zurück. Electron blockt
      window.open ohne diese Freigabe – die Anmeldung bliebe stumm hängen.
@@ -891,6 +896,60 @@ ipcMain.handle('notify-chat', (_, daten = {}) => {
 ipcMain.on('silent-auth', (_, an) => {
   stilleAnmeldungBis = an ? Date.now() + SILENT_AUTH_MS : 0;
 });
+
+/* ══════════════════════════════════════════════════════════════════════
+   IN WELCHER SPRACHE DIE ROTE WELLENLINIE PRUEFT
+
+   >>> Hier war auf einem italienischen Rechner alles rot <<<
+   Gemeldet: „auf Italienisch wird der Text im Dokument als falsch
+   angezeigt, dasselbe mit Englisch, wenn man auf Deutsch schreibt."
+   Der Grund: Chromium nimmt ungefragt die Sprache des Betriebssystems.
+   Wer darin Deutsch schreibt, hat unter jedem zweiten Wort eine rote
+   Welle – und die kommt nicht von einem Fehler, sondern vom falschen
+   Woerterbuch.
+
+   Das `lang`-Merkmal am Textfeld hilft dabei NICHT: Chromium liest es
+   fuer die Rechtschreibung nicht aus, es entscheidet allein hier.
+
+   >>> Warum mehrere Sprachen zugleich <<<
+   Chromium kann gegen mehrere Woerterbuecher pruefen und markiert nur,
+   was in KEINEM steht. Genau das ist hier richtig: die App gibt es auf
+   Deutsch, Englisch und Italienisch, und wer sie auf Italienisch
+   bedient, schreibt darin trotzdem womoeglich deutsche Notizen. Die
+   eingestellte Sprache steht vorn – bei einem Wort, das es in mehreren
+   gibt, entscheidet die Reihenfolge ueber die Vorschlaege.
+
+   Auf macOS geht das an die Rechtschreibpruefung des Systems und wird
+   dort still uebergangen; das ist in Ordnung, dort stellt der Nutzer
+   sie selbst ein.
+   ══════════════════════════════════════════════════════════════════════ */
+const SPRACH_WOERTERBUCH = { de: 'de', en: 'en-US', it: 'it' };
+
+function setzeRechtschreibung(sprache) {
+  if (!win || win.isDestroyed()) return;
+  const ses = win.webContents.session;
+  if (typeof ses.setSpellCheckerLanguages !== 'function') return;
+
+  const gewuenscht = [];
+  const zuerst = SPRACH_WOERTERBUCH[sprache];
+  if (zuerst) gewuenscht.push(zuerst);
+  for (const code of Object.values(SPRACH_WOERTERBUCH)) {
+    if (!gewuenscht.includes(code)) gewuenscht.push(code);
+  }
+
+  /* Nur nehmen, was dieser Build wirklich mitbringt – eine unbekannte
+     Kennung laesst setSpellCheckerLanguages werfen, und dann bliebe gar
+     keine Pruefung uebrig. */
+  let moeglich = [];
+  try { moeglich = ses.availableSpellCheckerLanguages || []; } catch (err) { moeglich = []; }
+  const liste = moeglich.length ? gewuenscht.filter(c => moeglich.includes(c)) : gewuenscht;
+  if (!liste.length) return;
+
+  try { ses.setSpellCheckerLanguages(liste); }
+  catch (err) { console.warn('[Rechtschreibung] Nicht gesetzt:', err.message); }
+}
+
+ipcMain.on('spell-language', (_, sprache) => setzeRechtschreibung(String(sprache || '')));
 
 /* Nur das Netz und die Post, nichts von der Platte.
    shell.openExternal reicht ALLES an das Betriebssystem weiter – auch

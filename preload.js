@@ -29,6 +29,10 @@ contextBridge.exposeInMainWorld('api', {
   // Das nächste Anmeldefenster bleibt unsichtbar (stiller Versuch beim Start)
   setSilentAuth:    (an) => ipcRenderer.send('silent-auth', !!an),
 
+  /* In welcher Sprache die rote Wellenlinie prueft. Chromium nimmt sonst
+     die des Betriebssystems – siehe main.js, setzeRechtschreibung. */
+  setSpellLanguage: (sprache) => ipcRenderer.send('spell-language', String(sprache || '')),
+
   /* Laeuft diese Fassung aus dem Microsoft Store?
 
      Dort aktualisiert der Store selbst. Der eigene Updater darf gar

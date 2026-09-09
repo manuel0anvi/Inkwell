@@ -3095,10 +3095,31 @@ function t(key) {
   return text;
 }
 
+/* ══════════════════════════════════════════════════════════════════════
+   DIE SPRACHE GILT AUCH FUER DIE RECHTSCHREIBPRUEFUNG
+
+   >>> Sonst ist der ganze Text rot <<<
+   Chromium prueft in der Sprache des Betriebssystems, nicht in der der
+   App. Wer auf einem italienischen Rechner deutsche Notizen schreibt,
+   bekam unter fast jedem Wort eine rote Welle – gemeldet als „auf
+   Italienisch wird alles als falsch angezeigt".
+
+   Gesetzt wird es im Hauptprozess (main.js, setzeRechtschreibung); das
+   Merkmal lang= am Textfeld reicht dafuer nicht, Chromium liest es fuer
+   die Rechtschreibung gar nicht. Im Browser gibt es window.api nicht –
+   dort entscheidet weiter der Browser, und lang= ist das Einzige, was
+   wir ihm sagen koennen. Deshalb steht es trotzdem da.
+   ══════════════════════════════════════════════════════════════════════ */
+function sagSpracheWeiter() {
+  try { document.documentElement.lang = _currentLang; } catch (e) { /* zu frueh */ }
+  try { window.api?.setSpellLanguage?.(_currentLang); } catch (e) { /* kein Desktop */ }
+}
+
 // Set language
 function setLanguage(lang) {
   if (TRANSLATIONS[lang]) {
     _currentLang = lang;
+    sagSpracheWeiter();
     applyTranslations();
   }
 }
