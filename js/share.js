@@ -123,6 +123,39 @@ const INK_SHEET_LIMIT = 600000;
 // Kennzeichen im Kopf: 'pages' = zerlegt, sonst die alte Klumpenform.
 const DOC_FORMAT = 'pages';
 
+/* ── Der Stand des geteilten Formats ─────────────────────────────────
+
+   >>> Wozu die Zahl da ist <<<
+   Zwei Leute an einem geteilten Dokument müssen dieselbe Vorstellung
+   davon haben, wie der Raum aufgebaut ist: Yjs-Stände, Änderungsstrom,
+   Rollenliste, Merkzettel. Ändert sich daran etwas, dürfen die beiden
+   Fassungen nicht mehr zusammen hinein – siehe versionPasst().
+
+   >>> Warum es nicht die Fassung der App ist <<<
+   Hier stand die App-Version, und damit sperrte JEDE Auslieferung alle
+   voneinander aus: eine geänderte Farbe im Werkzeugkasten machte ein
+   Dokument für alle zu, die noch nicht aktualisiert hatten. Die Sperre
+   traf damit ein Vielfaches dessen, was sie schützen soll.
+
+   Diese Zahl ändert sich NUR, wenn sich am geteilten Format wirklich
+   etwas ändert. Sie hat mit der Fassung der App nichts zu tun: 1.1.7 und
+   1.2.0 dürfen zusammenarbeiten, solange die Zahl dieselbe ist.
+
+   >>> Wann sie hochzuzählen ist <<<
+   Wenn eine Änderung dazu führt, dass eine ältere Fassung den Raum
+   falsch liest oder falsch beschreibt. Zum Beispiel: ein Feld an der
+   Seite bekommt eine andere Bedeutung, der Yjs-Aufbau ändert sich, der
+   Änderungsstrom bekommt eine neue Art von Eintrag, die alte Fassungen
+   nicht kennen.
+
+   NICHT hochzuzählen ist sie für alles, was nur diese eine Installation
+   angeht: Oberfläche, Werkzeuge, Übersetzungen, Fehlerbehebungen.
+
+   Im Zweifel hochzählen. Ein zu strenger Riegel kostet einen Klick auf
+   „Aktualisieren"; ein zu lascher kostet Arbeit, und zwar erst Tage
+   später und ohne dass jemand weiss, warum. */
+const FORMAT_STAND = 1;
+
 // Rollen. 'off' gibt es nur für linkMode: dann führt kein Link mehr hin.
 const ROLES = ['view', 'edit'];
 const LINK_MODES = ['off', 'view', 'edit'];
@@ -845,9 +878,9 @@ async function isOwnShare(shareId) {
 /* ══════════════════════════════════════════════════════════════════════
    VERSIONSSPERRE
 
-   Wer ein geteiltes Dokument öffnen will, muss dieselbe Fassung von
-   Inkwells haben wie der Besitzer. Sonst kommt er gar nicht hinein – auch
-   nicht zum Lesen, und auch nicht über einen Link.
+   Wer ein geteiltes Dokument öffnen will, muss denselben FORMATSTAND
+   haben wie das Dokument. Sonst kommt er gar nicht hinein – auch nicht
+   zum Lesen, und auch nicht über einen Link.
 
    >>> Warum so streng, und warum in BEIDE Richtungen <<<
    Ein geteiltes Dokument ist kein Dateiformat, das man verträglich
@@ -863,11 +896,21 @@ async function isOwnShare(shareId) {
    wenig. Wer schreibt, schreibt in einer Form, die der andere nicht
    kennt.
 
-   Verglichen wird die Fassung, wie sie ist – nicht „grösser oder
-   kleiner". Ein Vergleich mit grösser/kleiner wäre eine Aussage über
-   Verträglichkeit, und die trifft hier niemand.
+   >>> Was hier NICHT mehr verglichen wird: die Fassung der App <<<
+   Genau das stand hier, und es war zu grob. Der Riegel schnappte bei
+   JEDER Auslieferung zu – auch bei einer, die am geteilten Raum keinen
+   Strich geändert hatte. Zwei Leute, von denen einer die App eine Woche
+   nicht aktualisiert hatte, kamen an ihr gemeinsames Dokument nicht mehr
+   heran. Und weil der Kopf seine Angabe nur beim vollständigen Neu-
+   Teilen bekommt, sperrte sich am Ende sogar der Besitzer selbst aus:
+   sein Dokument trug die Fassung von damals, er lief mit der von heute.
 
-   Ein Kopf ohne Angabe stammt aus der Zeit vor dieser Sperre. Der bleibt
+   Verglichen wird deshalb FORMAT_STAND (siehe oben) – eine Zahl, die
+   sich nur ändert, wenn sich am Format wirklich etwas ändert. Der Satz
+   für den Nutzer nennt weiter die App-Fassungen: „Formatstand 1 gegen 2"
+   sagt niemandem etwas, „du hast 1.1.4, der Besitzer 1.2.0" schon.
+
+   Ein Kopf ohne Stand stammt aus der Zeit vor dieser Sperre. Der bleibt
    offen: sonst wäre jedes bestehende Dokument mit einem Schlag für alle
    zu, und niemand käme mehr an seine Sachen.
    ══════════════════════════════════════════════════════════════════════ */
@@ -886,34 +929,30 @@ async function eigeneAppVersion() {
 }
 
 /**
- * Passt die eigene Fassung zu der des Dokuments?
+ * Passt der eigene Formatstand zu dem des Dokuments?
+ *
+ * Entschieden wird über FORMAT_STAND; die App-Fassungen wandern nur für
+ * den Satz mit, den der Nutzer zu sehen bekommt.
  *
  * @returns {Promise<{ok:boolean, meine:string, ihre:string, wer:'ich'|'besitzer'|''}>}
- *   `wer` sagt, WESSEN Fassung die ältere ist – daraus wird der Satz für
+ *   `wer` sagt, WESSEN Seite die ältere ist – daraus wird der Satz für
  *   den Nutzer. Bei ok ist es leer.
  */
 async function versionPasst(head) {
   const ihre = String(head && head.appVersion || '').trim();
   const meine = await eigeneAppVersion();
 
-  // Ohne Angabe auf einer der beiden Seiten wird nicht gesperrt
-  if (!ihre || !meine) return { ok: true, meine, ihre, wer: '' };
-  if (ihre === meine) return { ok: true, meine, ihre, wer: '' };
+  /* Ein Kopf ohne Stand ist von vor der Sperre – der bleibt offen. Auch
+     eine 0 aus describeDoc landet hier: dort wird alles, was keine
+     brauchbare Zahl ist, zu 0. */
+  const ihrStand = Number.isInteger(head && head.formatStand) && head.formatStand > 0
+    ? head.formatStand : 0;
+  if (!ihrStand || ihrStand === FORMAT_STAND) return { ok: true, meine, ihre, wer: '' };
 
-  /* Wer ist älter? Nur für den Satz, nicht für die Entscheidung – die
-     ist schon gefallen. Teil für Teil als Zahl, damit 1.10.0 nach 1.9.0
-     kommt und nicht davor. */
-  const teile = (v) => String(v).split('.').map(s => Number.parseInt(s, 10) || 0);
-  const a = teile(meine), b = teile(ihre);
-  let wer = '';
-  for (let i = 0; i < Math.max(a.length, b.length); i++) {
-    const x = a[i] || 0, y = b[i] || 0;
-    if (x === y) continue;
-    wer = x < y ? 'ich' : 'besitzer';
-    break;
-  }
-
-  return { ok: false, meine, ihre, wer };
+  /* Wer ist älter? Das sagt die Zahl unmittelbar – ein Vergleich der
+     Fassungsnummern ist dafür nicht mehr nötig. Traegt das Dokument den
+     hoeheren Stand, ist die eigene Seite die aeltere. */
+  return { ok: false, meine, ihre, wer: ihrStand > FORMAT_STAND ? 'ich' : 'besitzer' };
 }
 
 function requireIdentity() {
@@ -984,10 +1023,16 @@ function describeDoc(docId, data) {
        und trägt ihn in den Kopf ein (joinDocRoom). Der Besetzer sitzt
        dann in einem Raum, in den niemand mehr kommt. */
     roomKey: typeof data.roomKey === 'string' && data.roomKey ? data.roomKey : docId,
-    /* Mit welcher Fassung von Inkwells der Besitzer arbeitet. Leer heisst:
-       aus der Zeit davor – dann wird nicht gesperrt. Siehe
-       versionPasst() weiter unten. */
+    /* Mit welcher Fassung von Inkwells der Besitzer zuletzt geschrieben
+       hat. Sie entscheidet NICHTS mehr – sie steht nur noch in dem Satz,
+       den ein Ausgesperrter zu sehen bekommt. Siehe versionPasst(). */
     appVersion: typeof data.appVersion === 'string' ? data.appVersion : '',
+    /* Der Formatstand des Dokuments – daran haengt die Sperre. 0 heisst:
+       keine Angabe, also aus der Zeit davor, also offen. Alles, was keine
+       brauchbare Zahl ist, wird hier zu 0; versionPasst() muss sich damit
+       nicht noch einmal befassen. */
+    formatStand: Number.isInteger(data.formatStand) && data.formatStand > 0
+      ? data.formatStand : 0,
     /* ── Was geschieht, wenn zwei Texte aneinanderstossen ───────────
        Die Entscheidung des BESITZERS (Einstellungen, textFluss). Sie
        gilt für alle, solange sie in diesem Dokument sind – sonst sähe
@@ -1380,11 +1425,15 @@ async function shareDocument(notebook, options = {}) {
     revision: (existing?.revision || 0) + 1,
     linkMode,
     linkId,
-    /* Die Fassung des Besitzers. Sie entscheidet, wer hereindarf –
-       siehe versionPasst(). Sie steht im Kopf und nicht anderswo, weil
-       jeder sie beim Öffnen ohnehin liest, und weil nur der Besitzer sie
-       ändern darf: editorUpdate() in website/firestore.rules zählt die
-       erlaubten Felder einzeln auf, und sie steht nicht dabei. */
+    /* Der Formatstand entscheidet, wer hereindarf – siehe versionPasst().
+       Er steht im Kopf und nicht anderswo, weil jeder ihn beim Öffnen
+       ohnehin liest, und weil nur der Besitzer ihn ändern darf:
+       editorUpdate() in website/firestore.rules zählt die erlaubten
+       Felder einzeln auf, und er steht nicht dabei.
+
+       Die Fassung des Besitzers reist daneben mit – nur für den Satz,
+       den ein Ausgesperrter zu sehen bekommt. */
+    formatStand: FORMAT_STAND,
     appVersion: await eigeneAppVersion(),
     updatedAt: serverTimestamp()
   };
@@ -1672,6 +1721,29 @@ async function schreibeKopfFort(docId, patch, revision) {
 }
 
 /**
+ * Was der BESITZER bei jedem Schreiben am Kopf mitführt.
+ *
+ * >>> Warum das bei jedem Speichern mitmuss <<<
+ * Den Stand bekam der Kopf nur beim vollständigen Neu-Teilen. Er blieb
+ * damit auf dem Wert von damals stehen, während die App weiterzog – und
+ * sperrte am Ende den Besitzer aus seinem eigenen Dokument aus, ohne dass
+ * es dafür im Fenster einen Ausweg gegeben hätte. Jetzt zieht jedes
+ * gewöhnliche Speichern des Besitzers den Stand nach.
+ *
+ * Nur der Besitzer: editorUpdate() in website/firestore.rules zählt die
+ * Felder auf, die ein Bearbeiter anfassen darf, und diese beiden stehen
+ * nicht dabei. Wären sie im Merkzettel eines Bearbeiters, wiese die Regel
+ * sein ganzes Speichern ab.
+ *
+ * @param {boolean} isOwner
+ * @returns {Promise<object>} leer, wenn es nicht der Besitzer ist
+ */
+async function besitzerStempel(isOwner) {
+  if (!isOwner) return {};
+  return { formatStand: FORMAT_STAND, appVersion: await eigeneAppVersion() };
+}
+
+/**
  * Schreibt Änderungen an einem geteilten Dokument zurück.
  *
  * >>> Was sich mit dem zerlegten Modell geändert hat <<<
@@ -1710,9 +1782,11 @@ async function saveDocumentContent(docId, notebook, options = {}) {
     if (!isOwner) throw new Error('NEEDS_OWNER_UPGRADE');
     await step('Alten Inhalt entfernen', () => clearDocContent(docId));
     await step('Inhalt schreiben', () => writeDocParts(docId, parts, me.uid));
+    const stempel = await besitzerStempel(true);   // hier ist es immer der Besitzer
     await step('Kopf fortschreiben', () => updateDoc(doc(db, DOCS, docId), {
       ...parts.head,
       format: DOC_FORMAT,
+      ...stempel,
       chunkCount: 0,
       revision: head.revision + 1,
       updatedAt: serverTimestamp()
@@ -1735,7 +1809,8 @@ async function saveDocumentContent(docId, notebook, options = {}) {
       pageCount: parts.head.pageCount,
       sections: parts.head.sections,
       // Die Entscheidung des Besitzers reist mit – siehe describeDoc
-      ...(isOwner && notebook.textFluss ? { textFluss: notebook.textFluss } : {})
+      ...(isOwner && notebook.textFluss ? { textFluss: notebook.textFluss } : {}),
+      ...(await besitzerStempel(isOwner))
     }, head.revision + 1);
     return { revision: rev, fingerprint, written: parts.pages.length };
   }
@@ -1793,7 +1868,8 @@ async function saveDocumentContent(docId, notebook, options = {}) {
     pageCount: parts.head.pageCount,
     sections: parts.head.sections,
     // Die Entscheidung des Besitzers reist mit – siehe describeDoc
-    ...(isOwner && notebook.textFluss ? { textFluss: notebook.textFluss } : {})
+    ...(isOwner && notebook.textFluss ? { textFluss: notebook.textFluss } : {}),
+    ...(await besitzerStempel(isOwner))
   }, head.revision + 1);
 
   return { revision, fingerprint, written };
@@ -4469,9 +4545,10 @@ const InkwellsShare = {
   normalizeEmail,
   looksLikeEmail,
 
-  // Versionssperre: passt meine Fassung zu der des Besitzers?
+  // Versionssperre: passt mein Formatstand zu dem des Dokuments?
   versionPasst,
   eigeneAppVersion,
+  FORMAT_STAND,
 
   // Umwandler – reine Funktionen, für Tests und die Oberfläche
   splitNotebook,
@@ -4523,6 +4600,6 @@ export {
   loadDocument, loadPage, registerMyUid, roomRolesFrom,
   docUrlFor, appUrlFor, normalizeEmail, looksLikeEmail,
   splitNotebook, assembleNotebook, fingerprintNotebook,
-  versionPasst, eigeneAppVersion,
+  versionPasst, eigeneAppVersion, FORMAT_STAND,
   joinDocRoom, savePageText, initialsOf, colorForUid
 };
