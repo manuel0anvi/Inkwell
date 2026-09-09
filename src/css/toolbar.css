@@ -521,7 +521,99 @@
   gap: 5px
 }
 
-#custom-color-pop-input {
+/* ── Die Flaeche zum Aussuchen ────────────────────────────────────────
+   Farbfeld und Ton-Streifen, so wie man es von jedem Farbwaehler kennt.
+   Selbst gebaut, damit sie beim Loslassen zugeht – der von Chromium tut
+   das nicht, und auf dem Tablet stand er ueber der Form, die man gerade
+   faerbte (siehe index.html).
+
+   Im Farbfeld liegt WAAGERECHT die Buntheit (links weiss) und SENKRECHT
+   die Helligkeit (unten schwarz). Die Reihenfolge der drei Lagen ist
+   umgekehrt zu ihrer Nennung: was zuerst steht, liegt oben. Der reine
+   Farbton steht als eigene Eigenschaft darunter, damit ihn ui/toolbar.js
+   an einer Stelle setzen kann. */
+.cc-flaeche {
+  margin-bottom: 9px
+}
+
+.cc-feld {
+  position: relative;
+  height: 116px;
+  border-radius: 7px;
+  border: 1px solid var(--sb2);
+  cursor: crosshair;
+  /* Der Finger soll darauf waehlen, nicht die Seite darunter schieben */
+  touch-action: none;
+  background:
+    linear-gradient(to top, #000, rgba(0, 0, 0, 0)),
+    linear-gradient(to right, #fff, rgba(255, 255, 255, 0)),
+    var(--cc-ton, #ff0000)
+}
+
+.cc-ton {
+  position: relative;
+  height: 18px;
+  margin-top: 9px;
+  border-radius: 9px;
+  border: 1px solid var(--sb2);
+  cursor: pointer;
+  touch-action: none;
+  background: linear-gradient(to right,
+    #f00 0%, #ff0 16.66%, #0f0 33.33%, #0ff 50%, #00f 66.66%, #f0f 83.33%, #f00 100%)
+}
+
+/* Zwei Raender, hell und dunkel: eine weisse Marke verschwindet sonst im
+   hellen Eck des Feldes und eine dunkle im schwarzen. */
+.cc-marke {
+  position: absolute;
+  width: 15px;
+  height: 15px;
+  margin: -8px 0 0 -8px;
+  border-radius: 50%;
+  border: 2px solid #fff;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, .55);
+  pointer-events: none
+}
+
+.cc-ton-marke {
+  position: absolute;
+  top: -2px;
+  bottom: -2px;
+  width: 9px;
+  margin-left: -4.5px;
+  border-radius: 5px;
+  border: 2px solid #fff;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, .55);
+  pointer-events: none
+}
+
+@media (any-pointer: coarse) {
+
+  /* Mit dem Finger braucht beides mehr Flaeche */
+  .cc-feld {
+    height: 150px
+  }
+
+  .cc-ton {
+    height: 26px;
+    border-radius: 13px
+  }
+
+  .cc-marke {
+    width: 21px;
+    height: 21px;
+    margin: -11px 0 0 -11px
+  }
+
+  .cc-ton-marke {
+    width: 13px;
+    margin-left: -6.5px
+  }
+}
+
+/* Der Knopf zeigt die Farbe, die gerade gilt, und klappt die Flaeche
+   wieder auf, wenn sie nach dem Waehlen zugegangen ist. */
+.custom-color-swatch {
   width: 34px;
   height: 30px;
   flex-shrink: 0;
@@ -529,7 +621,11 @@
   border-radius: 6px;
   background: var(--sp);
   cursor: pointer;
-  padding: 2px
+  padding: 0
+}
+
+.custom-color-swatch:hover {
+  border-color: var(--gold)
 }
 
 #custom-color-hex {

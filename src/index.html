@@ -1357,8 +1357,39 @@
 
   <div class="custom-color-preset" id="custom-color-preset"></div>
 
+  <!-- ══ DIE FLAECHE ZUM AUSSUCHEN GEHOERT JETZT UNS ═══════════════════
+       Hier stand ein <input type="color">, und der oeffnete den
+       Farbwaehler von Chromium: ein eigenes Fenster, ueber das wir
+       nichts zu sagen haben. Vor allem eines: es geht nicht zu, wenn
+       man den Finger hebt. Auf einem Tablet stand es danach genau ueber
+       der Form, die man gerade gefaerbt hat – man sah das Ergebnis
+       nicht. Gemeldet wurde genau das.
+
+       Ein Schliessen-Befehl dafuer existiert nicht (showPicker() macht
+       auf, ein Gegenstueck gibt es nicht), und ein „Finger gehoben"
+       meldet es uns auch nicht: es schickt beim Ziehen ununterbrochen
+       Aenderungen und beim Loslassen nichts.
+
+       Also dieselbe Flaeche, nur selbst gebaut – Farbfeld und
+       Ton-Streifen, wie man es kennt. Damit gilt die Regel, die dafuer
+       richtig ist: Finger heben heisst fertig. Die Farbe steht, die
+       Flaeche klappt zu, und das Fenster darum bleibt stehen – dort
+       stehen die zuletzt benutzten Farben, und die will man beim
+       Weiterprobieren sehen.
+
+       Das alte Feld bleibt als verstecktes stehen. Es haelt weiterhin
+       die Farbe, die gerade gilt; jede Stelle, die sie liest oder
+       setzt, findet sie unveraendert dort (ui/toolbar.js). -->
+  <input type="hidden" id="custom-color-pop-input" value="#1a1510">
+
+  <div class="cc-flaeche" id="cc-flaeche">
+    <div class="cc-feld" id="cc-feld"><span class="cc-marke" id="cc-feld-marke"></span></div>
+    <div class="cc-ton" id="cc-ton"><span class="cc-ton-marke" id="cc-ton-marke"></span></div>
+  </div>
+
   <div class="custom-color-row">
-    <input type="color" id="custom-color-pop-input" value="#1a1510">
+    <button type="button" class="custom-color-swatch" id="custom-color-swatch"
+            data-i18n-title="colorOwn" title="Eigene Farbe …"></button>
     <input type="text" id="custom-color-hex" spellcheck="false" autocomplete="off"
            maxlength="7" value="#1a1510" aria-label="Farbcode">
     <button class="custom-color-copy" id="custom-color-copy"

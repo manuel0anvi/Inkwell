@@ -187,6 +187,66 @@ app.on('ready', async () => {
     }
     await schritt('Zurück zum Zeiger', `switchMode('cursor')`);
 
+    /* ══════════════════════════════════════════════════════════════════
+       DIE FLAECHE ZUM AUSSUCHEN
+
+       Sie ist selbst gebaut, weil der Farbwaehler von Chromium beim
+       Loslassen nicht zugeht (ui/toolbar.js, index.html). Genau das ist
+       hier zu pruefen, und zwar dreifach – jedes Stueck kann fuer sich
+       kaputtgehen:
+
+         · beim ZIEHEN kommt schon Farbe an, aber noch nicht als
+           endgueltig (sonst stuende nach einem Zug ein Dutzend Farben
+           im Verlauf und in „zuletzt benutzt")
+         · beim ABHEBEN kommt sie endgueltig, und die Flaeche geht zu
+         · das FENSTER darum bleibt stehen – dort stehen die zuletzt
+           benutzten Farben, und die will man weiter sehen
+       ══════════════════════════════════════════════════════════════════ */
+    abschnitt('Die Flaeche zum Aussuchen');
+    await schritt('Ziehen faerbt, Loslassen schliesst nur die Flaeche', `
+      let letzte = null, endgueltig = 0;
+      openCustomColorPopover('shape-fill', document.getElementById('pen-color-ring'),
+        (c, final) => { letzte = c; if (final) endgueltig++; }, '#111111');
+
+      const feld = document.getElementById('cc-feld');
+      const flaeche = document.getElementById('cc-flaeche');
+      const fenster = document.getElementById('custom-color-pop');
+      const r = feld.getBoundingClientRect();
+      if (!r.width || !r.height) throw new Error('Die Flaeche steht nicht da');
+
+      const schick = (art, x, y) => feld.dispatchEvent(new PointerEvent(art, {
+        bubbles: true, cancelable: true, pointerId: 91, pointerType: 'touch',
+        clientX: x, clientY: y }));
+      const x = r.left + r.width * 0.85, y = r.top + r.height * 0.15;
+
+      schick('pointerdown', x, y);
+      if (!letzte) throw new Error('Beim Aufsetzen kam keine Farbe an');
+      if (endgueltig) throw new Error('Schon beim Ziehen als endgueltig gemeldet');
+      if (flaeche.style.display === 'none') throw new Error('Sie ging schon beim Aufsetzen zu');
+      const beimZiehen = letzte;
+
+      schick('pointermove', x - r.width * 0.3, y);
+      if (letzte === beimZiehen) throw new Error('Das Ziehen aenderte nichts');
+      if (endgueltig) throw new Error('Das Ziehen meldete endgueltig');
+
+      schick('pointerup', x - r.width * 0.3, y);
+      if (endgueltig !== 1) throw new Error('Beim Abheben kam kein endgueltiges Ergebnis (' + endgueltig + ')');
+      if (flaeche.style.display !== 'none') throw new Error('Die Flaeche blieb offen');
+      if (fenster.style.display !== 'block') throw new Error('Das Fenster ging mit zu');
+      if (!/^#[0-9a-f]{6}$/.test(letzte)) throw new Error('Keine brauchbare Farbe: ' + letzte);
+
+      // Der Knopf daneben holt die Flaeche zurueck
+      document.getElementById('custom-color-swatch').click();
+      if (flaeche.style.display === 'none') throw new Error('Der Knopf holt sie nicht zurueck');
+      closeCustomColorPopover();`);
+
+    await schritt('Farbe hin und zurueck gerechnet bleibt dieselbe', `
+      for (const hex of ['#2a5fa8', '#c04040', '#ffffff', '#000000', '#7f7f7f', '#e8c547']) {
+        const h = hexNachHsv(hex);
+        const zurueck = hsvNachHex(h.h, h.s, h.v);
+        if (zurueck !== hex) throw new Error(hex + ' wurde zu ' + zurueck);
+      }`);
+
     /* ── Rückgängig und Wiederholen ───────────────────────────────── */
     abschnitt('Rückgängig');
     await schritt('Ein Schritt wird gemerkt', `pushPageHistory(getNb().pages[0])`);

@@ -438,13 +438,41 @@ function closeCustomColorPopover() {
   _customColorAnchor = null;
 }
 
+/* ══════════════════════════════════════════════════════════════════════
+   ES MUSS AUCH HINEINPASSEN
+
+   Seit die Flaeche zum Aussuchen darin steht, ist das Fenster gut
+   viermal so hoch wie vorher. Unter einer Form am unteren Blattrand ragte
+   es damit aus dem Bild – und ausgerechnet dort steht der Knopf, der es
+   geoeffnet hat. Passt es unten nicht, geht es nach oben; seitlich wird
+   es in den Rand hineingeschoben.
+   ══════════════════════════════════════════════════════════════════════ */
 function positionCustomColorPopover(anchorEl) {
   const pop = E('custom-color-pop');
   if (!pop || !anchorEl) return;
   const r = anchorEl.getBoundingClientRect();
-  pop.style.left = Math.round(r.left + r.width / 2) + 'px';
-  pop.style.top = Math.round(r.bottom + 8) + 'px';
-  pop.style.transform = 'translateX(-50%)';
+  const rand = 8;
+
+  /* Gemessen wird, waehrend es steht – der Aufrufer hat es vorher
+     sichtbar gemacht. Die Ersatzwerte gelten nur, falls doch nicht. */
+  const mass = pop.getBoundingClientRect();
+  const breite = mass.width || 200;
+  const hoehe = mass.height || 260;
+
+  let links = r.left + r.width / 2 - breite / 2;
+  links = Math.max(rand, Math.min(links, window.innerWidth - breite - rand));
+
+  let oben = r.bottom + 8;
+  if (oben + hoehe > window.innerHeight - rand) {
+    const darueber = r.top - 8 - hoehe;
+    oben = darueber >= rand ? darueber : Math.max(rand, window.innerHeight - hoehe - rand);
+  }
+
+  // Die linke Kante wird jetzt selbst gerechnet, das Verschieben um die
+  // halbe Breite wuerde sie wieder aus dem Rand tragen
+  pop.style.transform = 'none';
+  pop.style.left = Math.round(links) + 'px';
+  pop.style.top = Math.round(oben) + 'px';
 }
 
 function normalizeHexColor(color) {
@@ -554,9 +582,14 @@ function openCustomColorPopover(target, anchorEl, onApply, startFarbe) {
   input.value = c;
   const hexFeld = E('custom-color-hex');
   if (hexFeld) hexFeld.value = c;
+  const knopf = E('custom-color-swatch');
+  if (knopf) knopf.style.background = c;
 
-  // Keine Preset-Farben mehr – der native Picker öffnet direkt, der
-  // Nutzer will keine vorgefertigten Felder davor.
+  /* Aufgeklappt, nicht zugeklappt: wer das Fenster oeffnet, will eine
+     Farbe aussuchen. Nach dem Aussuchen geht die Flaeche von selbst zu
+     (bindeFarbZiehen) und der Knopf daneben holt sie zurueck. */
+  setzeFarbFlaeche(c);
+  zeigeFarbFlaeche(true);
 
   pop.style.display = 'block';
   positionCustomColorPopover(anchorEl);
@@ -782,9 +815,180 @@ function applyCustomColorValue(color, commitHistory) {
   } else {
     return;   // Fenster war fuer etwas anderes offen und ist schon zu
   }
+  /* Der Knopf zeigt immer die Farbe, die gerade gilt – gleich, woher sie
+     kam. Die Flaeche wird nur nachgezogen, wenn die Farbe NICHT aus ihr
+     selbst stammt: sonst rechnete jeder Zug seine eigene Marke neu, und
+     an Schwarz und Grau verlöre sie dabei ihren Farbton. */
+  const knopf = E('custom-color-swatch');
+  if (knopf) knopf.style.background = c;
+  E('custom-color-pop-input').value = c;
+  if (!_ccAusFlaeche) setzeFarbFlaeche(c);
+  /* Der Zahlencode lief bisher nur bei Stift und Text mit
+     (syncGlobalCustomColor); ueber einer Form stand dort die ganze Zeit
+     die Farbe von vorhin. Wer gerade darin tippt, wird nicht gestoert. */
+  const hexFeld = E('custom-color-hex');
+  if (hexFeld && document.activeElement !== hexFeld) hexFeld.value = c;
+
   if (commitHistory) {
     saveRecentCustomColor(c);
     renderRecentCustomColors();
+  }
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   DIE FLAECHE ZUM AUSSUCHEN
+
+   Farbfeld und Ton-Streifen, gerechnet in HSV: der Streifen gibt den
+   FARBTON, im Feld liegen waagerecht die BUNTHEIT und senkrecht die
+   HELLIGKEIT. Das ist die Aufteilung, die jeder Farbwaehler benutzt, und
+   sie ist die einzige, in der sich „dasselbe Blau, nur heller" mit einem
+   Griff sagen laesst.
+
+   >>> Warum ueberhaupt selbst gerechnet <<<
+   Vorher stand hier ein <input type="color">, und der oeffnete den
+   Farbwaehler von Chromium. Der geht nicht zu, wenn man den Finger hebt,
+   und er sagt uns auch nicht, DASS man ihn gehoben hat – siehe
+   index.html. Ohne dieses „fertig" gibt es kein Zumachen, und ohne
+   Zumachen steht auf dem Tablet ein Fenster ueber genau der Form, die
+   man gerade faerbt.
+
+   Die Farbe selbst liegt weiterhin im versteckten Feld
+   #custom-color-pop-input – jede Stelle, die sie liest oder setzt,
+   findet sie unveraendert dort.
+   ══════════════════════════════════════════════════════════════════════ */
+
+/* Der Zustand der Flaeche. Er wird aus der Farbe abgeleitet, sobald eine
+   von aussen kommt – aber NICHT, waehrend man selbst darin zieht:
+   Schwarz und Grau haben keinen Farbton, und aus ihnen einen
+   zurueckzurechnen wuerde die Marke bei jedem Zug nach links springen
+   lassen. */
+let _ccTon = 0, _ccBuntheit = 1, _ccHelligkeit = 1;
+let _ccAusFlaeche = false;
+
+function hsvNachHex(h, s, v) {
+  const teil = n => {
+    const k = (n + h / 60) % 6;
+    const x = v - v * s * Math.max(0, Math.min(k, 4 - k, 1));
+    return Math.round(Math.max(0, Math.min(1, x)) * 255);
+  };
+  const zwei = n => n.toString(16).padStart(2, '0');
+  return '#' + zwei(teil(5)) + zwei(teil(3)) + zwei(teil(1));
+}
+
+function hexNachHsv(hex) {
+  const r = parseInt(hex.slice(1, 3), 16) / 255;
+  const g = parseInt(hex.slice(3, 5), 16) / 255;
+  const b = parseInt(hex.slice(5, 7), 16) / 255;
+  const max = Math.max(r, g, b), min = Math.min(r, g, b), d = max - min;
+  let h = 0;
+  if (d > 0) {
+    if (max === r) h = ((g - b) / d + 6) % 6;
+    else if (max === g) h = (b - r) / d + 2;
+    else h = (r - g) / d + 4;
+    h *= 60;
+  }
+  return { h, s: max > 0 ? d / max : 0, v: max };
+}
+
+/** Marken und Untergrund an den Zustand anpassen. */
+function zeichneFarbFlaeche() {
+  const feld = E('cc-feld');
+  if (!feld) return;
+  feld.style.setProperty('--cc-ton', hsvNachHex(_ccTon, 1, 1));
+
+  const marke = E('cc-feld-marke');
+  if (marke) {
+    marke.style.left = (_ccBuntheit * 100) + '%';
+    marke.style.top = ((1 - _ccHelligkeit) * 100) + '%';
+    marke.style.background = hsvNachHex(_ccTon, _ccBuntheit, _ccHelligkeit);
+  }
+  const tonMarke = E('cc-ton-marke');
+  if (tonMarke) {
+    tonMarke.style.left = (_ccTon / 360 * 100) + '%';
+    tonMarke.style.background = hsvNachHex(_ccTon, 1, 1);
+  }
+}
+
+/** Die Flaeche auf eine vorgegebene Farbe stellen. */
+function setzeFarbFlaeche(hex) {
+  const c = normalizeHexColor(hex);
+  if (!c) return;
+  const hsv = hexNachHsv(c);
+  /* Bei Schwarz und Grau steht kein Farbton drin. Den bisherigen zu
+     behalten ist die freundlichere Antwort als „dann eben Rot": wer die
+     Helligkeit ganz herunterzieht und wieder herauf, bekommt seine Farbe
+     zurueck. */
+  if (hsv.s > 0.001 && hsv.v > 0.001) _ccTon = hsv.h;
+  _ccBuntheit = hsv.s;
+  _ccHelligkeit = hsv.v;
+  zeichneFarbFlaeche();
+}
+
+/** Ist die Flaeche gerade aufgeklappt? */
+function zeigeFarbFlaeche(an) {
+  const f = E('cc-flaeche');
+  if (f) f.style.display = an ? '' : 'none';
+}
+
+/* ── Ziehen im Feld und auf dem Streifen ──────────────────────────────
+   Beide arbeiten gleich: aufsetzen faengt den Zeiger, jede Bewegung
+   setzt die Farbe sofort (noch ohne Verlaufs-Schritt), und das ABHEBEN
+   ist das „fertig" – dort wird sie festgeschrieben und die Flaeche
+   klappt zu. Genau darum ging es. */
+function bindeFarbZiehen(el, ausPunkt) {
+  if (!el) return;
+  let zieht = false;
+
+  const setze = (ev, endgueltig) => {
+    const r = el.getBoundingClientRect();
+    if (!r.width || !r.height) return;
+    ausPunkt(
+      Math.max(0, Math.min(1, (ev.clientX - r.left) / r.width)),
+      Math.max(0, Math.min(1, (ev.clientY - r.top) / r.height))
+    );
+    zeichneFarbFlaeche();
+    _ccAusFlaeche = true;
+    try { applyCustomColorValue(hsvNachHex(_ccTon, _ccBuntheit, _ccHelligkeit), endgueltig); }
+    finally { _ccAusFlaeche = false; }
+  };
+
+  el.addEventListener('pointerdown', ev => {
+    ev.preventDefault();
+    ev.stopPropagation();
+    zieht = true;
+    try { el.setPointerCapture(ev.pointerId); } catch (e) { }
+    setze(ev, false);
+  });
+  el.addEventListener('pointermove', ev => {
+    if (!zieht) return;
+    ev.preventDefault();
+    setze(ev, false);
+  });
+  const fertig = ev => {
+    if (!zieht) return;
+    zieht = false;
+    try { el.releasePointerCapture(ev.pointerId); } catch (e) { }
+    setze(ev, true);
+    // Finger gehoben heisst fertig – die Flaeche hat ihren Zweck erfuellt
+    zeigeFarbFlaeche(false);
+  };
+  el.addEventListener('pointerup', fertig);
+  el.addEventListener('pointercancel', fertig);
+}
+
+bindeFarbZiehen(E('cc-feld'), (x, y) => { _ccBuntheit = x; _ccHelligkeit = 1 - y; });
+bindeFarbZiehen(E('cc-ton'), x => { _ccTon = x * 360; });
+
+/* Der Knopf mit der Farbe holt die Flaeche zurueck. */
+{
+  const knopf = E('custom-color-swatch');
+  if (knopf) {
+    knopf.addEventListener('mousedown', e => e.preventDefault());
+    knopf.addEventListener('click', e => {
+      e.stopPropagation();
+      const f = E('cc-flaeche');
+      zeigeFarbFlaeche(!f || f.style.display === 'none');
+    });
   }
 }
 
@@ -822,13 +1026,9 @@ bindColorPress(E('pen-color-ring'), el => {
   openCustomColorPopover('pen', el);
 });
 
-E('custom-color-pop-input').addEventListener('input', function () {
-  applyCustomColorValue(this.value, false);
-});
-
-E('custom-color-pop-input').addEventListener('change', function () {
-  applyCustomColorValue(this.value, true);
-});
+/* Das Feld #custom-color-pop-input ist versteckt und haelt nur noch den
+   Wert (siehe index.html). Seine beiden Hoerer sind entfallen: sie
+   gehoerten zum Farbwaehler von Chromium, den es hier nicht mehr gibt. */
 
 /* ── Der Zahlencode ───────────────────────────────────────────────────
    Zum Ablesen, Abschreiben und Eintippen. Wer eine Farbe aus einem
