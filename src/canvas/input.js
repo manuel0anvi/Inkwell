@@ -23,6 +23,34 @@ function attachInput(canvas, textDiv, objLayer, page) {
   /* Ein Finger, der aufgesetzt hat, ohne zu zeichnen: { id, sx, sy }. */
   let _tippStart = null;
 
+  /* ══════════════════════════════════════════════════════════════════
+     DAS RECHTECK DER SEITE WIRD EINEN LIDSCHLAG LANG GEMERKT
+
+     coords() rechnet Bildschirm → Seite und holte sich dafür bei JEDER
+     Bewegung getBoundingClientRect(). Das ist keine harmlose Abfrage:
+     der Browser muss dafür das Layout fertig gerechnet haben und hält
+     alles andere so lange an. Ein Stift meldet 120- bis 240-mal in der
+     Sekunde – so oft geschah es also auch, und genau davon fühlte sich
+     das Schreiben zäh an.
+
+     Gemessen wird deshalb höchstens einmal je Bild (16 ms). Länger darf
+     der Wert nicht stehen bleiben: die Seite kann unter dem Strich noch
+     rollen oder gezoomt werden, und ein veraltetes Rechteck setzte den
+     Strich dann daneben. Ein Bild Verzug sieht niemand, eine ganze
+     Sekunde schon. */
+  const RECT_HALTBAR_MS = 16;
+  let _seitenRect = null;
+  let _seitenRectZeit = 0;
+
+  function seitenRect() {
+    const jetzt = performance.now();
+    if (!_seitenRect || jetzt - _seitenRectZeit > RECT_HALTBAR_MS) {
+      _seitenRect = canvas.getBoundingClientRect();
+      _seitenRectZeit = jetzt;
+    }
+    return _seitenRect;
+  }
+
   function activateTextEditingAt(clientX, clientY, forceManual = false) {
     if (S.mode !== 'cursor') switchMode('cursor');
     textDiv.style.pointerEvents = 'auto';
@@ -415,7 +443,7 @@ function attachInput(canvas, textDiv, objLayer, page) {
   }
 
   function coords(e) {
-    const r = canvas.getBoundingClientRect();
+    const r = seitenRect();
     const pw = page.w || CFG.PAGE_W;
     const ph = page.h || CFG.PAGE_H;
     const scaleX = pw / r.width, scaleY = ph / r.height;
@@ -799,57 +827,87 @@ function attachInput(canvas, textDiv, objLayer, page) {
     unterdrueckeTextTipp();
   });
 
+  /* ══════════════════════════════════════════════════════════════════
+     ALLE PUNKTE, NICHT NUR DEN LETZTEN
+
+     Ein Stift meldet schneller, als der Bildschirm neue Bilder zeigt –
+     120 bis 240 Meldungen je Sekunde gegen 60 Bilder. Der Browser wirft
+     die überzähligen deshalb nicht weg, sondern hängt sie an das eine
+     pointermove an, das er ausliefert (getCoalescedEvents).
+
+     Wer sie nicht abholt, zeichnet aus jedem Bild EINE lange Sehne statt
+     der wirklich gefahrenen Kurve. Genau das machte schnelle Schrift
+     eckig und liess sie hinterherhinken: sichtbar wurde immer nur jeder
+     zweite bis vierte Punkt.
+
+     Teuer ist an einer Bewegung nicht das Anhängen eines Punktes,
+     sondern das Neuzeichnen der ganzen Seite. Deshalb läuft die
+     Schleife nur über das Anhängen und das Stück Strich dazwischen;
+     alles Ganzflächige steht dahinter und geschieht einmal je Bewegung.
+     ══════════════════════════════════════════════════════════════════ */
   div.addEventListener('pointermove', e => {
     // Nur der Zeiger, der den Strich begonnen hat – ein zweiter Finger
     // beim Zoomen darf nicht mitmalen
     if (!S.isDrawing || e.pointerId !== S._drawPointerId) return;
     e.preventDefault();
+
+    const gesammelt = (typeof e.getCoalescedEvents === 'function')
+      ? e.getCoalescedEvents() : null;
+    const meldungen = (gesammelt && gesammelt.length) ? gesammelt : [e];
+
     /* Die Schlinge geht ihren eigenen Weg: kein Lineal, keine Gerade nach
        dem Halten, kein Strich auf der Seite – nur die Vorschau. */
     if (S._cur && S._cur._lasso) {
-      const p = coords(e);
-      S._cur.path.push({ x: p.x, y: p.y, p: p.p });
+      for (const ev of meldungen) {
+        const p = coords(ev);
+        S._cur.path.push({ x: p.x, y: p.y, p: p.p });
+      }
       maleLasso(S._cur);
       return;
     }
-    // An der Lineal-Kante einrasten (siehe ui/ruler.js)
-    const c = amLinealAusrichten(coords(e), canvas, page);
+
     const ctx = canvas.getContext('2d');
+
     if (S.mode === 'eraser' && S.eraser.type === 'stroke' && !S._cur?._lasso) {
-      strokeErase(c, page, canvas);
+      // An der Lineal-Kante einrasten (siehe ui/ruler.js)
+      for (const ev of meldungen) strokeErase(amLinealAusrichten(coords(ev), canvas, page), page, canvas);
+      return;
     }
-    else {
-      if (S._cur?.isEraser) geradeGanzWeg(c, page, canvas);
-      if (S._cur) {
-        const stroke = S._cur;
-        if (!stroke.isEraser) armLineTimer(stroke, c);
-        // If a shape was detected, don't override it with line logic
-        if (stroke._lineLocked && !stroke._shapeDetected && !stroke.isEraser) {
-          const start = stroke.path[0] || { x: c.x, y: c.y, p: c.p };
-          stroke.path = [start, { x: c.x, y: c.y, p: c.p }];
-          clearLiveCanvas();
-          redrawStrokes(canvas, S.strokeHistory[page.id]);
-        } else if (!stroke._lineLocked) {
-          stroke.path.push({ x: c.x, y: c.y, p: c.p });
-        }
-        // Draw preview
-        if (stroke._lineLocked && !stroke._shapeDetected) {
-          // already redrawn above for line
-        } else if (stroke._shapeDetected) {
-          // Shape is already rendered, don't update
-        } else if (S._cur.isHL) {
-          const pw = page.w || CFG.PAGE_W;
-          const ph = page.h || CFG.PAGE_H;
-          const lctx = getLiveCtx(div, pw, ph);
-          lctx.clearRect(0, 0, pw, ph);
-          lctx.save();
-          applyStrokeStyles(lctx, S._cur);
-          traceStrokePath(lctx, S._cur);
-          lctx.restore();
-        } else {
-          liveDrawIncr(ctx, c);
-        }
-      }
+
+    const stroke = S._cur;
+    if (!stroke) return;
+
+    let c = null;
+    for (const ev of meldungen) {
+      c = amLinealAusrichten(coords(ev), canvas, page);
+      if (stroke.isEraser) geradeGanzWeg(c, page, canvas);
+      /* Steht die Gerade fest, zählt nur noch ihr Ende – die Punkte
+         dazwischen wirft der Zweig unten ohnehin weg. */
+      if (stroke._lineLocked) continue;
+      stroke.path.push({ x: c.x, y: c.y, p: c.p });
+      // Nur das neue Stück nachziehen. Der Marker und die festgestellte
+      // Gerade brauchen die ganze Fläche – die kommen unten dran.
+      if (!stroke._shapeDetected && !stroke.isHL) liveDrawIncr(ctx, c);
+    }
+    if (!c) return;
+
+    if (!stroke.isEraser) armLineTimer(stroke, c);
+
+    // If a shape was detected, don't override it with line logic
+    if (stroke._lineLocked && !stroke._shapeDetected && !stroke.isEraser) {
+      const start = stroke.path[0] || { x: c.x, y: c.y, p: c.p };
+      stroke.path = [start, { x: c.x, y: c.y, p: c.p }];
+      clearLiveCanvas();
+      redrawStrokes(canvas, S.strokeHistory[page.id]);
+    } else if (stroke.isHL && !stroke._shapeDetected) {
+      const pw = page.w || CFG.PAGE_W;
+      const ph = page.h || CFG.PAGE_H;
+      const lctx = getLiveCtx(div, pw, ph);
+      lctx.clearRect(0, 0, pw, ph);
+      lctx.save();
+      applyStrokeStyles(lctx, stroke);
+      traceStrokePath(lctx, stroke);
+      lctx.restore();
     }
   }, { passive: false });
 
@@ -1425,5 +1483,18 @@ function buildStroke(c) {
   if (m === 'hl')   return { ...start, color: S.hl.color,   width: HL_SIZES[S.hl.szIdx],   isHL: true };
   return { ...start, color: '#000', width: 4, isHL: false };
 }
-function liveDrawIncr(ctx, c) { const s = S._cur; if (!s) return; const pts = s.path; if (pts.length < 2) return; const prev = pts[pts.length - 2], cur = pts[pts.length - 1]; ctx.save(); ctx.strokeStyle = s.color; ctx.lineWidth = s.isEraser ? s.width : s.width * (0.5 + cur.p); ctx.lineCap = 'round'; ctx.lineJoin = 'round'; if (s.isHL) ctx.globalAlpha = 0.38; if (s.isEraser) ctx.globalCompositeOperation = 'destination-out'; ctx.beginPath(); if (pts.length >= 3) { const pp = pts[pts.length - 3]; ctx.moveTo((pp.x + prev.x) / 2, (pp.y + prev.y) / 2); ctx.quadraticCurveTo(prev.x, prev.y, (prev.x + cur.x) / 2, (prev.y + cur.y) / 2); } else { ctx.moveTo(prev.x, prev.y); ctx.lineTo(cur.x, cur.y); } ctx.stroke(); ctx.restore(); }
+/* ══════════════════════════════════════════════════════════════════════
+   WAS BEIM SCHREIBEN ZU SEHEN IST, BLEIBT AUCH STEHEN
+
+   Hier stand `s.width * (0.5 + cur.p)`: der Strich unter dem Stift wurde
+   mit dem Druck dicker und dünner. Fertig gezeichnet wird er aber überall
+   sonst mit `s.width` – gleichmässig (canvas/drawing.js,
+   applyStrokeStyles). Beim Abheben sprang die eben geschriebene Zeile
+   deshalb sichtbar auf eine andere Dicke.
+
+   Der Druck geht damit verloren; er war ohnehin nur geliehen, denn
+   gespeichert wurde er nie. Und ein Strich, der beim Loslassen die Form
+   wechselt, fühlt sich falscher an als einer ohne Druckstärke.
+   ══════════════════════════════════════════════════════════════════════ */
+function liveDrawIncr(ctx, c) { const s = S._cur; if (!s) return; const pts = s.path; if (pts.length < 2) return; const prev = pts[pts.length - 2], cur = pts[pts.length - 1]; ctx.save(); ctx.strokeStyle = s.color; ctx.lineWidth = s.width; ctx.lineCap = 'round'; ctx.lineJoin = 'round'; if (s.isHL) ctx.globalAlpha = 0.38; if (s.isEraser) ctx.globalCompositeOperation = 'destination-out'; ctx.beginPath(); if (pts.length >= 3) { const pp = pts[pts.length - 3]; ctx.moveTo((pp.x + prev.x) / 2, (pp.y + prev.y) / 2); ctx.quadraticCurveTo(prev.x, prev.y, (prev.x + cur.x) / 2, (prev.y + cur.y) / 2); } else { ctx.moveTo(prev.x, prev.y); ctx.lineTo(cur.x, cur.y); } ctx.stroke(); ctx.restore(); }
 
