@@ -205,6 +205,77 @@ app.on('ready', async () => {
       nachStift.imText === false, 'der Text hat den Fokus – die Tastatur fährt hoch');
 
     /* ══════════════════════════════════════════════════════════════════
+       WO DER LAUFENDE STRICH LIEGT – UND WO ER LANDET
+
+       Der Strich entsteht auf der VORSCHAU, in einem Zug je Bild, und
+       geht erst beim Abheben auf das Blatt ueber (canvas/input.js,
+       stiftVorschau). Das ist der Grund, warum eine duenne Linie nicht
+       mehr fleckig aussieht – gemalt wird sie einmal statt Stueck fuer
+       Stueck uebereinander.
+
+       Beide Haelften sind hier zu pruefen, denn jede kann fuer sich
+       kaputtgehen und die andere sieht dann noch richtig aus:
+         · waehrend des Ziehens darf auf dem BLATT nichts stehen,
+           sonst laege der Strich doppelt (und der Marker doppelt kraeftig)
+         · nach dem Abheben MUSS er auf dem Blatt stehen, sonst waere er
+           mit der Vorschau verschwunden
+       ══════════════════════════════════════════════════════════════════ */
+    abschnitt('Der laufende Strich liegt auf der Vorschau, der fertige auf dem Blatt');
+    await js(`(() => {
+      switchMode('pen1');
+      const pg = document.querySelector('.j-page[data-pgid="' + S.activePgId + '"]');
+      const c = pg.querySelector('.j-canvas:not(.live-canvas)');
+      S.strokeHistory[S.activePgId] = [];
+      redrawStrokes(c, []);
+      return true; })()`);
+    await warte(200);
+
+    m = await stelle();
+    const waagrecht = [];
+    for (let i = 0; i <= 24; i++) waagrecht.push({ x: Math.round(m.x - 110 + i * 9), y: Math.round(m.y) });
+    const mitte = waagrecht[12];
+
+    /* Ein einzelnes Pixel zu befragen waere zu heikel: die duenne Linie
+       liegt vielleicht einen halben Punkt daneben. Gesucht wird deshalb
+       der kraeftigste Punkt in einem kleinen Fenster darum. */
+    const messe = `(() => {
+      const pg = document.querySelector('.j-page[data-pgid="' + S.activePgId + '"]');
+      const bl = pg && pg.querySelector('.j-canvas:not(.live-canvas)');
+      const lc = document.querySelector('.live-canvas');
+      const staerkste = (c) => {
+        if (!c) return -1;
+        const r = c.getBoundingClientRect();
+        const k = c.width / r.width;
+        const x = Math.round((${mitte.x} - r.left) * k), y = Math.round((${mitte.y} - r.top) * k);
+        const n = Math.max(1, Math.round(4 * k));
+        const d = c.getContext('2d').getImageData(x - n, y - n, n * 2 + 1, n * 2 + 1).data;
+        let max = 0;
+        for (let i = 3; i < d.length; i += 4) if (d[i] > max) max = d[i];
+        return max;
+      };
+      return { blatt: staerkste(bl), vorschau: staerkste(lc),
+               deckkraft: lc ? getComputedStyle(lc).opacity : '' }; })()`;
+
+    await stiftMitTaste(waagrecht, 1, true);   // noch aufgesetzt
+    const beimZiehen = await js(messe);
+    pruefe('Beim Ziehen steht er auf der Vorschau (Alpha ' + beimZiehen.vorschau + ')',
+      beimZiehen.vorschau > 200, 'die Vorschau ist leer – gar nichts zu sehen');
+    pruefe('Und noch nicht auf dem Blatt (Alpha ' + beimZiehen.blatt + ')',
+      beimZiehen.blatt === 0, 'er liegt doppelt: Vorschau UND Blatt');
+    /* Die 38 % der Vorschau gehoeren dem Marker. Blieben sie auch fuer
+       den Stift stehen, waere die Schrift beim Schreiben blass und
+       spraenge beim Abheben auf ihre wirkliche Farbe. */
+    pruefe('Und in seiner vollen Farbe (Deckkraft ' + beimZiehen.deckkraft + ')',
+      Math.abs(+beimZiehen.deckkraft - 1) < 0.01, 'er wird blass gemalt wie ein Marker');
+
+    await stiftAbheben(waagrecht[waagrecht.length - 1]);
+    const nachAbheben = await js(messe);
+    pruefe('Nach dem Abheben steht er auf dem Blatt (Alpha ' + nachAbheben.blatt + ')',
+      nachAbheben.blatt > 200, 'er ist mit der Vorschau verschwunden');
+    pruefe('Und die Vorschau ist leer (Alpha ' + nachAbheben.vorschau + ')',
+      nachAbheben.vorschau <= 0, 'sie liegt noch darueber');
+
+    /* ══════════════════════════════════════════════════════════════════
        DIE UNTERE TASTE RADIERT
        ══════════════════════════════════════════════════════════════════ */
     abschnitt('Die untere Schafttaste radiert');
