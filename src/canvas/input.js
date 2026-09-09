@@ -893,6 +893,124 @@ function attachInput(canvas, textDiv, objLayer, page) {
   }
 
   /* ══════════════════════════════════════════════════════════════════
+     MARKIEREN DARF NEBEN DEM TEXT ANFANGEN
+
+     >>> Gemeldet: „wenn man nicht genau auf den Anfang des Textes
+     klickt, wird nichts ausgewaehlt" <<<
+     Und die Vermutung dazu stimmte: es lag ausserhalb des Textfeldes.
+     .j-text ist die Textspalte, nicht die Seite – links davon liegen
+     72 Pixel Rand, rechts 32, oben und unten noch mehr. Wer eine Zeile
+     markieren will, setzt aber genau dort an: im Rand daneben, und
+     zieht dann quer darueber.
+
+     Der Browser markiert nur, wenn der Druck IM bearbeitbaren Feld
+     angefangen hat. Im Rand fing er also nie an, und es sah aus, als
+     muesse man das erste Zeichen auf den Punkt treffen.
+
+     Das Ziehen wird deshalb selbst gefuehrt, aber nur von dort: der
+     Druck IM Text laeuft weiter durch den Browser (der Verteiler unten
+     steigt dafuer vorher aus), samt Doppelklick aufs Wort und allem,
+     was daran haengt.
+
+     >>> Der Punkt wird in die Spalte hineingeschoben <<<
+     Ein Punkt im Rand gehoert zu keinem Zeichen. Statt dort aufzugeben,
+     wird er auf die naechste Stelle INNERHALB der Spalte geklemmt – und
+     das ist genau die Stelle, die man meint: links vom Text der
+     Zeilenanfang, rechts davon das Zeilenende, unterhalb das Ende des
+     Textes.
+     ══════════════════════════════════════════════════════════════════ */
+  const MARKIER_WEG = 4;      // so weit muss der Zeiger, damit es zaehlt
+  let _markieren = null;
+
+  /** Die Textstelle an einem Punkt – notfalls die naechste in der Spalte. */
+  function stelleAnPunkt(x, y) {
+    if (typeof document.caretRangeFromPoint !== 'function') return null;
+    const r = textDiv.getBoundingClientRect();
+    if (!(r.width > 0 && r.height > 0)) return null;
+    const cx = Math.max(r.left + 1, Math.min(r.right - 1, x));
+    const cy = Math.max(r.top + 1, Math.min(r.bottom - 1, y));
+    let rg = null;
+    try { rg = document.caretRangeFromPoint(cx, cy); } catch (err) { return null; }
+    if (!rg || !textDiv.contains(rg.startContainer)) return null;
+    return rg;
+  }
+
+  function randMarkierenZieht(ev) {
+    const m = _markieren;
+    if (!m || ev.pointerId !== m.id) return;
+
+    /* ══ DER LAUF ENDET AUCH OHNE LOSLASSEN ══════════════════════════
+       Ein pointerup kann ausbleiben: das System nimmt den Zeiger an
+       sich, das Fenster verliert den Fokus, ein anderer Faenger haelt
+       ihn fest. Ohne diese Frage bliebe der Lauf armiert – und die
+       naechste blosse MAUSBEWEGUNG, ganz ohne gedrueckte Taste, haette
+       angefangen zu markieren und dabei preventDefault gerufen.
+
+       Beim Ausprobieren hat genau das reihenweise Dinge zerlegt, die
+       mit Markieren nichts zu tun haben: der Radierer knabberte nur
+       noch, die Schlinge waehlte nichts mehr aus. Die gedrueckte Taste
+       ist die Bedingung, unter der das hier ueberhaupt gilt. */
+    if (!(ev.buttons & 1)) { randMarkierenEnde(ev); return; }
+
+    if (!m.laeuft && Math.hypot(ev.clientX - m.sx, ev.clientY - m.sy) < MARKIER_WEG) return;
+
+    const ziel = stelleAnPunkt(ev.clientX, ev.clientY);
+    if (!ziel) return;
+    const sel = window.getSelection();
+    if (!sel) return;
+
+    m.laeuft = true;
+    /* Erst jetzt abfangen, nicht schon beim Aufsetzen: ein blosser Klick
+       soll weiterhin ganz normal beim Browser landen. */
+    ev.preventDefault();
+    try { sel.setBaseAndExtent(m.node, m.offset, ziel.startContainer, ziel.startOffset); }
+    catch (err) { randMarkierenEnde(ev); }
+  }
+
+  function randMarkierenEnde(ev) {
+    if (!_markieren || (ev && ev.pointerId !== _markieren.id)) return;
+    randMarkierenAbbrechen();
+  }
+
+  function randMarkierenAbbrechen() {
+    if (!_markieren) return;
+    _markieren = null;
+    document.removeEventListener('pointermove', randMarkierenZieht, true);
+    document.removeEventListener('pointerup', randMarkierenEnde, true);
+    document.removeEventListener('pointercancel', randMarkierenEnde, true);
+    document.removeEventListener('pointerdown', randMarkierenAbbrechen, true);
+  }
+
+  /**
+   * Ein Druck NEBEN dem Text: von hier aus soll sich markieren lassen.
+   * Der Anker ist die Marke, die activateTextEditingAt eben gesetzt hat –
+   * genau die Stelle, die der Nutzer gemeint hat.
+   */
+  function starteRandMarkieren(e) {
+    /* ── Der Anker kommt vom PUNKT, nicht von der gesetzten Marke ──────
+       activateTextEditingAt legt auf freier Flaeche einen Absatz an und
+       setzt die Marke hinein (canvas/text.js, VORLAEUFIG). Als Anker
+       waere das der falsche Ort: markiert werden soll ab der Stelle im
+       Text, auf die gezeigt wurde, nicht ab dem eben Angelegten. */
+    if (e.pointerType !== 'mouse') return;
+    const anker = stelleAnPunkt(e.clientX, e.clientY);
+    if (!anker) return;
+
+    randMarkierenAbbrechen();   // ein etwaiger alter Lauf endet hier
+    _markieren = {
+      id: e.pointerId, sx: e.clientX, sy: e.clientY,
+      node: anker.startContainer, offset: anker.startOffset, laeuft: false
+    };
+    /* In der Abfangphase und am Dokument: der Zeiger verlaesst beim
+       Ziehen regelmaessig die Seite, und dann kaeme an ihr nichts mehr an. */
+    document.addEventListener('pointermove', randMarkierenZieht, true);
+    document.addEventListener('pointerup', randMarkierenEnde, true);
+    document.addEventListener('pointercancel', randMarkierenEnde, true);
+    // Ein neuer Druck heisst in jedem Fall: der alte Lauf ist vorbei
+    document.addEventListener('pointerdown', randMarkierenAbbrechen, true);
+  }
+
+  /* ══════════════════════════════════════════════════════════════════
      WELCHES GERAET WAS TUT
 
      >>> Der Stift MALT – immer <<<
@@ -945,6 +1063,8 @@ function attachInput(canvas, textDiv, objLayer, page) {
       // But we call activeTextEditingAt immediately so the cursor appears
       // where we want it before the browser has a chance to place its own.
       activateTextEditingAt(e.clientX, e.clientY, false);
+      // Nur die linke Taste markiert; die rechte gehoert dem Kontextmenue
+      if (e.button === 0) starteRandMarkieren(e);
       return;
     }
 

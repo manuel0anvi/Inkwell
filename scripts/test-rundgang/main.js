@@ -330,6 +330,58 @@ app.on('ready', async () => {
        erkannt (canvas/strokeSelect.js, istGerade). Sie wird beim Abheben
        eingedampft; hier steht, dass dabei das Richtige herauskommt.
        ══════════════════════════════════════════════════════════════════ */
+    /* ══════════════════════════════════════════════════════════════════
+       MARKIEREN DARF NEBEN DEM TEXT ANFANGEN
+
+       .j-text ist die Textspalte, nicht die Seite – links davon liegen
+       72 Pixel Rand. Genau dort setzt man an, wenn man eine Zeile
+       markieren will, und genau dort fing der Browser nie an: er
+       markiert nur, wenn der Druck IM bearbeitbaren Feld begonnen hat.
+       Gemeldet als „wenn man nicht genau auf den Anfang des Textes
+       klickt, wird nichts ausgewaehlt".
+       ══════════════════════════════════════════════════════════════════ */
+    abschnitt('Markieren vom Rand aus');
+    await schritt('Ein Zug aus dem linken Rand markiert die Zeile', `
+      switchMode('cursor');
+      const pg = document.querySelector('.j-page');
+      const t = pg.querySelector('.j-text');
+      t.innerHTML = '<p>Erste Zeile mit genug Text darin</p>';
+      window.getSelection().removeAllRanges();
+
+      const knoten = t.querySelector('p').firstChild;
+      const bereich = document.createRange();
+      bereich.selectNodeContents(knoten);
+      const rc = bereich.getBoundingClientRect();
+      const pr = pg.getBoundingClientRect();
+      const tr = t.getBoundingClientRect();
+      if (!(rc.width > 20)) throw new Error('Der Text steht nicht da');
+
+      // Ein Punkt WEIT LINKS vom Textfeld – im Rand der Seite
+      const xLinks = Math.round(pr.left + (tr.left - pr.left) / 2);
+      if (xLinks >= tr.left) throw new Error('Der Rand ist zu schmal zum Pruefen');
+      const y = Math.round(rc.top + rc.height / 2);
+
+      const ev = (art, x, xy) => pg.dispatchEvent(new PointerEvent(art, {
+        bubbles: true, cancelable: true, pointerId: 71, pointerType: 'mouse',
+        button: art === 'pointermove' ? -1 : 0, buttons: art === 'pointerup' ? 0 : 1,
+        clientX: x, clientY: xy, isPrimary: true }));
+
+      ev('pointerdown', xLinks, y);
+      ev('pointermove', Math.round(rc.right - 4), y);
+      ev('pointerup', Math.round(rc.right - 4), y);
+
+      const markiert = String(window.getSelection()).trim();
+      if (!markiert) throw new Error('Vom Rand aus wurde nichts markiert');
+      if (markiert.length < 10) throw new Error('Nur ein Stueck markiert: "' + markiert + '"');
+
+      // Und ein blosser Klick markiert weiterhin nichts
+      window.getSelection().removeAllRanges();
+      ev('pointerdown', xLinks, y);
+      ev('pointerup', xLinks, y);
+      if (String(window.getSelection()).trim()) throw new Error('Ein Klick markierte schon etwas');
+
+      t.innerHTML = '';`);
+
     abschnitt('Das Lineal macht Geraden');
     await schritt('Hin und zurueck gezogen bleiben die aeusseren Enden', `
       const s = { path: [], width: 2, color: '#000', _amLineal: true };
