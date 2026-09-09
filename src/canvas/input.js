@@ -868,19 +868,31 @@ function attachInput(canvas, textDiv, objLayer, page) {
 
     const ctx = canvas.getContext('2d');
 
+    /* Der Radierer bleibt bei EINEM Punkt je Bewegung – so war es und so
+       soll es bleiben. Was er trifft, wird ganz weggenommen, und jedes
+       Wegnehmen zeichnet die Seite neu und schreibt sie in page.inkStrokes
+       um. Zehnmal je Bild waere das teuer fuer einen Gewinn, den niemand
+       sieht: wer eine Zeile wegwischt, faehrt ohnehin mehrfach hin und her. */
     if (S.mode === 'eraser' && S.eraser.type === 'stroke' && !S._cur?._lasso) {
       // An der Lineal-Kante einrasten (siehe ui/ruler.js)
-      for (const ev of meldungen) strokeErase(amLinealAusrichten(coords(ev), canvas, page), page, canvas);
+      strokeErase(amLinealAusrichten(coords(e), canvas, page), page, canvas);
       return;
     }
 
     const stroke = S._cur;
     if (!stroke) return;
 
+    if (stroke.isEraser) {
+      const ce = amLinealAusrichten(coords(e), canvas, page);
+      geradeGanzWeg(ce, page, canvas);
+      stroke.path.push({ x: ce.x, y: ce.y, p: ce.p });
+      liveDrawIncr(ctx, ce);
+      return;
+    }
+
     let c = null;
     for (const ev of meldungen) {
       c = amLinealAusrichten(coords(ev), canvas, page);
-      if (stroke.isEraser) geradeGanzWeg(c, page, canvas);
       /* Steht die Gerade fest, zählt nur noch ihr Ende – die Punkte
          dazwischen wirft der Zweig unten ohnehin weg. */
       if (stroke._lineLocked) continue;
@@ -891,10 +903,10 @@ function attachInput(canvas, textDiv, objLayer, page) {
     }
     if (!c) return;
 
-    if (!stroke.isEraser) armLineTimer(stroke, c);
+    armLineTimer(stroke, c);
 
     // If a shape was detected, don't override it with line logic
-    if (stroke._lineLocked && !stroke._shapeDetected && !stroke.isEraser) {
+    if (stroke._lineLocked && !stroke._shapeDetected) {
       const start = stroke.path[0] || { x: c.x, y: c.y, p: c.p };
       stroke.path = [start, { x: c.x, y: c.y, p: c.p }];
       clearLiveCanvas();
