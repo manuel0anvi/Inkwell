@@ -66,6 +66,11 @@ class CloudSyncManager {
     this._hadOfflineBacklog = false;
     this._offlineToastShown = false;
 
+    /* Ist die letzte stille Erneuerung an der LEITUNG gescheitert und
+       nicht am Anbieter? Dann bleibt die Sitzung stehen, statt in den
+       Abmelde-Ablauf zu laufen – siehe _handleExpiredToken. */
+    this._erneuernScheitertAmNetz = false;
+
     // Sync-Verlauf: die letzten abgeschlossenen/fehlgeschlagenen Vorgänge.
     // Wird beim Start aus Settings geladen und bei jedem Vorgang ergänzt.
     this._syncHistory = [];
