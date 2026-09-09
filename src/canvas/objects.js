@@ -438,10 +438,39 @@ function placeObject(objLayer, obj, page) {
      ═════════════════════════════════════════════════════════════════ */
   const drehbar = obj.kind !== 'code';
 
+  /* ══════════════════════════════════════════════════════════════════
+     BREITE UND HOEHE EINZELN
+
+     >>> Hier ging nur „insgesamt groesser" <<<
+     Es gab vier Griffe, alle an den Ecken, und jeder rechnete die Hoehe
+     aus der Breite (nh = nw * ratio). Ein Rechteck liess sich damit nur
+     als Ganzes aufblasen – schmaler oder flacher ziehen ging gar nicht.
+     Genau so wurde es gemeldet.
+
+     Dazu kommen deshalb vier Griffe an den KANTEN. Sie sind die
+     uebliche Aufteilung, und sie ist selbsterklaerend:
+
+       · Ecke  – alles zugleich, Seitenverhaeltnis bleibt.
+                 Ein Bild soll man nicht aus Versehen verzerren, und
+                 „gleichmaessig groesser" ist der haeufigere Wunsch.
+       · Kante – nur diese eine Richtung. Wer verzerren will, sagt
+                 damit ausdruecklich, welche.
+
+     Ein Bild und eine Formel behalten ihr Verhaeltnis auch an der
+     Kante: ein verzerrtes Foto ist fast immer ein Versehen, und eine
+     Formel wird ueber transform:scale() gerechnet – sie KANN gar nicht
+     ungleichmaessig. Bei ihnen zieht die Kante deshalb mit, wie eine
+     Ecke es taete.
+     ══════════════════════════════════════════════════════════════════ */
+  const verhaeltnisFest = obj.kind === 'image' || obj.kind === 'formula';
+
   if (istLinie) {
     baueEndGriffe();
   } else {
-  ['tl', 'tr', 'bl', 'br'].forEach(pos => {
+  ['tl', 'tr', 'bl', 'br', 't', 'r', 'b', 'l'].forEach(pos => {
+    // Eine Kante ist nur eine Richtung: waagerecht ODER senkrecht
+    const nurBreite = pos === 'l' || pos === 'r';
+    const nurHoehe = pos === 't' || pos === 'b';
     const h = document.createElement('div'); h.className = 'obj-handle ' + pos; chrome.appendChild(h);
     h.addEventListener('pointerdown', e => {
       if (nurLesen()) { e.stopPropagation(); e.preventDefault(); return; }
@@ -468,17 +497,54 @@ function placeObject(objLayer, obj, page) {
         const dx = (ev.clientX - sx) / _zoom, dy = (ev.clientY - sy) / _zoom;
         let nw = ow, nh = oh, nx = ox, ny = oy;
 
-        let tw = ow + (pos.includes('r') ? dx : -dx);
-        let sW = getSnaps(tw, ws); if (sW.sn) tw = sW.v;
-        if (pos.includes('r')) { let sR = getSnaps(ox + tw, xs); if (sR.sn) { tw = sR.v - ox; showSnap('v', sR.v); } }
-        else { let sL = getSnaps(ox - (tw - ow), xs); if (sL.sn) { tw = ow + (ox - sL.v); showSnap('v', sL.v); } }
+        // Welche Kanten wandern mit? Eine Ecke bewegt zwei, eine Kante eine
+        const rechts = pos === 'r' || pos === 'tr' || pos === 'br';
+        const oben = pos === 't' || pos === 'tl' || pos === 'tr';
+        const unten = pos === 'b' || pos === 'bl' || pos === 'br';
 
-        nw = tw; nh = nw * ratio;
-        let sH = getSnaps(nh, hs); if (sH.sn && !sW.sn && !pos.includes('r') && !pos.includes('l')) { nh = sH.v; nw = nh / ratio; }
+        if (nurHoehe && !verhaeltnisFest) {
+          /* Nur senkrecht ziehen: die Breite bleibt genau, wie sie war.
+             Eingerastet wird an den Hoehen und Kanten der Nachbarn –
+             dasselbe Verfahren wie waagerecht, nur um 90 Grad gedreht. */
+          let th = oh + (unten ? dy : -dy);
+          const sHh = getSnaps(th, hs); if (sHh.sn) th = sHh.v;
+          if (unten) { const sB = getSnaps(oy + th, ys); if (sB.sn) { th = sB.v - oy; showSnap('h', sB.v); } }
+          else { const sT = getSnaps(oy - (th - oh), ys); if (sT.sn) { th = oh + (oy - sT.v); showSnap('h', sT.v); } }
+          nh = th;
+          if (oben) ny = oy + (oh - nh);
+        } else {
+          /* Waagerecht ziehen. An einer Ecke – und bei Bild und Formel
+             auch an einer Kante – zieht die Hoehe im Verhaeltnis mit;
+             an einer senkrechten Kante bleibt sie stehen.
 
-        if (pos === 'bl') { nx = ox + (ow - nw); }
-        if (pos === 'tr') { ny = oy + (oh - nh); }
-        if (pos === 'tl') { nx = ox + (ow - nw); ny = oy + (oh - nh); }
+             Eine Kante oben oder unten kommt nur hierher, wenn das
+             Verhaeltnis fest ist: dann rechnet die senkrechte Bewegung
+             in eine Breite um, sonst waere der Griff wirkungslos. */
+          const vonHoehe = nurHoehe;
+          let tw = vonHoehe
+            ? ow + ((unten ? dy : -dy) / (ratio || 1))
+            : ow + (rechts ? dx : -dx);
+          let sW = getSnaps(tw, ws); if (sW.sn) tw = sW.v;
+          if (!vonHoehe) {
+            if (rechts) { let sR = getSnaps(ox + tw, xs); if (sR.sn) { tw = sR.v - ox; showSnap('v', sR.v); } }
+            else { let sL = getSnaps(ox - (tw - ow), xs); if (sL.sn) { tw = ow + (ox - sL.v); showSnap('v', sL.v); } }
+          }
+
+          nw = tw;
+          if (nurBreite && !verhaeltnisFest) {
+            /* Nur waagerecht: die Hoehe bleibt. Sie hier trotzdem an
+               den Nachbarn einrasten zu lassen waere falsch – der
+               Nutzer hat sie gar nicht angefasst. */
+            nh = oh;
+          } else {
+            nh = nw * ratio;
+            let sH = getSnaps(nh, hs); if (sH.sn && !sW.sn && vonHoehe) { nh = sH.v; nw = nh / ratio; }
+          }
+        }
+
+        // Die gegenueberliegende Kante bleibt liegen, die gezogene wandert
+        if (!rechts && !nurHoehe) nx = ox + (ow - nw);
+        if (oben) ny = oy + (oh - nh);
         // Eine Formel darf kleiner werden als ein Bild – sie ist oft nur
         // ein paar Zeichen breit und waere sonst nicht zu verkleinern
         const mind = obj.kind === 'formula' ? 12 : (obj.kind === 'code' ? 80 : 20);
@@ -488,7 +554,10 @@ function placeObject(objLayer, obj, page) {
            sich ein Objekt, das von frueher ueber dem Rand liegt, nicht
            einmal mehr kleiner ziehen. */
         const pw = page.w || CFG.PAGE_W, ph = page.h || CFG.PAGE_H;
-        if (nw > ow && (nx < 0 || nx + nw > pw || ny + nh > ph)) return;
+        /* Auch die Hoehe zaehlt hier mit: mit den Kantengriffen kann sie
+           jetzt allein wachsen, und ohne diese Frage waere ein Objekt
+           unten aus dem Blatt herausgezogen worden. */
+        if ((nw > ow || nh > oh) && (nx < 0 || nx + nw > pw || ny < 0 || ny + nh > ph)) return;
         if (nw > mind && nh > mind) {
           obj.w = nw; obj.h = nh; obj.x = nx; obj.y = ny;
           wrap.style.left = obj.x + 'px'; wrap.style.top = obj.y + 'px'; wrap.style.width = obj.w + 'px'; wrap.style.height = obj.h + 'px';
@@ -496,6 +565,14 @@ function placeObject(objLayer, obj, page) {
           // k = w/natW skaliert, nicht über Breitenänderung allein
           if (obj.kind === 'formula') { body.innerHTML = renderFormulaBody(obj); }
           else if (obj.kind === 'code') { body.innerHTML = renderCodeBody(obj); }
+          /* ── Die Form muss neu gebaut werden ─────────────────────────
+             Ihr SVG traegt eine viewBox, und die haelt von sich aus das
+             Seitenverhaeltnis (preserveAspectRatio). Solange nur an den
+             Ecken gezogen wurde, fiel das nicht auf – beides aenderte
+             sich im Gleichschritt. An einer Kante aber bliebe das
+             Rechteck in seinem alten Verhaeltnis stehen und saesse
+             eingemittet im neuen Rahmen. */
+          else if (obj.kind === 'shape' && typeof renderShapeBody === 'function') { body.innerHTML = renderShapeBody(obj); }
           placeBar();
         }
       };

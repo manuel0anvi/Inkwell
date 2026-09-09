@@ -1182,6 +1182,46 @@ body.touch-input .obj-body[data-kind="shape"]::after {
   cursor: nwse-resize
 }
 
+/* ── Die vier Kantengriffe ───────────────────────────────────────────
+   Sie ziehen nur EINE Richtung: Breite oder Hoehe. Damit man sie nicht
+   fuer Ecken haelt, sind sie laenglich statt rund – die Form sagt
+   schon, wohin sie sich bewegen lassen (canvas/objects.js). */
+.obj-handle.t,
+.obj-handle.b {
+  left: 50%;
+  margin-left: -9px;
+  width: 18px;
+  height: 8px;
+  border-radius: 4px;
+  cursor: ns-resize
+}
+
+.obj-handle.t {
+  top: -4px
+}
+
+.obj-handle.b {
+  bottom: -4px
+}
+
+.obj-handle.l,
+.obj-handle.r {
+  top: 50%;
+  margin-top: -9px;
+  width: 8px;
+  height: 18px;
+  border-radius: 4px;
+  cursor: ew-resize
+}
+
+.obj-handle.l {
+  left: -4px
+}
+
+.obj-handle.r {
+  right: -4px
+}
+
 .obj-handle.rot {
   top: auto;
   bottom: -34px;

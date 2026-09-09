@@ -78,6 +78,40 @@
     right: -11px
   }
 
+  /* Die Kantengriffe bleiben laenglich, werden aber dicker – mit dem
+     Finger ist ein 8 Pixel schmaler Streifen nicht zu treffen. */
+  .obj-handle.t,
+  .obj-handle.b {
+    margin-left: -14px;
+    width: 28px;
+    height: 14px;
+    border-radius: 7px
+  }
+
+  .obj-handle.t {
+    top: -7px
+  }
+
+  .obj-handle.b {
+    bottom: -7px
+  }
+
+  .obj-handle.l,
+  .obj-handle.r {
+    margin-top: -14px;
+    width: 14px;
+    height: 28px;
+    border-radius: 7px
+  }
+
+  .obj-handle.l {
+    left: -7px
+  }
+
+  .obj-handle.r {
+    right: -7px
+  }
+
   .obj-handle.rot {
     width: 32px;
     height: 32px;
