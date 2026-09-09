@@ -772,8 +772,6 @@ function baueFarbPresets() {
    Der Stift ist deshalb kein Auffangbecken mehr. Wurde das Fenster für
    etwas anderes geöffnet, geht die Farbe dorthin oder nirgendwohin.
    ══════════════════════════════════════════════════════════════════════ */
-let _farbeBleibtOffen = false;
-
 function applyCustomColorValue(color, commitHistory) {
   const c = normalizeHexColor(color);
   if (!c) return;
@@ -787,24 +785,6 @@ function applyCustomColorValue(color, commitHistory) {
   if (commitHistory) {
     saveRecentCustomColor(c);
     renderRecentCustomColors();
-    /* ══════════════════════════════════════════════════════════════
-       WER FERTIG GEWAEHLT HAT, IST FERTIG
-
-       Der laufende Rueckruf (commitHistory === false) kommt bei jeder
-       Bewegung im Farbrad; DIESER hier kommt genau einmal, wenn die
-       Wahl steht – beim Loslassen im nativen Waehler, beim Druck auf
-       ein vorgegebenes oder ein zuletzt benutztes Feld.
-
-       Danach blieb das Fenster offen stehen und musste weggedrueckt
-       werden. Mit der Maus ist das ein Klick daneben; mit dem Finger
-       auf einer Form steht es genau ueber dem, was man gerade gefaerbt
-       hat, und man sieht das Ergebnis nicht. Genau so wurde es
-       gemeldet. Also: Farbe steht, Fenster zu, Blick frei.
-
-       Das Feld fuer den Zahlencode meldet sein `change` beim Verlassen
-       – auch, wenn nur der Kopierknopf daneben gedrueckt wurde. Es
-       schliesst deshalb NICHT; dort tippt man weiter (siehe unten). */
-    if (!_farbeBleibtOffen) closeCustomColorPopover();
   }
 }
 
@@ -870,15 +850,8 @@ if (hexFeld) {
   });
   hexFeld.addEventListener('change', function () {
     const c = normalizeHexColor(this.value);
-    // Beim Verlassen des Feldes soll das Fenster stehen bleiben – siehe
-    // applyCustomColorValue
-    _farbeBleibtOffen = true;
-    try {
-      if (c) applyCustomColorValue(c, true);
-      else this.value = E('custom-color-pop-input').value;   // Unsinn zurücksetzen
-    } finally {
-      _farbeBleibtOffen = false;
-    }
+    if (c) applyCustomColorValue(c, true);
+    else this.value = E('custom-color-pop-input').value;   // Unsinn zurücksetzen
   });
   hexFeld.addEventListener('keydown', e => {
     e.stopPropagation();                  // keine Tastenkürzel beim Tippen
