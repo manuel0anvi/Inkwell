@@ -685,7 +685,7 @@ function attachInput(canvas, textDiv, objLayer, page) {
      einmal richtig neu gezeichnet – was man beim Schreiben sieht, ist
      damit genau das, was stehen bleibt.
      ══════════════════════════════════════════════════════════════════ */
-  function stiftVorschau(stroke) {
+  function stiftVorschau(stroke, vorhersage) {
     if (!stroke) return;
     const pw = page.w || CFG.PAGE_W;
     const ph = page.h || CFG.PAGE_H;
@@ -693,10 +693,79 @@ function attachInput(canvas, textDiv, objLayer, page) {
     // Die 38 % gehoeren dem Marker; alles andere deckt
     setLiveOpacity(stroke.isHL ? 0.38 : 1);
     lctx.clearRect(0, 0, pw, ph);
-    lctx.save();
-    applyStrokeStyles(lctx, stroke);
-    traceStrokePath(lctx, stroke);
-    lctx.restore();
+
+    /* Die vorhergesagten Punkte werden nur GEZEICHNET, nicht behalten:
+       angehaengt, gezeichnet, wieder abgeschnitten. Was gespeichert
+       wird, ist ausschliesslich das, was die Hand wirklich getan hat. */
+    const dazu = (vorhersage && vorhersage.length) ? vorhersage : null;
+    if (dazu) for (const p of dazu) stroke.path.push(p);
+    try {
+      lctx.save();
+      applyStrokeStyles(lctx, stroke);
+      traceStrokePath(lctx, stroke);
+      lctx.restore();
+    } finally {
+      if (dazu) stroke.path.length -= dazu.length;
+    }
+  }
+
+  /* ══════════════════════════════════════════════════════════════════
+     EIN STÜCK VORAUS – SO HOLT WORD DIE TINTE AN DIE SPITZE
+
+     Zwischen dem Aufsetzen der Spitze und dem Bild auf dem Schirm liegen
+     immer ein paar Millisekunden: melden, rechnen, zeichnen, anzeigen.
+     Ganz wegbekommt sie niemand. Windows Ink und OneNote machen deshalb
+     etwas anderes – sie RATEN, wo die Spitze im nächsten Augenblick sein
+     wird, und malen schon einmal bis dorthin. Der Strich holt die Spitze
+     damit ein, obwohl die Rechnerei genauso lange dauert wie vorher.
+
+     Chromium rechnet dieselbe Vorhersage aus und legt sie an jedes
+     pointermove (getPredictedEvents). Sie kostet uns also nichts als das
+     Abholen.
+
+     >>> Warum nur zwei Punkte und nur bei Tempo <<<
+     Geraten wird an einer Kurve zwangsläufig zu weit; je weiter voraus,
+     desto mehr. Zwei Punkte sind gut eine Sechzigstelsekunde – genug,
+     um es zu merken, zu wenig, um daneben zu liegen. Und wer langsam
+     zieht, hat gar keinen Rückstand zu verstecken: dort wäre die
+     Vorhersage nur ein Zappeln an der Spitze. Sie bleibt deshalb aus,
+     solange sich wenig bewegt.
+
+     Falsch geraten ist billig: der nächste Durchlauf leert die Fläche
+     und zeichnet neu, und in den Strich selbst kommt nie ein geratener
+     Punkt (siehe stiftVorschau).
+     ══════════════════════════════════════════════════════════════════ */
+  const VORHERSAGE_MAX = 2;
+  const VORHERSAGE_AB_TEMPO = 1.5;   // Seiten-Pixel je Meldung
+
+  function vorhergesagtePunkte(e, stroke) {
+    if (typeof e.getPredictedEvents !== 'function') return null;
+    if (stroke._lineLocked || stroke.isEraser) return null;
+
+    /* ── Am Lineal wird nicht geraten ─────────────────────────────────
+       Zwei Gruende. Der Strich liegt dort ohnehin auf einer Kante, ein
+       Stueck voraus sieht also genauso aus wie das Stueck davor. Und
+       amLinealAusrichten fuehrt nebenbei Buch darueber, ob der Strich
+       gerade an der Kante KLEBT (S._rulerKlebt) – ein geratener Punkt
+       wuerde in diesem Buch stehen wie ein echter und die Hysterese
+       durcheinanderbringen, die genau das verhindern soll. */
+    if (window.getRulerState && window.getRulerState()) return null;
+
+    const pts = stroke.path;
+    if (pts.length < 2) return null;
+    const a = pts[pts.length - 2], b = pts[pts.length - 1];
+    if (Math.hypot(b.x - a.x, b.y - a.y) < VORHERSAGE_AB_TEMPO) return null;
+
+    let roh;
+    try { roh = e.getPredictedEvents(); } catch (err) { return null; }
+    if (!roh || !roh.length) return null;
+
+    const raus = [];
+    for (let i = 0; i < roh.length && raus.length < VORHERSAGE_MAX; i++) {
+      const c = coords(roh[i]);
+      raus.push({ x: c.x, y: c.y, p: c.p });
+    }
+    return raus.length ? raus : null;
   }
 
   /* ══════════════════════════════════════════════════════════════════
@@ -997,7 +1066,7 @@ function attachInput(canvas, textDiv, objLayer, page) {
     /* Nichts dazugekommen heisst nichts zu zeichnen. Ohne diese Frage
        liefe bei jeder ruhig gehaltenen Spitze die ganze Vorschau neu –
        fuer ein Bild, das genauso aussieht wie das davor. */
-    if (gewachsen && !stroke._shapeDetected) stiftVorschau(stroke);
+    if (gewachsen && !stroke._shapeDetected) stiftVorschau(stroke, vorhergesagtePunkte(e, stroke));
   }, { passive: false });
 
   div.addEventListener('pointerup', e => {
