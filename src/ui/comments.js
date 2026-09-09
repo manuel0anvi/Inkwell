@@ -342,6 +342,14 @@
       return;
     }
 
+    /* Und dieselbe Überlegung für die Unterlagen-Leiste
+       (ui/griffbereit.js): wer dort gerade eine Datei einsortiert, will
+       nicht, dass ihm ein angetippter Kommentar die Leiste wegnimmt. */
+    if (offen && typeof window.griffBlocksPanels === 'function'
+        && window.griffBlocksPanels()) {
+      return;
+    }
+
     if (!offen) _hervor = null;
     p.classList.toggle('open', offen);
     // Die Spalte wird schmaler: der Zoom passt die Seite neu ein
@@ -360,7 +368,10 @@
        der auf einen Druck nichts tut, ist schlimmer als keiner. */
     const chatOffen = typeof window.chatBlocksComments === 'function'
       && window.chatBlocksComments();
-    const noetig = anzahl > 0 && !leisteOffen() && !chatOffen && randBreite() < MIN_RAND;
+    const griffOffen = typeof window.griffBlocksPanels === 'function'
+      && window.griffBlocksPanels();
+    const noetig = anzahl > 0 && !leisteOffen() && !chatOffen && !griffOffen
+      && randBreite() < MIN_RAND;
     griff.style.display = noetig ? 'flex' : 'none';
     const zahl = E('comment-tab-count');
     if (zahl) zahl.textContent = String(anzahl);

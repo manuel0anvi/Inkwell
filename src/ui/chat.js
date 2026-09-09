@@ -82,6 +82,9 @@
 
   /* ui/comments.js fragt das, bevor es seine eigene Leiste aufmacht. */
   window.chatBlocksComments = offen;
+  /* ui/griffbereit.js macht ihn zu, wenn seine Leiste aufgeht – an der
+     Kante ist Platz für eine. */
+  window.closeChatPanel = () => setzeOffen(false);
 
   function setzeOffen(auf) {
     const p = leiste();
@@ -91,6 +94,10 @@
        Wimpernschlag lang nebeneinander, und das Blatt spränge zweimal. */
     if (auf && typeof window.closeCommentPanel === 'function') {
       window.closeCommentPanel();
+    }
+    // Dasselbe gilt für die Unterlagen-Leiste (ui/griffbereit.js)
+    if (auf && typeof window.closeGriffPanel === 'function') {
+      window.closeGriffPanel();
     }
 
     p.classList.toggle('open', auf);

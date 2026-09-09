@@ -1,0 +1,525 @@
+/* Module: Griffbereit — Unterlagen neben dem Heft
+   ══════════════════════════════════════════════════════════════════════
+   Drei Stücke am rechten Rand, alle Geschwister der Blattspalte:
+
+     .griff-view     die aufgeschlagene Datei
+     .griff-panel    die Leiste zum Hinzufügen und Ordnen
+     .griff-reiter   die hochkant stehenden Namen an der Kante
+
+   Nichts davon liegt ÜBER dem Heft. Sie wachsen von 0 auf ihre Breite
+   wie die Navigation links und schieben das Blatt zur Seite – dieselbe
+   Bauweise wie Chat und Kommentare (css/pages.css), damit das Blatt
+   beim Wechsel zwischen den Leisten nicht springt.
+
+   >>> Warum die Kinder eine min-width tragen <<<
+   Der Kasten, der die Breite anfährt, ist overflow:hidden und während
+   der Bewegung schmaler als sein Inhalt. Ohne min-width würde jede
+   PDF-Seite darin mitschrumpfen und danach wieder wachsen – zweimal neu
+   gezeichnet für nichts. Mit min-width steht der Inhalt von der ersten
+   Bildzeile an in seiner Endbreite und wird nur beschnitten.
+   ══════════════════════════════════════════════════════════════════════ */
+
+/* ══ DIE LEISTE ══════════════════════════════════════════════════════ */
+
+.griff-panel {
+  display: flex;
+  flex-shrink: 0;
+  background: var(--sp);
+  border-left: 1px solid transparent
+}
+
+.griff-panel.open {
+  border-left-color: var(--sb)
+}
+
+.griff-panel-inner {
+  width: 0;
+  overflow: hidden;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  transition: width .2s ease
+}
+
+/* Dasselbe Mass wie Chat und Kommentare – die drei sitzen an derselben
+   Kante und schliessen einander aus. */
+.griff-panel.open .griff-panel-inner {
+  width: 268px
+}
+
+.griff-panel-head {
+  padding: 9px 10px 7px 12px;
+  border-bottom: 1px solid var(--sb);
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  min-width: 268px;
+  color: var(--md);
+  font-size: 12px;
+  letter-spacing: .04em;
+  text-transform: uppercase
+}
+
+/* ── Hineinziehen oder aussuchen ────────────────────────────────────── */
+
+.griff-ablage-feld {
+  min-width: 268px;
+  padding: 10px;
+  flex-shrink: 0
+}
+
+.griff-ablage {
+  border: 1px dashed var(--sb2);
+  border-radius: 8px;
+  padding: 14px 10px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 9px;
+  text-align: center;
+  transition: border-color .15s, background .15s
+}
+
+.griff-ablage.drueber {
+  border-color: var(--gold);
+  background: var(--sh2)
+}
+
+.griff-ablage.voll {
+  border-style: solid;
+  border-color: var(--sb);
+  opacity: .65
+}
+
+.griff-ablage-text {
+  color: var(--md);
+  font-size: 12px;
+  line-height: 1.45
+}
+
+.griff-waehl-btn {
+  background: var(--sc);
+  border: 1px solid var(--gd);
+  border-radius: 6px;
+  padding: 5px 14px;
+  color: var(--gold);
+  font-family: 'Crimson Pro', serif;
+  font-size: 13px;
+  cursor: pointer;
+  transition: all .12s
+}
+
+.griff-waehl-btn:hover:not(:disabled) {
+  background: var(--gold);
+  color: var(--sh)
+}
+
+.griff-waehl-btn:disabled {
+  opacity: .35;
+  cursor: default;
+  pointer-events: none
+}
+
+/* ── Die Liste ──────────────────────────────────────────────────────── */
+
+.griff-liste {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0 10px 10px;
+  min-width: 268px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px
+}
+
+.griff-leer {
+  color: var(--md);
+  font-size: 12px;
+  line-height: 1.5;
+  padding: 6px 4px;
+  opacity: .7
+}
+
+.griff-zeile {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 8px;
+  background: var(--sc);
+  border: 1px solid var(--sb);
+  border-radius: 7px;
+  cursor: pointer;
+  transition: border-color .12s, background .12s
+}
+
+.griff-zeile:hover {
+  border-color: var(--gd)
+}
+
+/* Die Marke beim Umsortieren ist ein innerer Schatten und keine
+   eingeschobene Zeile: ein Schatten verschiebt nichts, die gemessenen
+   Mitten bleiben also gültig. */
+.griff-zeile.davor {
+  box-shadow: inset 0 2px 0 var(--gold)
+}
+
+.griff-zeile.dahinter {
+  box-shadow: inset 0 -2px 0 var(--gold)
+}
+
+.griff-zeile.wandert {
+  opacity: .45
+}
+
+.griff-liste.ordnet {
+  cursor: grabbing
+}
+
+.griff-zeile-griff {
+  color: var(--lo);
+  font-size: 13px;
+  line-height: 1;
+  cursor: grab;
+  flex-shrink: 0;
+  padding: 2px 1px;
+  /* Sonst macht der Browser aus dem Zug ein Rollen und bricht ihn ab */
+  touch-action: none
+}
+
+.griff-zeile-griff:hover {
+  color: var(--gold)
+}
+
+.griff-zeile-art {
+  flex-shrink: 0;
+  font-family: 'DM Mono', 'Consolas', 'Courier New', monospace;
+  font-size: 8.5px;
+  letter-spacing: .06em;
+  color: var(--md);
+  border: 1px solid var(--sb2);
+  border-radius: 3px;
+  padding: 1px 4px;
+  opacity: .8
+}
+
+.griff-zeile-name {
+  flex: 1;
+  min-width: 0;
+  color: var(--hi);
+  font-family: 'Crimson Pro', serif;
+  font-size: 13.5px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis
+}
+
+/* Eine Datei, die es am gemerkten Ort nicht mehr gab. Sie bleibt stehen
+   und bleibt anklickbar – der Ort kann wiederkommen (ein Stick, ein
+   Netzlaufwerk), und der Strich ist ein Stand von vorhin. */
+.griff-zeile.fehlt .griff-zeile-name {
+  color: var(--sync-bad);
+  text-decoration: line-through;
+  text-decoration-color: rgba(204, 91, 86, .5)
+}
+
+.griff-zeile-tools {
+  display: flex;
+  gap: 2px;
+  flex-shrink: 0
+}
+
+.griff-mini {
+  background: none;
+  border: none;
+  border-radius: 4px;
+  color: var(--md);
+  font-size: 12px;
+  line-height: 1;
+  padding: 3px 5px;
+  cursor: pointer;
+  transition: all .12s
+}
+
+.griff-mini:hover {
+  background: var(--sh2);
+  color: var(--hi)
+}
+
+.griff-mini.gefahr:hover {
+  color: var(--red)
+}
+
+/* ── Der Fuss ───────────────────────────────────────────────────────── */
+
+.griff-panel-fuss {
+  min-width: 268px;
+  flex-shrink: 0;
+  padding: 9px 10px 11px;
+  border-top: 1px solid var(--sb);
+  display: flex;
+  flex-direction: column;
+  gap: 7px
+}
+
+.griff-fuss-btn {
+  background: transparent;
+  border: 1px solid var(--sb);
+  border-radius: 6px;
+  padding: 5px 10px;
+  color: var(--md);
+  font-family: 'Crimson Pro', serif;
+  font-size: 12.5px;
+  cursor: pointer;
+  transition: all .12s
+}
+
+.griff-fuss-btn:hover:not(:disabled) {
+  border-color: var(--gd);
+  color: var(--hi)
+}
+
+.griff-fuss-btn.an {
+  border-color: var(--gd);
+  color: var(--gold);
+  background: var(--sc)
+}
+
+.griff-fuss-btn:disabled {
+  opacity: .35;
+  cursor: default;
+  pointer-events: none
+}
+
+.griff-fuss-hinweis {
+  color: var(--lo);
+  font-size: 10.5px;
+  line-height: 1.45
+}
+
+/* ══ DIE REITER AN DER KANTE ═════════════════════════════════════════
+   Sie teilen sich die Höhe zu gleichen Teilen. Anders als der
+   Kommentar-Griff sitzen sie IM Layout und nicht fest am Fenster: über
+   die volle Höhe läge ein fester Streifen sonst auf dem Blatt, sobald
+   jemand hineinzoomt.
+   ════════════════════════════════════════════════════════════════════ */
+
+.griff-reiter {
+  display: none;          /* ui/griffbereit.js setzt flex, wenn nötig */
+  flex-direction: column;
+  flex-shrink: 0;
+  gap: 3px;
+  padding: 6px 0 6px 3px;
+  background: #1a1a24
+}
+
+.griff-reiter-btn {
+  flex: 1 1 0;
+  min-height: 0;
+  width: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 10px 0;
+  background: var(--sc);
+  border: 1px solid var(--sb);
+  border-right: none;
+  border-radius: 7px 0 0 7px;
+  color: var(--md);
+  cursor: pointer;
+  overflow: hidden;
+  /* Damit ein Wischen nach links hier ankommt und nicht zum Rollen wird */
+  touch-action: none;
+  transition: color .12s, background .12s, border-color .12s
+}
+
+.griff-reiter-btn:hover {
+  background: var(--sh2);
+  color: var(--hi)
+}
+
+.griff-reiter-btn.aktiv {
+  background: var(--sh2);
+  border-color: var(--gd);
+  color: var(--gold)
+}
+
+.griff-reiter-btn.fehlt {
+  color: var(--sync-bad);
+  opacity: .75
+}
+
+/* Hochkant, von oben nach unten zu lesen – wie auf einem Buchrücken. */
+.griff-reiter-name {
+  writing-mode: vertical-rl;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-height: 100%;
+  font-family: 'Crimson Pro', serif;
+  font-size: 13px;
+  letter-spacing: .05em
+}
+
+/* ══ DIE AUFGESCHLAGENE DATEI ════════════════════════════════════════ */
+
+.griff-view {
+  display: flex;
+  flex-shrink: 0;
+  position: relative;
+  background: var(--sp);
+  border-left: 1px solid transparent
+}
+
+.griff-view.open {
+  border-left-color: var(--sb)
+}
+
+.griff-view-inner {
+  width: 0;
+  overflow: hidden;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  transition: width .2s ease
+}
+
+.griff-view.open .griff-view-inner {
+  width: var(--griff-breite, 420px)
+}
+
+/* Während am Knopf gezogen wird, darf nichts nachlaufen: die Kante soll
+   am Finger kleben. */
+.griff-view.zieht .griff-view-inner {
+  transition: none
+}
+
+.griff-view-head,
+.griff-view-body {
+  min-width: var(--griff-breite, 420px)
+}
+
+.griff-view-head {
+  padding: 9px 10px 7px 12px;
+  border-bottom: 1px solid var(--sb);
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  color: var(--md);
+  font-size: 12px;
+  letter-spacing: .04em
+}
+
+.griff-view-name {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--hi);
+  font-family: 'Crimson Pro', serif;
+  font-size: 13.5px;
+  letter-spacing: 0
+}
+
+.griff-view-body {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  /* Derselbe dunkle Grund wie der Rollbereich des Hefts: die Blätter
+     sollen darin liegen wie die Heftseiten daneben. */
+  background: #1a1a24;
+  scrollbar-width: thin;
+  scrollbar-color: var(--sb2) transparent
+}
+
+.griff-view-body::-webkit-scrollbar {
+  width: 6px
+}
+
+.griff-view-body::-webkit-scrollbar-thumb {
+  background: var(--sb2);
+  border-radius: 3px
+}
+
+.griff-blatt,
+.griff-seite {
+  width: 100%;
+  height: auto;
+  display: block;
+  border-radius: 3px;
+  background: var(--paper);
+  box-shadow: 0 2px 12px rgba(0, 0, 0, .45);
+  flex-shrink: 0
+}
+
+.griff-seite-bild {
+  width: 100%;
+  height: 100%;
+  display: block;
+  border-radius: 3px
+}
+
+.griff-hinweis,
+.griff-fehlt-text {
+  color: var(--md);
+  font-size: 12.5px;
+  line-height: 1.5;
+  padding: 14px 6px;
+  text-align: center
+}
+
+.griff-fehlt-text {
+  color: var(--sync-bad)
+}
+
+/* ── Der Knopf in der Grenzleiste ───────────────────────────────────── */
+
+.griff-zieher {
+  position: absolute;
+  left: -9px;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 6;
+  width: 18px;
+  height: 54px;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  background: var(--sc);
+  border: 1px solid var(--sb);
+  border-radius: 9px;
+  cursor: ew-resize;
+  touch-action: none;
+  transition: border-color .12s, background .12s
+}
+
+.griff-view.open .griff-zieher {
+  display: flex
+}
+
+.griff-zieher:hover,
+.griff-view.zieht .griff-zieher {
+  background: var(--sh2);
+  border-color: var(--gd)
+}
+
+.griff-zieher-strich {
+  width: 2px;
+  height: 22px;
+  border-radius: 1px;
+  background: var(--sb2)
+}
+
+.griff-zieher:hover .griff-zieher-strich,
+.griff-view.zieht .griff-zieher-strich {
+  background: var(--gold)
+}

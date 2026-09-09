@@ -21,6 +21,7 @@
 <link rel="stylesheet" href="css/toolbar.css">
 <link rel="stylesheet" href="css/pages.css">
 <link rel="stylesheet" href="css/modals.css">
+<link rel="stylesheet" href="css/griffbereit.css">
 <link rel="stylesheet" href="css/responsive.css">
 <link rel="stylesheet" href="lib/katex.min.css">
 </head>
@@ -563,6 +564,21 @@
                eine zu viel, und seit immer automatisch gespeichert wird,
                war an ihm ohnehin nichts mehr zu drücken. -->
           <div class="tb-sep"></div>
+          <!-- Unterlagen neben dem Heft: PDFs und Bilder, die beim
+               Schreiben danebenliegen sollen. Eigene Gruppe wie die
+               Navigation links – auch dieser Knopf zieht eine Leiste
+               auf und gehört nicht zu den Befehlen daneben. -->
+          <div class="tb-grp">
+            <button class="tb-opt" id="btn-griff" data-i18n-title="griffTitel" title="Unterlagen">
+              <svg width="15" height="15" viewBox="0 0 16 16" fill="none"
+                   stroke="currentColor" stroke-width="1.3">
+                <rect x="1.7" y="2.5" width="12.6" height="11" rx="1.6"/>
+                <path d="M10.2 2.5v11"/>
+                <path d="M4.1 6.2h3.6M4.1 8.8h3.6" stroke-linecap="round"/>
+              </svg>
+            </button>
+          </div>
+          <div class="tb-sep"></div>
           <!-- Freigeben und Exportieren direkt aus dem geöffneten Heft.
                Vorher ging beides nur über das Kontextmenü auf der Startseite. -->
           <div class="tb-grp">
@@ -724,6 +740,67 @@
         </div>
       </div>
     </aside>
+
+    <!-- ══ GRIFFBEREIT ═══════════════════════════════════════════════
+         Drei Stücke, alle am rechten Rand und alle Geschwister der
+         Blattspalte – nichts davon legt sich über das Heft:
+
+           griff-view    die aufgeschlagene Datei
+           griff-panel   die Leiste zum Hinzufügen und Ordnen
+           griff-reiter  die hochkant stehenden Namen an der Kante
+
+         Der Reiterstreifen ist bewusst ein Flex-Kind und nicht wie der
+         Kommentar-Griff fest am Fenster: er ist keine Marke von 20 px,
+         sondern reicht über die ganze Höhe. Fest am Fenster läge er auf
+         dem Blatt, sobald jemand hineinzoomt. Wer ihn nicht braucht,
+         blendet die Dateien in der Leiste aus – dann ist er ganz weg
+         (ui/griffbereit.js). -->
+    <aside class="griff-view" id="griff-view">
+      <!-- Der Knopf in der Grenzleiste. Zum Ziehen, nicht zum Drücken:
+           er sitzt in der Mitte der Kante, weil die Hand dort ohnehin
+           hinfährt, wenn sie die Breite ändern will. -->
+      <button class="griff-zieher" id="griff-zieher"
+              data-i18n-title="griffBreiteZiehen" title="Breite ziehen">
+        <span class="griff-zieher-strich"></span>
+      </button>
+      <div class="griff-view-inner">
+        <div class="griff-view-head">
+          <span class="griff-view-name" id="griff-view-name"></span>
+          <button class="modal-close-x" id="griff-view-close" title="✕">✕</button>
+        </div>
+        <div class="griff-view-body" id="griff-view-body"></div>
+      </div>
+    </aside>
+
+    <aside class="griff-panel" id="griff-panel">
+      <div class="griff-panel-inner">
+        <div class="griff-panel-head">
+          <span data-i18n="griffTitel">Unterlagen</span>
+          <button class="modal-close-x" id="griff-panel-close" title="✕">✕</button>
+        </div>
+        <!-- Hineinziehen ODER aussuchen. Beides führt an dieselbe
+             Stelle: die Frage nach dem Namen (ui/griffbereit.js).
+
+             Der Rahmen sitzt im Futter und nicht am Streifen selbst –
+             der Streifen trägt die feste Breite der Leiste, und ein
+             Rand darauf klebte an deren Kanten. -->
+        <div class="griff-ablage-feld">
+          <div class="griff-ablage" id="griff-ablage">
+            <span class="griff-ablage-text" data-i18n="griffZiehen">Datei hierher ziehen</span>
+            <button class="griff-waehl-btn" id="griff-waehlen" data-i18n="griffWaehlen">Datei wählen</button>
+          </div>
+        </div>
+        <div class="griff-liste" id="griff-liste"></div>
+        <div class="griff-panel-fuss">
+          <button class="griff-fuss-btn" id="griff-verstecken">
+            <span id="griff-verstecken-text" data-i18n="griffAusblenden">Alle ausblenden</span>
+          </button>
+          <p class="griff-fuss-hinweis" data-i18n="griffNichtKopiert">Die Dateien bleiben, wo sie liegen. Inkwells merkt sich nur den Ort.</p>
+        </div>
+      </div>
+    </aside>
+
+    <div class="griff-reiter" id="griff-reiter"></div>
   </div>
 </div>
 
@@ -2201,6 +2278,11 @@
   <script src="ui/links.js"></script>
   <script src="ui/ruler.js"></script>
   <script src="ui/comments.js"></script>
+  <!-- Unterlagen neben dem Heft: PDFs und Bilder, die nur angesehen
+       werden. Nach comments.js, weil beide Leisten an derselben Kante
+       sitzen und einander zumachen; braucht ausserdem pdf.js (ganz
+       oben) und core/zoom.js fuer _applyZoom. -->
+  <script src="ui/griffbereit.js"></script>
   <!-- Der Zähler unten links. Nach comments.js, weil er die Kommentare
        des Hefts mitzählt. -->
   <script src="ui/wordCount.js"></script>

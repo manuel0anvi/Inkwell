@@ -793,6 +793,30 @@ const TRANSLATIONS = {
     collabObjLocked: '{name} bearbeitet das gerade',
 
     // Chat im Live-Betrieb (ui/chat.js)
+    /* ══ GRIFFBEREIT ═════════════════════════════════════════════
+       Unterlagen neben dem Heft: PDFs und Bilder, die nur angesehen
+       werden. Siehe ui/griffbereit.js.
+       ════════════════════════════════════════════════════════════ */
+    griffTitel: 'Unterlagen',
+    griffZiehen: 'Datei hierher ziehen',
+    griffWaehlen: 'Datei wählen',
+    griffLeer: 'Noch nichts hinterlegt. Zieh ein PDF oder ein Bild hierher – es wird nicht kopiert.',
+    griffNichtKopiert: 'Die Dateien bleiben, wo sie liegen. Inkwells merkt sich nur den Ort.',
+    griffNameFrage: 'Wie soll die Unterlage heißen?',
+    griffVoll: 'Drei Unterlagen sind das Höchste. Nimm zuerst eine weg.',
+    griffFehlt: 'Datei konnte nicht gefunden werden',
+    griffZuGross: 'Die Datei ist zu groß zum Anzeigen.',
+    griffKeineAnzeige: 'Diese Datei lässt sich hier nicht anzeigen.',
+    griffKaputt: 'Die Datei lässt sich nicht anzeigen.',
+    griffLaedt: 'wird geöffnet …',
+    griffUmbenennen: 'Umbenennen',
+    griffEntfernen: 'Entfernen',
+    griffWegFrage: 'Nur der Verweis wird entfernt – die Datei selbst bleibt liegen, wo sie ist.',
+    griffOrdnen: 'Ziehen zum Umsortieren',
+    griffAufschlagen: 'Nach links wischen zum Aufschlagen',
+    griffBreiteZiehen: 'Breite ziehen',
+    griffAusblenden: 'Alle ausblenden',
+    griffEinblenden: 'Alle einblenden',
     chatTitle: 'Chat',
     chatPlaceholder: 'Nachricht schreiben …',
     chatSend: 'Senden',
@@ -1821,6 +1845,30 @@ const TRANSLATIONS = {
     collabObjLocked: '{name} is working on that right now',
 
     // Chat during live editing (ui/chat.js)
+    /* ══ HANDY DOCUMENTS ═════════════════════════════════════════
+       Reference material beside the notebook - PDFs and images that
+       are only ever looked at. See ui/griffbereit.js.
+       ════════════════════════════════════════════════════════════ */
+    griffTitel: 'Documents',
+    griffZiehen: 'Drop a file here',
+    griffWaehlen: 'Choose file',
+    griffLeer: 'Nothing here yet. Drop a PDF or an image – it will not be copied.',
+    griffNichtKopiert: 'The files stay where they are. Inkwells only remembers the location.',
+    griffNameFrage: 'What should this document be called?',
+    griffVoll: 'Three documents is the limit. Remove one first.',
+    griffFehlt: 'File could not be found',
+    griffZuGross: 'The file is too large to display.',
+    griffKeineAnzeige: 'This file cannot be shown here.',
+    griffKaputt: 'The file cannot be displayed.',
+    griffLaedt: 'opening …',
+    griffUmbenennen: 'Rename',
+    griffEntfernen: 'Remove',
+    griffWegFrage: 'Only the reference is removed – the file itself stays where it is.',
+    griffOrdnen: 'Drag to reorder',
+    griffAufschlagen: 'Swipe left to open',
+    griffBreiteZiehen: 'Drag to resize',
+    griffAusblenden: 'Hide all',
+    griffEinblenden: 'Show all',
     chatTitle: 'Chat',
     chatPlaceholder: 'Write a message …',
     chatSend: 'Send',
@@ -2840,6 +2888,30 @@ const TRANSLATIONS = {
     collabObjLocked: '{name} ci sta lavorando adesso',
 
     // Chat durante la modifica in diretta (ui/chat.js)
+    /* ══ DOCUMENTI A PORTATA DI MANO ═════════════════════════════
+       Materiale accanto al quaderno: PDF e immagini che si guardano
+       soltanto. Vedi ui/griffbereit.js.
+       ════════════════════════════════════════════════════════════ */
+    griffTitel: 'Documenti',
+    griffZiehen: 'Trascina qui un file',
+    griffWaehlen: 'Scegli file',
+    griffLeer: 'Ancora niente. Trascina qui un PDF o un’immagine – non verrà copiata.',
+    griffNichtKopiert: 'I file restano dove sono. Inkwells ricorda soltanto il percorso.',
+    griffNameFrage: 'Come si chiama questo documento?',
+    griffVoll: 'Tre documenti sono il massimo. Togline prima uno.',
+    griffFehlt: 'File non trovato',
+    griffZuGross: 'Il file è troppo grande da mostrare.',
+    griffKeineAnzeige: 'Questo file non si può mostrare qui.',
+    griffKaputt: 'Il file non si può mostrare.',
+    griffLaedt: 'apertura …',
+    griffUmbenennen: 'Rinomina',
+    griffEntfernen: 'Rimuovi',
+    griffWegFrage: 'Viene tolto solo il riferimento – il file resta dove si trova.',
+    griffOrdnen: 'Trascina per riordinare',
+    griffAufschlagen: 'Scorri a sinistra per aprire',
+    griffBreiteZiehen: 'Trascina per la larghezza',
+    griffAusblenden: 'Nascondi tutti',
+    griffEinblenden: 'Mostra tutti',
     chatTitle: 'Chat',
     chatPlaceholder: 'Scrivi un messaggio …',
     chatSend: 'Invia',

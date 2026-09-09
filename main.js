@@ -2078,3 +2078,232 @@ ipcMain.handle('file-exists', async (_, filePath) => {
   if (!pfadErlaubt(filePath)) return false;
   return fs.existsSync(filePath);
 });
+
+/* ══════════════════════════════════════════════════════════════════════
+   GRIFFBEREIT — UNTERLAGEN NEBEN DEM HEFT
+
+   Wer mitschreibt, hat meistens etwas daneben liegen: ein Skript als
+   PDF, ein abfotografiertes Tafelbild. Bisher blieb nur, es in eine
+   Seite einzufügen – damit lag es IM Heft, wurde mitgespeichert und
+   mitsynchronisiert, obwohl es nur zum Nachsehen da war.
+
+   Griffbereit heisst deshalb: NICHT kopieren. Gemerkt wird der Pfad,
+   sonst nichts. Ist die Datei verschoben oder weg, sagt die Oberfläche
+   das – ein zweiter Stand, der still veraltet, entsteht gar nicht erst.
+
+   >>> Warum die Liste hier liegt und nicht in den Einstellungen <<<
+   Sie ist zugleich die Erlaubnisliste. 'load-from-path' nimmt nur Pfade
+   unter dem Speicherort an (pfadErlaubt) – hier geht es dagegen um
+   Dateien, die überall liegen dürfen. Der Hauptprozess muss deshalb
+   selbst wissen, welche das sind. Stünde die Liste in der
+   Einstellungsdatei, die das Fenster schreibt, könnte sich das Fenster
+   die Erlaubnis für jeden beliebigen Pfad selbst ausstellen.
+
+   Ein Pfad kommt darum nur über 'griffAngebote' herein, und die füllen
+   sich auf zwei Wegen: aus dem Auswahlfenster des Betriebssystems (der
+   Pfad entsteht hier drüben, das Fenster nennt ihn nie) und aus einer
+   abgelegten Datei. Beim Ablegen nennt das Fenster den Pfad – anders
+   geht es nicht, ein Ereignis der Maus sieht der Hauptprozess nicht.
+   Dort bleibt als Schranke die Endung: lesbar wird dadurch höchstens
+   ein Bild oder ein PDF, nicht die Schlüsseldatei daneben.
+
+   Gelesen wird immer über die Kennung, nie über einen Pfad aus dem
+   Fenster. Was nicht in der Liste steht, gibt es für 'griff-lesen' nicht.
+   ══════════════════════════════════════════════════════════════════════ */
+const griffPath = path.join(app.getPath('userData'), 'inkwells-griffbereit.json');
+
+// Drei Dateien. Mehr Reiter wären am rechten Rand nur noch Streifen.
+const GRIFF_MAX = 3;
+
+// Was sich anzeigen lässt. Alles andere wird gar nicht erst angeboten.
+const GRIFF_ARTEN = {
+  '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png',
+  '.gif': 'image/gif', '.webp': 'image/webp', '.bmp': 'image/bmp',
+  '.pdf': 'application/pdf'
+};
+
+/* Ein Skript kann ein paar hundert Seiten haben; irgendwo muss trotzdem
+   Schluss sein. Der Inhalt geht am Stück durch die Brücke zum Fenster,
+   und was dort nicht mehr in den Speicher passt, reisst die ganze
+   Anzeige mit statt nur diese eine Datei. */
+const GRIFF_MAX_BYTES = 120 * 1024 * 1024;
+
+function griffArt(p) {
+  const mime = GRIFF_ARTEN[path.extname(String(p || '')).toLowerCase()];
+  if (!mime) return null;
+  return { mime, art: mime === 'application/pdf' ? 'pdf' : 'bild' };
+}
+
+/** Was das Fenster schicken darf – der Rest der Zeile bleibt, wie er ist. */
+function griffMass(wert, klein, gross, vorgabe) {
+  const n = Number(wert);
+  if (!Number.isFinite(n)) return vorgabe;
+  return Math.min(gross, Math.max(klein, n));
+}
+
+function griffLies() {
+  try {
+    if (fs.existsSync(griffPath)) {
+      const stand = JSON.parse(fs.readFileSync(griffPath, 'utf-8'));
+      const dateien = Array.isArray(stand && stand.dateien) ? stand.dateien : [];
+      return {
+        versteckt: !!(stand && stand.versteckt),
+        dateien: dateien.filter(d => d && d.id && d.pfad).slice(0, GRIFF_MAX)
+      };
+    }
+  } catch (err) {
+    console.error('[Griffbereit] Laden fehlgeschlagen:', err.message);
+  }
+  return { versteckt: false, dateien: [] };
+}
+
+function griffSchreib(stand) {
+  try {
+    fs.writeFileSync(griffPath, JSON.stringify(stand, null, 2), 'utf-8');
+  } catch (err) {
+    console.error('[Griffbereit] Sichern fehlgeschlagen:', err.message);
+  }
+  return griffAntwort(stand);
+}
+
+/* Ob die Datei noch da ist, wird bei JEDER Antwort nachgesehen und nie
+   gespeichert: sie kann zwischen zwei Blicken verschwinden, und ein
+   gemerktes „ist da" wäre dann eine Auskunft, die bis zum Neustart hält
+   und nicht stimmt. */
+function griffAntwort(stand) {
+  return {
+    versteckt: !!stand.versteckt,
+    dateien: stand.dateien.map(d => {
+      let da = false;
+      try { da = fs.existsSync(d.pfad); } catch (err) { da = false; }
+      return { id: d.id, name: d.name, art: d.art, breite: d.breite, stelle: d.stelle, da };
+    })
+  };
+}
+
+/* Ausgesuchte Dateien, die noch keinen Namen haben. Sie liegen hier, bis
+   das Fenster nach dem Namen gefragt hat – erst dann werden sie
+   übernommen. Ein abgebrochener Dialog lässt den Eintrag zurück; er
+   kostet ein paar Zeichen und ist mit dem Beenden weg. */
+const griffAngebote = new Map();
+
+function griffBiete(pfad) {
+  const art = griffArt(pfad);
+  if (!art) return null;
+  const id = 'g' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+  griffAngebote.set(id, { pfad, art: art.art });
+  // Ohne Endung: der Vorschlag steht im Namensfeld, dort ist „.pdf" Ballast
+  return { id, art: art.art, vorschlag: path.basename(pfad, path.extname(pfad)) };
+}
+
+ipcMain.handle('griff-liste', () => griffAntwort(griffLies()));
+
+ipcMain.handle('griff-waehlen', async () => {
+  const r = await dialog.showOpenDialog(win, {
+    properties: ['openFile'],
+    filters: [
+      { name: 'Bilder & PDFs', extensions: ['pdf', 'jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp'] },
+      { name: 'PDF', extensions: ['pdf'] },
+      { name: 'Bilder', extensions: ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp'] }
+    ]
+  });
+  if (r.canceled || !r.filePaths.length) return null;
+  return griffBiete(r.filePaths[0]);
+});
+
+/* Abgelegte Dateien. Der Pfad kommt aus dem Fenster (webUtils, siehe
+   preload.js) und wird deshalb hier auf Endung und Vorhandensein
+   geprüft, bevor ein Angebot daraus wird. */
+ipcMain.handle('griff-abgelegt', (_, pfade) => {
+  const liste = Array.isArray(pfade) ? pfade : [pfade];
+  const raus = [];
+  for (const p of liste) {
+    if (typeof p !== 'string' || !p) continue;
+    if (!griffArt(p)) continue;
+    try { if (!fs.statSync(p).isFile()) continue; } catch (err) { continue; }
+    const angebot = griffBiete(p);
+    if (angebot) raus.push(angebot);
+  }
+  return raus;
+});
+
+ipcMain.handle('griff-uebernehmen', (_, id, name) => {
+  const angebot = griffAngebote.get(String(id));
+  if (!angebot) return { fehler: 'unbekannt' };
+  griffAngebote.delete(String(id));
+
+  const stand = griffLies();
+  if (stand.dateien.length >= GRIFF_MAX) return { fehler: 'voll' };
+
+  stand.dateien.push({
+    id: String(id),
+    name: String(name || '').trim().slice(0, 40) || path.basename(angebot.pfad),
+    pfad: angebot.pfad,
+    art: angebot.art,
+    breite: 0,     // 0 heisst „noch nie eingestellt" – dann gilt die Vorgabe
+    stelle: 0      // wie weit hineingerollt, als Anteil (0 … 1)
+  });
+  return griffSchreib(stand);
+});
+
+ipcMain.handle('griff-aendern', (_, id, patch) => {
+  const stand = griffLies();
+  const d = stand.dateien.find(x => x.id === String(id));
+  if (!d) return griffAntwort(stand);
+
+  if (patch && typeof patch.name === 'string') {
+    const n = patch.name.trim().slice(0, 40);
+    if (n) d.name = n;
+  }
+  if (patch && 'breite' in patch) d.breite = Math.round(griffMass(patch.breite, 0, 4000, d.breite));
+  if (patch && 'stelle' in patch) d.stelle = griffMass(patch.stelle, 0, 1, d.stelle);
+  return griffSchreib(stand);
+});
+
+ipcMain.handle('griff-entfernen', (_, id) => {
+  const stand = griffLies();
+  stand.dateien = stand.dateien.filter(d => d.id !== String(id));
+  return griffSchreib(stand);
+});
+
+/* Umsortieren. Das Fenster schickt die Kennungen in der neuen Folge; was
+   nicht darin vorkommt, hängt sich hinten an – so kann eine Liste, die
+   im Fenster gerade veraltet ist, keinen Eintrag verschlucken. Unter
+   sich behalten diese Nachzügler ihre Reihenfolge (sort ist stabil). */
+function griffOrdne(dateien, ids) {
+  const folge = Array.isArray(ids) ? ids.map(String) : [];
+  const platz = (d) => { const i = folge.indexOf(d.id); return i === -1 ? 99 : i; };
+  return dateien.slice().sort((a, b) => platz(a) - platz(b));
+}
+
+ipcMain.handle('griff-ordnen', (_, ids) => {
+  const stand = griffLies();
+  stand.dateien = griffOrdne(stand.dateien, ids);
+  return griffSchreib(stand);
+});
+
+ipcMain.handle('griff-verstecken', (_, an) => {
+  const stand = griffLies();
+  stand.versteckt = !!an;
+  return griffSchreib(stand);
+});
+
+ipcMain.handle('griff-lesen', (_, id) => {
+  const d = griffLies().dateien.find(x => x.id === String(id));
+  if (!d) return { ok: false, grund: 'unbekannt' };
+
+  /* Die Endung entscheidet auch beim Lesen noch einmal: die Datei am
+     gemerkten Pfad kann seit dem Aufnehmen durch eine andere ersetzt
+     worden sein. */
+  const art = griffArt(d.pfad);
+  if (!art) return { ok: false, grund: 'art' };
+
+  try {
+    const stat = fs.statSync(d.pfad);
+    if (!stat.isFile()) return { ok: false, grund: 'fehlt' };
+    if (stat.size > GRIFF_MAX_BYTES) return { ok: false, grund: 'gross' };
+    return { ok: true, art: d.art, mime: art.mime, bytes: fs.readFileSync(d.pfad) };
+  } catch (err) {
+    return { ok: false, grund: 'fehlt' };
+  }
+});

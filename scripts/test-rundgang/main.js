@@ -55,6 +55,48 @@ const ATTRAPPEN = {
 for (const [kanal, wert] of Object.entries(ATTRAPPEN)) {
   ipcMain.handle(kanal, async () => (typeof wert === 'object' && wert !== null ? JSON.parse(JSON.stringify(wert)) : wert));
 }
+/* ── Griffbereit: eine Attrappe MIT GEDÄCHTNIS ──────────────────────
+   Ein fester Wert genügte hier nicht: der Rundgang legt eine Unterlage
+   an und will sie danach in der Liste, am Reiter und in der Ansicht
+   wiederfinden. Ein leeres Ergebnis liesse jeden dieser Schritte
+   „bestehen", ohne dass etwas geprüft wäre. */
+const griffStand = { versteckt: false, dateien: [] };
+const griffAbbild = () => JSON.parse(JSON.stringify(griffStand));
+// Ein weisses Bild von 1x1 – genug, um den Weg bis zum <img> zu gehen
+const EIN_PIXEL = Buffer.from(
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
+  'base64');
+
+ipcMain.handle('griff-liste', () => griffAbbild());
+ipcMain.handle('griff-waehlen', () => ({ id: 'g1', art: 'bild', vorschlag: 'Tafelbild' }));
+ipcMain.handle('griff-abgelegt', () => [{ id: 'g2', art: 'pdf', vorschlag: 'Skript' }]);
+ipcMain.handle('griff-uebernehmen', (_, id, name) => {
+  griffStand.dateien.push({
+    id: String(id), name: String(name), art: 'bild', breite: 0, stelle: 0, da: true
+  });
+  return griffAbbild();
+});
+ipcMain.handle('griff-aendern', (_, id, patch) => {
+  const d = griffStand.dateien.find(x => x.id === String(id));
+  if (d) Object.assign(d, patch);
+  return griffAbbild();
+});
+ipcMain.handle('griff-entfernen', (_, id) => {
+  griffStand.dateien = griffStand.dateien.filter(d => d.id !== String(id));
+  return griffAbbild();
+});
+ipcMain.handle('griff-ordnen', (_, ids) => {
+  const f = (Array.isArray(ids) ? ids : []).map(String);
+  const platz = (d) => { const i = f.indexOf(d.id); return i === -1 ? 99 : i; };
+  griffStand.dateien.sort((a, b) => platz(a) - platz(b));
+  return griffAbbild();
+});
+ipcMain.handle('griff-verstecken', (_, an) => {
+  griffStand.versteckt = !!an;
+  return griffAbbild();
+});
+ipcMain.handle('griff-lesen', () => ({ ok: true, art: 'bild', mime: 'image/png', bytes: EIN_PIXEL }));
+
 ipcMain.on('silent-auth', () => {});
 ipcMain.on('win-min', () => {});
 ipcMain.on('win-max', () => {});
@@ -1310,6 +1352,87 @@ app.on('ready', async () => {
       // Und ein Schema, das niemand erlaubt hat, faellt weiter durch
       const boese = sanitizePageHtml('<a href="file:///C:/Windows">x</a>');
       if (/file:/.test(boese)) throw new Error('file: blieb stehen: ' + boese);`);
+
+    /* ── Unterlagen neben dem Heft ────────────────────────────────── */
+    /* Der ganze Weg einmal durch: aufmachen, hinzufügen, zumachen,
+       am Reiter aufschlagen, ausblenden. Was hier stumm bleibt, bleibt
+       auch im Betrieb stumm – die Leiste sagt von sich aus nichts. */
+    abschnitt('Unterlagen neben dem Heft');
+
+    await schritt('Die Leiste geht auf', `
+      E('btn-griff').click();
+      await new Promise(r => setTimeout(r, 300));
+      if (!E('griff-panel').classList.contains('open')) throw new Error('die Leiste blieb zu');`, 340);
+
+    await schritt('Eine Unterlage bekommt einen Namen und steht in der Liste', `
+      E('griff-waehlen').click();
+      await new Promise(r => setTimeout(r, 250));
+      if (E('ov-txt').style.display === 'none') throw new Error('die Frage nach dem Namen kam nicht');
+      E('txt-modal-in').value = 'Tafelbild';
+      E('txt-modal-ok').click();
+      await new Promise(r => setTimeout(r, 300));
+      const zeile = document.querySelector('.griff-zeile');
+      if (!zeile) throw new Error('die Zeile fehlt');
+      if (zeile.querySelector('.griff-zeile-name').textContent !== 'Tafelbild')
+        throw new Error('der Name kam nicht an');`, 340);
+
+    await schritt('Zugeklappt steht der Reiter an der Kante', `
+      E('griff-panel-close').click();
+      await new Promise(r => setTimeout(r, 350));
+      const streifen = E('griff-reiter');
+      if (streifen.style.display !== 'flex') throw new Error('der Streifen bleibt weg');
+      if (!streifen.querySelector('.griff-reiter-btn')) throw new Error('kein Reiter');`, 380);
+
+    /* Die Geste selbst, nicht ein Umweg über eine Funktion: nach links
+       wischen ist der Weg, den der Nutzer nimmt. */
+    await schritt('Ein Wisch nach links schlaegt die Datei auf', `
+      const b = E('griff-reiter').querySelector('.griff-reiter-btn');
+      const zeig = (art, x) => b.dispatchEvent(new PointerEvent(art,
+        { pointerId: 7, clientX: x, clientY: 200, bubbles: true }));
+      zeig('pointerdown', 300); zeig('pointerup', 240);
+      await new Promise(r => setTimeout(r, 500));
+      if (!E('griff-view').classList.contains('open')) throw new Error('die Ansicht blieb zu');
+      if (!E('griff-view-body').querySelector('img')) throw new Error('das Bild kam nicht an');`, 520);
+
+    await schritt('Die Breite laesst sich ziehen und bleibt im Rahmen', `
+      const z = E('griff-zieher'), v = E('griff-view');
+      const zeig = (art, x) => z.dispatchEvent(new PointerEvent(art,
+        { pointerId: 8, clientX: x, clientY: 300, bubbles: true }));
+      zeig('pointerdown', 600);
+      zeig('pointermove', -4000);      // absichtlich weit über das Erlaubte
+      zeig('pointerup', -4000);
+      await new Promise(r => setTimeout(r, 200));
+      const breit = parseFloat(getComputedStyle(v).getPropertyValue('--griff-breite'));
+      if (!(breit > 0)) throw new Error('keine Breite gesetzt');
+      if (breit > window.innerWidth / 2 + 1)
+        throw new Error('breiter als das halbe Fenster: ' + breit);`, 260);
+
+    await schritt('Ein Wisch nach rechts faehrt sie wieder ein', `
+      const kopf = document.querySelector('.griff-view-head');
+      const zeig = (art, x) => kopf.dispatchEvent(new PointerEvent(art,
+        { pointerId: 9, clientX: x, clientY: 100, bubbles: true }));
+      zeig('pointerdown', 100); zeig('pointerup', 300);
+      await new Promise(r => setTimeout(r, 400));
+      if (E('griff-view').classList.contains('open')) throw new Error('die Ansicht blieb offen');`, 420);
+
+    await schritt('Ausblenden nimmt die Reiter weg, ohne zu loeschen', `
+      E('btn-griff').click();
+      await new Promise(r => setTimeout(r, 300));
+      E('griff-verstecken').click();
+      await new Promise(r => setTimeout(r, 300));
+      if (!document.querySelector('.griff-zeile')) throw new Error('die Zeile wurde geloescht');
+      E('griff-panel-close').click();
+      await new Promise(r => setTimeout(r, 350));
+      if (E('griff-reiter').style.display !== 'none') throw new Error('der Streifen blieb stehen');`, 380);
+
+    await schritt('Und wieder einblenden holt sie zurueck', `
+      E('btn-griff').click();
+      await new Promise(r => setTimeout(r, 300));
+      E('griff-verstecken').click();
+      await new Promise(r => setTimeout(r, 250));
+      E('griff-panel-close').click();
+      await new Promise(r => setTimeout(r, 350));
+      if (E('griff-reiter').style.display !== 'flex') throw new Error('der Streifen kam nicht zurueck');`, 380);
 
     /* ── Was geändert wurde, muss auch gemerkt werden ─────────────── */
     /* Gespeichert wird NUR, was AutoSave als schmutzig kennt: jeder Weg

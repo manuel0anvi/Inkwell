@@ -40,6 +40,11 @@ src/
 > Dazugekommen sind seither unter anderem `core/share.js`,
 > `core/cloudSync.js`, `core/sanitize.js`, `ui/collab.js` und
 > `ui/sharedDocs.js` — die Freigaben, die Cloud und die Live-Bearbeitung.
+> Dazu `ui/griffbereit.js` mit `css/griffbereit.css`: PDFs und Bilder, die
+> beim Schreiben danebenliegen, ohne ins Heft zu wandern. Sie werden
+> **nicht kopiert** — gemerkt wird der Ort, und die Liste dazu führt der
+> Hauptprozess (`main.js`), weil sie zugleich die Erlaubnis ist, ausserhalb
+> des Speicherorts zu lesen.
 > Was eine Datei tut, steht in ihrem Kopf; die Statistik weiter unten ist
 > ebenfalls nicht mehr aktuell.
 

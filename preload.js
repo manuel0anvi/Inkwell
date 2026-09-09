@@ -1,4 +1,4 @@
-const { contextBridge, ipcRenderer } = require('electron');
+const { contextBridge, ipcRenderer, webUtils } = require('electron');
 contextBridge.exposeInMainWorld('api', {
   minimize:  ()  => ipcRenderer.send('win-min'),
   maximize:  ()  => ipcRenderer.send('win-max'),
@@ -89,5 +89,29 @@ contextBridge.exposeInMainWorld('api', {
   saveRegistry:     (d) => ipcRenderer.invoke('save-registry', d),
   
   // Event listeners for file open
-  onOpenFile: (callback) => ipcRenderer.on('open-file', (event, filePath) => callback(filePath))
+  onOpenFile: (callback) => ipcRenderer.on('open-file', (event, filePath) => callback(filePath)),
+
+  /* ── Griffbereit: Unterlagen neben dem Heft ──────────────────────────
+     PDFs und Bilder, die nur ANGESEHEN werden. Sie liegen weiterhin da,
+     wo sie liegen; hier reist nur die Kennung hin und her. Wer welche
+     Datei sein darf, entscheidet allein der Hauptprozess (main.js) –
+     einen Pfad zum Lesen nimmt er von hier gar nicht erst an.
+
+     >>> Warum pfadVon eine eigene Zeile ist <<<
+     Bis Electron 31 stand der Pfad einer abgelegten Datei in `file.path`.
+     Das gibt es nicht mehr; den Pfad kennt nur noch webUtils, und das
+     wiederum nur hier im Vorlauf. Ohne diese Zeile gäbe es kein
+     Hineinziehen, sondern nur das Auswahlfenster. */
+  griffbereit: {
+    liste:       ()             => ipcRenderer.invoke('griff-liste'),
+    waehlen:     ()             => ipcRenderer.invoke('griff-waehlen'),
+    abgelegt:    (pfade)        => ipcRenderer.invoke('griff-abgelegt', pfade),
+    uebernehmen: (id, name)     => ipcRenderer.invoke('griff-uebernehmen', id, name),
+    aendern:     (id, patch)    => ipcRenderer.invoke('griff-aendern', id, patch),
+    entfernen:   (id)           => ipcRenderer.invoke('griff-entfernen', id),
+    ordnen:      (ids)          => ipcRenderer.invoke('griff-ordnen', ids),
+    verstecken:  (an)           => ipcRenderer.invoke('griff-verstecken', an),
+    lesen:       (id)           => ipcRenderer.invoke('griff-lesen', id),
+    pfadVon:     (datei)        => { try { return webUtils.getPathForFile(datei); } catch (e) { return ''; } }
+  }
 });
