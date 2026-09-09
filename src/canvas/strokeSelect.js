@@ -444,7 +444,7 @@
       if (feld) feld.style.background = farbe;
       notiere(pageId, endgueltig);
       if (endgueltig) meldeStriche();
-    });
+    }, strokes[0].color || '#1a1510');
   }
 
   /** Strichstärke der ganzen Auswahl ändern. */

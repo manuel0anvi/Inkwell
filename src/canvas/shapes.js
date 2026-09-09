@@ -329,7 +329,7 @@ function addShapeChrome(bar, obj, page, objLayer) {
         fuellBtn.style.background = c;
         fuellBtn.title = c;
         if (final) { pushPageHistory(page); neuZeichnen(); }
-      });
+      }, obj.fill && obj.fill !== 'none' ? obj.fill : '#c04040');
     });
     fuellWahl.appendChild(fuellBtn);
 
@@ -378,7 +378,7 @@ function addShapeChrome(bar, obj, page, objLayer) {
         strichBtn.style.background = c;
         strichBtn.title = c;
         if (final) { pushPageHistory(page); neuZeichnen(); }
-      });
+      }, aktStrich);
     });
     strichWahl.appendChild(strichBtn);
 

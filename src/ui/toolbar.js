@@ -426,11 +426,16 @@ function activePenState() {
   return S.mode === 'pen1' ? S.pen1 : S.mode === 'pen2' ? S.pen2 : S.mode === 'hl' ? S.hl : S.pen1;
 }
 
+/* Der Anker geht, Ziel und Rückruf BLEIBEN.
+
+   Der native Farbwähler meldet sein Ergebnis erst beim Zugehen, und
+   dieser Druck schliesst nebenbei das Fenster hier. Wer beides zugleich
+   wegräumte, warf damit die letzte, endgültige Farbe weg – oder schob
+   sie in den Stift (siehe applyCustomColorValue). Beides steht erst
+   beim nächsten Öffnen wieder neu, und dort wird es ohnehin gesetzt. */
 function closeCustomColorPopover() {
   E('custom-color-pop').style.display = 'none';
-  _customColorTarget = null;
   _customColorAnchor = null;
-  _customColorCallback = null;
 }
 
 function positionCustomColorPopover(anchorEl) {
@@ -498,11 +503,22 @@ function renderRecentCustomColors() {
 
 let _savedTextRange = null;
 
-function openCustomColorPopover(target, anchorEl, onApply) {
+/**
+ * Die Farbwahl öffnen.
+ *
+ * @param {string} target      'pen' | 'text' | 'shape-fill' | 'shape-stroke' | …
+ * @param {HTMLElement} anchorEl  woran das Fenster hängt
+ * @param {Function} [onApply]    eigener Rückruf (Formen, Auswahl); ohne ihn
+ *                                gilt die Farbe dem Stift bzw. dem Text
+ * @param {string} [startFarbe]   die Farbe, die gerade gilt – ohne sie stünde
+ *                                im Rad die des Stifts, und wer nur zusieht,
+ *                                bekäme eine fremde Farbe angeboten
+ */
+function openCustomColorPopover(target, anchorEl, onApply, startFarbe) {
   _customColorTarget = target;
   _customColorAnchor = anchorEl;
   _customColorCallback = onApply || null;
-  
+
   if (target === 'text') {
     const sel = window.getSelection();
     if (sel && sel.rangeCount > 0) _savedTextRange = sel.getRangeAt(0);
@@ -512,15 +528,27 @@ function openCustomColorPopover(target, anchorEl, onApply) {
   const pop = E('custom-color-pop');
   const input = E('custom-color-pop-input');
   const txt = (k, e) => (typeof t === 'function' && t(k)) || e;
-  E('custom-color-pop-title').textContent = target === 'text'
-    ? txt('textColor', 'Textfarbe') : txt('penColor', 'Stiftfarbe');
+  /* Die Überschrift sagte bei jedem Ziel ausser Text „Stiftfarbe" – auch
+     über der Füllung einer Form. Wer das las, musste glauben, er stelle
+     gerade den Stift ein. */
+  const TITEL = {
+    text: ['textColor', 'Textfarbe'],
+    'shape-fill': ['shapeFill', 'Füllung'],
+    'shape-stroke': ['shapeStroke', 'Linienfarbe'],
+    section: ['sectionColor', 'Farbe des Abschnitts'],
+    notebook: ['notebookColor', 'Farbe des Hefts']
+  };
+  const titel = TITEL[target] || ['penColor', 'Stiftfarbe'];
+  E('custom-color-pop-title').textContent = txt(titel[0], titel[1]);
 
   /* Die Farbe der Stelle, an der die Marke steht – nicht irgendeine
      zuletzt benutzte. Beim Text steht sie im Dokument selbst
-     (queryCommandValue), sonst im Werkzeug. */
-  const start = target === 'text'
-    ? (farbeUnterMarke() || S.textCustomColor || S.textColor)
-    : (activePenState().customColor || activePenState().color);
+     (queryCommandValue), sonst im Werkzeug. Wer ein eigenes Ziel
+     mitbringt (Form, Abschnitt, Heft), sagt seine Farbe selbst. */
+  const start = startFarbe
+    || (target === 'text'
+      ? (farbeUnterMarke() || S.textCustomColor || S.textColor)
+      : (activePenState().customColor || activePenState().color));
 
   const c = normalizeHexColor(start) || '#1a1510';
   input.value = c;
@@ -725,13 +753,34 @@ function baueFarbPresets() {
   }
 }
 
+/* ══════════════════════════════════════════════════════════════════════
+   WOFUER DIE FARBE GEWAEHLT WURDE, ENTSCHEIDET DAS FENSTER – NICHT DER ZUFALL
+
+   >>> Hier faerbte sich der Stift mit <<<
+   Gemeldet: „wenn man die Farbe von einer Form ändert, gilt sie danach
+   auch für den Stift." Der Weg dorthin: das Fenster gehört allen –
+   Stift, Text, Füllung, Linienfarbe –, und wer es für eine Form öffnet,
+   bekommt einen eigenen Rückruf (openCustomColorPopover). Fehlt der,
+   fiel diese Stelle auf „dann eben der Stift" zurück.
+
+   Und er fehlt genau einmal zu oft: der native Farbwähler schickt sein
+   `change` erst, wenn er zugeht – und beim Zugehen kann schon ein Druck
+   auf die Seite gelaufen sein, der das Fenster geschlossen und den
+   Rückruf mit weggeräumt hat. Die zuletzt gewählte Farbe landete dann
+   im Stift statt in der Form.
+
+   Der Stift ist deshalb kein Auffangbecken mehr. Wurde das Fenster für
+   etwas anderes geöffnet, geht die Farbe dorthin oder nirgendwohin.
+   ══════════════════════════════════════════════════════════════════════ */
 function applyCustomColorValue(color, commitHistory) {
   const c = normalizeHexColor(color);
   if (!c) return;
   if (_customColorCallback) {
     _customColorCallback(c, commitHistory);
-  } else {
+  } else if (_customColorTarget === 'pen' || _customColorTarget === 'text') {
     syncGlobalCustomColor(c, _customColorTarget === 'text');
+  } else {
+    return;   // Fenster war fuer etwas anderes offen und ist schon zu
   }
   if (commitHistory) {
     saveRecentCustomColor(c);
