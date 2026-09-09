@@ -1044,6 +1044,8 @@ function attachInput(canvas, textDiv, objLayer, page) {
     let gewachsen = false;
     for (const ev of meldungen) {
       c = amLinealAusrichten(coords(ev), canvas, page);
+      // Fuers Eindampfen beim Abheben – siehe linealStrichEindampfen
+      if (S._rulerKlebt) stroke._amLineal = true;
       /* Steht die Gerade fest, zählt nur noch ihr Ende – die Punkte
          dazwischen wirft der Zweig unten ohnehin weg. */
       if (stroke._lineLocked) continue;
@@ -1085,6 +1087,7 @@ function attachInput(canvas, textDiv, objLayer, page) {
        (siehe stiftVorschau). Jetzt liegt er auf der Vorschau, und die ist
        eine Zeile darueber gerade geleert worden. Ohne dieses Neuzeichnen
        waere der Strich beim Abheben schlicht verschwunden. */
+    linealStrichEindampfen(S._cur);
     if (S._cur && !S._cur._lasso) redrawStrokes(canvas, S.strokeHistory[page.id]);
 
     const finished = S._cur;
@@ -1194,6 +1197,8 @@ function attachInput(canvas, textDiv, objLayer, page) {
 
     if (!abgebrochen) return;
 
+    // Auch ein abgebrochener Strich ist am Lineal eine Linie – siehe dort
+    linealStrichEindampfen(abgebrochen);
     redrawStrokes(canvas, S.strokeHistory[page.id]);
     page.inkStrokes = JSON.parse(JSON.stringify(S.strokeHistory[page.id] || []));
     if (!abgebrochen.isEraser && window.Collab) Collab.noteStroke(page.id, abgebrochen);
@@ -1458,6 +1463,64 @@ function letztesZeichenwerkzeug() {
  * hundert davon und ist trotzdem schnurgerade. Gemessen wird, wie weit
  * der weiteste Punkt von der Verbindung zwischen Anfang und Ende abweicht.
  */
+/* ══════════════════════════════════════════════════════════════════════
+   EINE AM LINEAL GEZOGENE LINIE IST EINE LINIE
+
+   >>> Gemeldet: „sie verhaelt sich nicht wie eine gerade Linie" <<<
+   Wer sie auswaehlte, bekam die gewoehnliche Huelle statt der zwei
+   Griffe an den Enden. Der Grund: canvas/strokeSelect.js erkennt eine
+   Gerade daran, dass sie GENAU ZWEI Punkte hat (istGerade) – so entsteht
+   sie beim Halten am Ende. Am Lineal entsteht sie anders: dort wird
+   jeder einzelne Punkt auf die Kante geschoben, und am Ende liegen
+   zweihundert davon aufgereiht auf einer Linie. Dasselbe Bild, ein
+   anderer Inhalt.
+
+   Sie wird deshalb beim Abheben auf ihre zwei Enden eingedampft. Das
+   ist keine Vereinfachung, die etwas verliert – die Punkte dazwischen
+   liegen ohnehin alle auf der Verbindung.
+
+   >>> Warum die AEUSSERSTEN und nicht der erste und der letzte <<<
+   Am Lineal faehrt man gern zweimal hin und her, um die Linie
+   nachzuziehen. Dann liegt der letzte Punkt irgendwo in der Mitte, und
+   „erster bis letzter" waere die halbe Linie. Gesucht sind die beiden,
+   die am weitesten auseinanderliegen: erst der weiteste vom Anfang aus,
+   dann der weiteste von dem aus. Bei Punkten auf einer Geraden findet
+   das die echten Enden.
+   ══════════════════════════════════════════════════════════════════════ */
+function aeussereEnden(pts) {
+  const weitesterVon = (q) => {
+    let best = pts[0], weit = -1;
+    for (const p of pts) {
+      const d = (p.x - q.x) * (p.x - q.x) + (p.y - q.y) * (p.y - q.y);
+      if (d > weit) { weit = d; best = p; }
+    }
+    return best;
+  };
+  const a = weitesterVon(pts[0]);
+  return { a: weitesterVon(a), b: a };
+}
+
+/**
+ * Einen am Lineal gezogenen Strich auf seine zwei Enden bringen.
+ * @returns {boolean} ob etwas geaendert wurde
+ */
+function linealStrichEindampfen(stroke) {
+  if (!stroke || !stroke._amLineal) return false;
+  delete stroke._amLineal;   // gehoert nicht in die gespeicherte Seite
+
+  const pts = stroke.path;
+  if (!pts || pts.length < 3 || stroke.isEraser || stroke.isHL) return false;
+
+  const { a, b } = aeussereEnden(pts);
+  if (Math.hypot(b.x - a.x, b.y - a.y) < 12) return false;
+  for (const p of pts) {
+    if (pointToLineDistance(p.x, p.y, a.x, a.y, b.x, b.y) > 2.5) return false;
+  }
+
+  stroke.path = [{ x: a.x, y: a.y, p: a.p }, { x: b.x, y: b.y, p: b.p }];
+  return true;
+}
+
 function istGeraderStrich(s) {
   const pts = s && s.path;
   if (!pts || pts.length < 2) return false;

@@ -233,6 +233,60 @@ check('Ohne Recht wird nichts eingesetzt', insertShape('rect'), false);
 check('Und die Liste bleibt, wie sie war', page.objects.length, stand);
 S.readOnly = false;
 
+/* ══════════════════════════════════════════════════════════════════
+   11. AN DER KANTE ZIEHT ES NUR EINE RICHTUNG
+
+   Es gab nur Eckgriffe, und jeder rechnete die Hoehe aus der Breite:
+   ein Rechteck liess sich nur als Ganzes aufblasen. Gemeldet wurde
+   genau das, zweimal – zuletzt fuer Bilder, die ihr Verhaeltnis
+   zunaechst auch an der Kante behielten.
+
+   Geprueft wird an einem BILD, weil dort beides zusammenkommt: der
+   Kantengriff muss die Breite allein aendern, und die Ecke muss
+   weiterhin beides im Gleichschritt bewegen.
+   ══════════════════════════════════════════════════════════════════ */
+deselect();
+const kb = { id: 'kb', kind: 'image', src: '', name: 'K', x: 100, y: 200, w: 200, h: 100, rot: 0 };
+page.objects.push(kb);
+placeObject(layer, kb, page);
+const kbWrap = layer.querySelector('.obj-wrap[data-objid="kb"]');
+kbWrap._waehleObjekt();
+
+/** Einen Griff um dx/dy ziehen. */
+function zieheGriff(klasse, dx, dy) {
+  const g = kbWrap.querySelector('.obj-handle.' + klasse);
+  if (!g) return false;
+  const r = g.getBoundingClientRect();
+  const x = r.left + r.width / 2, y = r.top + r.height / 2;
+  const ev = (art, ex, ey) => g.dispatchEvent(new PointerEvent(art, {
+    bubbles: true, cancelable: true, composed: true, clientX: ex, clientY: ey,
+    pointerId: 4, pointerType: 'mouse', button: 0, isPrimary: true }));
+  ev('pointerdown', x, y);
+  ev('pointermove', x + dx, y + dy);
+  ev('pointerup', x + dx, y + dy);
+  return true;
+}
+
+check('Es gibt Griffe an allen vier Kanten',
+  ['t', 'r', 'b', 'l'].every(k => !!kbWrap.querySelector('.obj-handle.' + k)), true);
+
+const vorBreite = kb.w, vorHoehe = kb.h;
+check('Die rechte Kante zieht nur die Breite', zieheGriff('r', 60, 0), true);
+check('Und zwar wirklich (' + Math.round(kb.w) + ' statt ' + vorBreite + ')', kb.w > vorBreite + 30, true);
+check('Die Hoehe bleibt, wie sie war (' + Math.round(kb.h) + ')', Math.round(kb.h), vorHoehe);
+
+const vor2 = { w: kb.w, h: kb.h };
+zieheGriff('b', 0, 50);
+check('Die untere Kante zieht nur die Hoehe (' + Math.round(kb.h) + ')', kb.h > vor2.h + 25, true);
+check('Und die Breite bleibt (' + Math.round(kb.w) + ')', Math.round(kb.w), Math.round(vor2.w));
+
+// Die Ecke bewegt weiterhin beides im Gleichschritt
+const vor3 = { w: kb.w, h: kb.h };
+zieheGriff('br', 40, 0);
+check('Die Ecke haelt das Verhaeltnis',
+  Math.abs((kb.w / kb.h) - (vor3.w / vor3.h)) < 0.01, true);
+check('Und sie aendert dabei beides', kb.h > vor3.h + 5, true);
+
 window.__ergebnis = out.join('\n');
 </script>
 </body>

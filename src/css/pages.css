@@ -1108,11 +1108,23 @@ body.touch-input .obj-body[data-kind="shape"]::after {
   box-shadow: 0 0 0 4px rgba(200, 169, 110, .14)
 }
 
+/* ══ DER RAHMEN BESTIMMT, NICHT DAS BILD ═══════════════════════════════
+   Hier stand object-fit: contain. Damit blieb das Bild in seinem eigenen
+   Verhaeltnis und legte sich mit Luft oben und unten in den Rahmen –
+   solange der nur an den Ecken gezogen werden konnte, fiel das nie auf.
+   Seit die Kanten Breite und Hoehe einzeln ziehen, waere es genau der
+   Fehler, der gemeldet wurde: man zieht in die Laenge, und das Bild
+   bleibt stehen.
+
+   fill ist ausserdem das, was ohnehin gilt: beim Export wird das Bild in
+   den Rahmen gezeichnet (core/importExport.js, core/docx.js), ohne
+   Ruecksicht auf sein Verhaeltnis. Auf dem Schirm sah es bisher anders
+   aus als auf dem Papier. */
 .obj-body img {
   display: block;
   width: 100%;
   height: 100%;
-  object-fit: contain;
+  object-fit: fill;
   border-radius: 2px
 }
 

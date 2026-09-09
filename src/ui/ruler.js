@@ -30,7 +30,18 @@
 
 (function () {
   /* ── Maße ──────────────────────────────────────────────────────────── */
-  const LINEAL_H = 58;           // CSS-Pixel, gesamte Höhe
+  /* ── Wie hoch das Lineal ist ────────────────────────────────────────
+     Es waren 58. Gemeldet: „mach das Lineal ein bisschen dicker in der
+     Hoehe, denn es passiert oft gerne, dass die Linie ausversehen unter
+     dem Lineal weiterlaeuft." Genau daran liegt es: die Kante haelt den
+     Strich noch fest, wenn die Spitze schon ein Stueck darueber wandert
+     (die Hysterese in canvas/input.js, RULER_LOSLASSEN) – und bei einem
+     schmalen Koerper ist man mit einer kleinen Handbewegung drueber.
+
+     Der Platz kommt UNTEN dazu, unter der Skala. Das ist die Seite, an
+     der man den Stift anlegt, und so sieht auch ein echtes Lineal aus:
+     Striche und Zahlen oben, glatter Koerper darunter. */
+  const LINEAL_H = 72;           // CSS-Pixel, gesamte Höhe
   const LINEAL_H_PAD = 16;       // Platz über den Strichen (für Griff)
 
   /* Die Breite ist NICHT fest: das Lineal ist so lang wie die Seite breit
@@ -202,11 +213,11 @@
   const WINKEL_TOLERANZ = 6;    // Grad bis zur Viertelmarke
 
   /* Bildschirmpixel bis zur Papierlinie. Bewusst knapp: es rasten BEIDE
-     Kanten ein, und die liegen 58 px auseinander – bei einem Linien-
-     abstand von 32 px decken zwei grosszuegige Fangbereiche zusammen
-     schon fast die ganze Strecke ab, und das Lineal liesse sich gar
-     nicht mehr zwischen die Linien legen. Mit 8 px bleibt dafuer ein
-     knappes Drittel uebrig. */
+     Kanten ein, und die liegen eine Linealhoehe auseinander – bei einem
+     Linienabstand von 32 px decken zwei grosszuegige Fangbereiche
+     zusammen schon fast die ganze Strecke ab, und das Lineal liesse sich
+     gar nicht mehr zwischen die Linien legen. Mit 8 px bleibt dafuer
+     genug uebrig. */
   const LINIEN_TOLERANZ = 8;
 
   /**
@@ -227,13 +238,39 @@
   }
 
   /** Die Seite, ueber der die Mitte des Lineals gerade liegt. */
+  /* ══════════════════════════════════════════════════════════════════
+     WELCHE SEITE LIEGT UNTER DEM LINEAL
+
+     >>> Hier lag das Ruckeln beim Schieben und Drehen <<<
+     Die Schleife fragt JEDE Seite im Heft nach ihrem Rechteck, und ein
+     getBoundingClientRect zwingt den Browser dazu, vorher das ganze
+     Layout auszurechnen. Bei einem Heft mit vierzig Seiten sind das
+     vierzig Zwangspausen – und das lief bei jeder einzelnen Meldung der
+     Finger, bei zweien also doppelt. Genau so wurde es gemeldet: „das
+     Drehen mit dem Finger ist ein bisschen laggy."
+
+     Die Seite wechselt beim Schieben aber fast nie. Gefragt wird deshalb
+     zuerst die von letztem Mal – und zwar frisch, mit ihrem eigenen
+     Rechteck. Das ist EINE Zwangspause statt vierzig, und es kann nicht
+     veralten: wer rollt oder zoomt, bekommt beim naechsten Bild die
+     wirklichen Werte. Erst wenn die Mitte des Lineals aus dieser Seite
+     herauswandert, wird ueberhaupt wieder gesucht.
+     ══════════════════════════════════════════════════════════════════ */
+  let _seiteGemerkt = null;
+
   function seiteUnterLineal() {
     const mx = lineal.rohX + linealBreite / 2;
     const my = lineal.rohY + LINEAL_H / 2;
-    for (const pg of document.querySelectorAll('.j-page')) {
-      const r = pg.getBoundingClientRect();
-      if (mx >= r.left && mx <= r.right && my >= r.top && my <= r.bottom) return pg;
+    const drin = (r) => mx >= r.left && mx <= r.right && my >= r.top && my <= r.bottom;
+
+    if (_seiteGemerkt && _seiteGemerkt.isConnected && drin(_seiteGemerkt.getBoundingClientRect())) {
+      return _seiteGemerkt;
     }
+
+    for (const pg of document.querySelectorAll('.j-page')) {
+      if (drin(pg.getBoundingClientRect())) { _seiteGemerkt = pg; return pg; }
+    }
+    _seiteGemerkt = null;
     return null;
   }
 
@@ -391,6 +428,30 @@
   }
 
   /* ══════════════════════════════════════════════════════════════════
+     EINMAL JE BILD REICHT
+
+     Zwei Finger auf einem Tablet melden zusammen 240-mal in der Sekunde;
+     der Bildschirm zeigt 60 Bilder. Jede dieser Meldungen rechnete das
+     Einrasten komplett durch – Seite suchen, Linienraster lesen,
+     Ausschnitt messen –, und drei Viertel davon waren fuer ein Bild, das
+     nie gezeigt wurde. Die Arbeit fiel trotzdem an, und weil sie das
+     Layout anhaelt, fiel sie doppelt ins Gewicht.
+
+     Die Finger schreiben jetzt nur noch die Zahlen fort; gerechnet und
+     gezeichnet wird einmal je Bild. Nichts geht dabei verloren – die
+     letzte Meldung vor dem Bild ist die, die zaehlt.
+     ══════════════════════════════════════════════════════════════════ */
+  let _linealBildLaeuft = 0;
+
+  function planeLinealPos() {
+    if (_linealBildLaeuft) return;
+    _linealBildLaeuft = requestAnimationFrame(() => {
+      _linealBildLaeuft = 0;
+      aktualisiereLinealPos();
+    });
+  }
+
+  /* ══════════════════════════════════════════════════════════════════
      SCHIEBEN UND DREHEN
 
      Ein Finger schiebt. Zwei Finger schieben UND drehen – so, wie man
@@ -502,7 +563,7 @@
     }, { passive: false });
   }
 
-  einfacheBewegung(ln.canvas, lineal, aktualisiereLinealPos);
+  einfacheBewegung(ln.canvas, lineal, planeLinealPos);
 
   /* ══════════════════════════════════════════════════════════════════
      NEU MALEN BEI ZOOM-ÄNDERUNG

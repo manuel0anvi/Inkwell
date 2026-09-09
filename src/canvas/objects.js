@@ -147,7 +147,39 @@ function restackObjects(objLayer, page) {
   });
 }
 
-document.addEventListener('pointerdown', e => { if (!e.target.closest('.obj-wrap')) deselect(); });
+/* ══════════════════════════════════════════════════════════════════════
+   WAS „DANEBEN" IST UND WAS NICHT
+
+   Ein Druck ausserhalb des Objekts hebt die Auswahl auf – das ist
+   richtig, aber „ausserhalb" war zu weit gefasst. Die Farbwahl gehoert
+   zur Leiste ueber dem Objekt: sie wird von dort geoeffnet und faerbt
+   genau dieses eine Ding. Jeder Griff darin galt trotzdem als „daneben",
+   und die Leiste verschwand mitten im Faerben.
+
+   Gemeldet wurde es zweimal: einmal beim Zumachen der Farbwahl, einmal
+   beim Wiederaufklappen der Flaeche darin – und beide Male ist es
+   dieselbe Stelle hier. Das Fenster liegt am Dokument, nicht im Objekt
+   (es muss aus der Seite herausragen duerfen), deshalb faellt es nicht
+   schon ueber .obj-wrap heraus.
+   ══════════════════════════════════════════════════════════════════════ */
+const GEHOERT_ZUR_AUSWAHL = '.obj-wrap, #custom-color-pop';
+
+document.addEventListener('pointerdown', e => {
+  if (!e.target.closest(GEHOERT_ZUR_AUSWAHL)) deselect();
+});
+
+/* ── Wer zu schreiben anfaengt, ist mit dem Bild fertig ───────────────
+   Der dritte Weg aus der Auswahl heraus, neben Wegtippen und Zeichnen.
+   Nur beim Schreiben IM BLATT: im Zahlencode der Farbwahl tippt man
+   ebenfalls, und dort waere es genau falsch. */
+document.addEventListener('keydown', e => {
+  if (!_selObj) return;
+  if (e.ctrlKey || e.metaKey || e.altKey) return;
+  if (e.key.length !== 1 && e.key !== 'Enter') return;
+  const a = document.activeElement;
+  if (!a || !a.classList || !a.classList.contains('j-text')) return;
+  deselect();
+});
 
 /* ══════════════════════════════════════════════════════════════════════
    ABWAEHLEN VON AUSSEN
@@ -456,13 +488,19 @@ function placeObject(objLayer, obj, page) {
        · Kante – nur diese eine Richtung. Wer verzerren will, sagt
                  damit ausdruecklich, welche.
 
-     Ein Bild und eine Formel behalten ihr Verhaeltnis auch an der
-     Kante: ein verzerrtes Foto ist fast immer ein Versehen, und eine
-     Formel wird ueber transform:scale() gerechnet – sie KANN gar nicht
-     ungleichmaessig. Bei ihnen zieht die Kante deshalb mit, wie eine
-     Ecke es taete.
+     >>> Das Bild war zuerst ausgenommen, und das war falsch <<<
+     Es behielt sein Verhaeltnis auch an der Kante – „ein verzerrtes Foto
+     ist fast immer ein Versehen". Gemeldet wurde das Gegenteil: „egal wo
+     man zieht, es zieht die ganze Groesse mit; am Rand sollte es in die
+     Laenge ziehen, egal ob sich das Bild dann streckt." Stimmt auch: wer
+     ausdruecklich eine KANTE anfasst, sagt damit, welche Richtung er
+     meint. Fuer gleichmaessig gibt es die Ecken.
+
+     Die Formel bleibt ausgenommen, und zwar nicht aus Geschmack: ihr
+     Inhalt wird ueber transform:scale(w/natW) gerechnet: sie KANN gar
+     nicht ungleichmaessig, ein flacher Rahmen schnitte sie nur ab.
      ══════════════════════════════════════════════════════════════════ */
-  const verhaeltnisFest = obj.kind === 'image' || obj.kind === 'formula';
+  const verhaeltnisFest = obj.kind === 'formula';
 
   if (istLinie) {
     baueEndGriffe();
@@ -484,7 +522,14 @@ function placeObject(objLayer, obj, page) {
         if (pgEl) window.Collab.beansprucheObjekt(pgEl.dataset.pgid, wrap.dataset.objid);
       }
       e.stopPropagation(); e.preventDefault();
-      h.setPointerCapture(e.pointerId);
+      /* ── Ein Fang, der nicht klappt, darf nichts abbrechen ───────────
+         setPointerCapture wirft, wenn der Zeiger nicht (mehr) aktiv ist –
+         ein zweiter Finger, der schon wieder weg ist, ein Ereignis, das
+         das System selbst geschickt hat. Ungefangen liess sich das
+         Ziehen danach GAR NICHT mehr aufsetzen: der Wurf kam vor dem
+         Anmelden der Bewegung, und der Griff tat schlicht nichts.
+         Ueberall sonst in dieser Datei steht der Fang schon so. */
+      try { h.setPointerCapture(e.pointerId); } catch (err) { }
       const sx = e.clientX, sy = e.clientY, ow = obj.w, oh = obj.h, ox = obj.x, oy = obj.y, ratio = oh / ow;
       const others = (page.objects || []).filter(o => o.id !== obj.id);
       let xs = [], ys = [], ws = [], hs = [];
@@ -599,7 +644,8 @@ function placeObject(objLayer, obj, page) {
       const pgEl = wrap.closest('[data-pgid]');
       if (pgEl) window.Collab.beansprucheObjekt(pgEl.dataset.pgid, wrap.dataset.objid);
     }
-    e.stopPropagation(); e.preventDefault(); rotH.setPointerCapture(e.pointerId);
+    e.stopPropagation(); e.preventDefault();
+    try { rotH.setPointerCapture(e.pointerId); } catch (err) { }
     const r = wrap.getBoundingClientRect(), cx = r.left + r.width / 2, cy = r.top + r.height / 2;
     const sa = Math.atan2(e.clientY - cy, e.clientX - cx) * 180 / Math.PI, sr = obj.rot || 0;
     let _hasMutated = false;
@@ -652,7 +698,7 @@ function placeObject(objLayer, obj, page) {
         if (pgEl) window.Collab.beansprucheObjekt(pgEl.dataset.pgid, wrap.dataset.objid);
       }
         e.stopPropagation(); e.preventDefault();
-        g.setPointerCapture(e.pointerId);
+        try { g.setPointerCapture(e.pointerId); } catch (err) { }
 
         const start = shapeEnden(obj);
         // Beide Enden in Seiten-Koordinaten
@@ -1088,7 +1134,7 @@ function placeObject(objLayer, obj, page) {
       const pgEl = wrap.closest('[data-pgid]');
       if (pgEl) window.Collab.beansprucheObjekt(pgEl.dataset.pgid, wrap.dataset.objid);
     }
-    body.setPointerCapture(e.pointerId);
+    try { body.setPointerCapture(e.pointerId); } catch (err) { }
     // Waehrend des Zugs darf das Bild ueber den Seitenrand hinausragen
     let aktPgEl = wrap.closest('.j-page');
     let aktPage = page, aktLayer = objLayer;

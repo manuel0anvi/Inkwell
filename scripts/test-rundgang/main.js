@@ -280,6 +280,79 @@ app.on('ready', async () => {
       if (flaeche.style.display !== 'none') throw new Error('Das Feld macht sie nicht mehr zu');
       closeCustomColorPopover();`);
 
+    /* ══════════════════════════════════════════════════════════════════
+       DIE LEISTE UEBER DER FORM GEHOERT ZUR FARBWAHL
+
+       Zweimal gemeldet: sie verschwand beim Zumachen der Farbwahl und
+       beim Wiederaufklappen der Flaeche darin. Beides ist derselbe
+       Faenger in canvas/objects.js, der jeden Druck ausserhalb des
+       Objekts als „daneben" gelesen hat.
+       ══════════════════════════════════════════════════════════════════ */
+    await schritt('Beim Faerben bleibt die Form ausgewaehlt', `
+      switchMode('cursor');
+      if (!insertShape('rect')) throw new Error('Keine Form eingesetzt');
+      const wrap = document.querySelector('.obj-wrap.selected');
+      if (!wrap) throw new Error('Die Form ist gar nicht ausgewaehlt');
+
+      openCustomColorPopover('shape-fill', wrap, () => {}, '#111111');
+      const feld = document.getElementById('cc-feld');
+      const r = feld.getBoundingClientRect();
+      const schick = (el, art, x, y) => el.dispatchEvent(new PointerEvent(art, {
+        bubbles: true, cancelable: true, pointerId: 93, pointerType: 'mouse',
+        clientX: x, clientY: y }));
+
+      // Ein Griff IN die Farbwahl darf die Auswahl nicht wegnehmen
+      schick(feld, 'pointerdown', r.left + r.width * 0.5, r.top + r.height * 0.5);
+      schick(feld, 'pointerup', r.left + r.width * 0.5, r.top + r.height * 0.5);
+      if (!document.querySelector('.obj-wrap.selected')) throw new Error('Die Leiste ging beim Faerben weg');
+
+      // Auch der Knopf, der die Flaeche wieder aufklappt
+      const knopf = document.getElementById('custom-color-swatch');
+      schick(knopf, 'pointerdown', 0, 0);
+      knopf.click();
+      if (!document.querySelector('.obj-wrap.selected')) throw new Error('Das Wiederaufklappen nahm sie weg');
+
+      // Ein Druck DANEBEN nimmt sie sehr wohl weg
+      closeCustomColorPopover();
+      schick(document.body, 'pointerdown', 4, 4);
+      if (document.querySelector('.obj-wrap.selected')) throw new Error('Daneben tippen waehlt nicht ab');
+
+      // Aufraeumen: die Probe-Form wieder weg
+      const pg = getNb().pages.find(p => (p.objects || []).some(o => o.id === wrap.dataset.objid));
+      if (pg) pg.objects = pg.objects.filter(o => String(o.id) !== wrap.dataset.objid);
+      wrap.remove();`);
+
+    /* ══════════════════════════════════════════════════════════════════
+       EINE AM LINEAL GEZOGENE LINIE IST EINE LINIE
+
+       Sie entsteht als Kette vieler Punkte auf einer Geraden, nicht als
+       Strich mit zwei Enden – und wurde deshalb nicht als Gerade
+       erkannt (canvas/strokeSelect.js, istGerade). Sie wird beim Abheben
+       eingedampft; hier steht, dass dabei das Richtige herauskommt.
+       ══════════════════════════════════════════════════════════════════ */
+    abschnitt('Das Lineal macht Geraden');
+    await schritt('Hin und zurueck gezogen bleiben die aeusseren Enden', `
+      const s = { path: [], width: 2, color: '#000', _amLineal: true };
+      for (let i = 0; i <= 40; i++) s.path.push({ x: 100 + i * 5, y: 200, p: 0.5 });
+      // Nachgezogen: die letzten Punkte laufen wieder nach links
+      for (let i = 39; i >= 20; i--) s.path.push({ x: 100 + i * 5, y: 200, p: 0.5 });
+
+      if (!linealStrichEindampfen(s)) throw new Error('Nicht eingedampft');
+      if (s.path.length !== 2) throw new Error('Es blieben ' + s.path.length + ' Punkte');
+      const xs = s.path.map(p => p.x).sort((a, b) => a - b);
+      if (xs[0] !== 100 || xs[1] !== 300) throw new Error('Die Enden stimmen nicht: ' + xs.join());
+      if ('_amLineal' in s) throw new Error('Der Merker blieb im Strich stehen');`);
+
+    await schritt('Ein Bogen bleibt ein Bogen, und ohne Lineal bleibt alles', `
+      const bogen = { path: [], _amLineal: true };
+      for (let i = 0; i <= 20; i++) bogen.path.push({ x: 100 + i * 5, y: 200 + Math.sin(i / 3) * 20, p: 0.5 });
+      if (linealStrichEindampfen(bogen)) throw new Error('Aus einem Bogen wurde eine Gerade');
+      if (bogen.path.length !== 21) throw new Error('Der Bogen wurde trotzdem angefasst');
+
+      const frei = { path: [{ x: 0, y: 0, p: .5 }, { x: 50, y: 0, p: .5 }, { x: 100, y: 0, p: .5 }] };
+      if (linealStrichEindampfen(frei)) throw new Error('Ohne Lineal wurde eingedampft');
+      if (frei.path.length !== 3) throw new Error('Handschrift wurde begradigt');`);
+
     await schritt('Farbe hin und zurueck gerechnet bleibt dieselbe', `
       for (const hex of ['#2a5fa8', '#c04040', '#ffffff', '#000000', '#7f7f7f', '#e8c547']) {
         const h = hexNachHsv(hex);
