@@ -343,18 +343,41 @@
 }
 
 /* ── „Eigene Farbe" ──────────────────────────────────────────────────
-   Der Regenbogen-Ring, denselben es in der Werkzeugleiste schon gibt –
-   damit man ihn ohne Erklärung wiedererkennt. Steckt eine eigene Farbe
-   drin, zeigt der Knopf sie statt des Regenbogens (Klasse gewaehlt) und
-   bekommt dafür einen hellen Rand, sonst wäre eine dunkle Farbe vom
-   Hintergrund nicht zu unterscheiden. */
+   >>> Buchstäblich derselbe Knopf wie am Stift <<<
+   Er sah zuerst nur ähnlich aus: ein Regenbogen über die ganze Fläche,
+   mit anderen Farben und ohne Ring. Gemeldet wurde genau das – das
+   Zeichen für „eigene Farbe" muss überall dasselbe sein, sonst muss man
+   an jeder Stelle neu raten, was es tut.
+
+   Also der Aufbau der Werkzeugleiste: ein Ring, darin ein Punkt mit dem
+   Farbkreis (css/toolbar.css, .color-ring und #pen-color-ring
+   .color-dot). Bis auf die Größe steht hier dieselbe Regel.
+
+   Und wie dort bleibt der Punkt bunt, auch wenn schon eine Farbe
+   gewählt ist: er ist der WEG zur Farbwahl, nicht ihre Anzeige. Dass
+   eine eigene Farbe gilt, sagt der goldene Ring – dieselbe Sprache, die
+   die Felder daneben sprechen. */
 .cp-swatch.cp-eigen {
-  background: conic-gradient(#e04040, #e8c547, #2e8a46, #2a8a88, #2a5fa8, #7a3aaa, #c0509a, #e04040);
-  position: relative
+  background: transparent;
+  border-color: var(--sb2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0
 }
 
-.cp-swatch.cp-eigen.gewaehlt {
-  box-shadow: inset 0 0 0 1.5px rgba(255, 255, 255, .45)
+.cp-swatch.cp-eigen::before {
+  content: '';
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: conic-gradient(red, yellow, lime, aqua, blue, magenta, red)
+}
+
+/* Genauer als .cp-swatch.active, sonst gewänne der Ring oben und die
+   getroffene Wahl wäre nicht zu sehen. */
+.cp-swatch.cp-eigen.active {
+  border-color: var(--gold)
 }
 
 /* Section manager modal */

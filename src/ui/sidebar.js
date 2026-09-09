@@ -783,14 +783,14 @@ function openSectionEditor(sec, onDone, neu = false) {
        zum Abschreiben und die zuletzt benutzten Farben, die damit
        zwischen Stift, Form und Abschnitt wandern.
 
-       Der Knopf zeigt den Regenbogen, solange eine der vorgegebenen
-       Farben gilt, und sonst die eigene – man sieht ihm also an, ob
-       gerade eine drinsteckt. */
+       Der Knopf sieht aus wie der am Stift und bleibt wie dieser bunt:
+       er ist der WEG zur Farbwahl, nicht ihre Anzeige. Dass eine eigene
+       Farbe gilt, sagt der goldene Ring – so wie bei den Feldern
+       daneben auch (css/modals.css, .cp-eigen). */
     const eigen = document.createElement('button');
     eigen.type = 'button';
     const eigeneFarbe = !!gewaehlt && !sectionPalette().includes(gewaehlt);
-    eigen.className = 'cp-swatch cp-eigen' + (eigeneFarbe ? ' active gewaehlt' : '');
-    if (eigeneFarbe) eigen.style.background = gewaehlt;
+    eigen.className = 'cp-swatch cp-eigen' + (eigeneFarbe ? ' active' : '');
     eigen.title = t('colorOwn') || 'Eigene Farbe …';
     eigen.addEventListener('pointerdown', e => e.stopPropagation());
     eigen.addEventListener('click', () => {
@@ -800,8 +800,6 @@ function openSectionEditor(sec, onDone, neu = false) {
          Füssen weg. */
       openCustomColorPopover('section', eigen, farbe => {
         gewaehlt = farbe;
-        eigen.style.background = farbe;
-        eigen.classList.add('gewaehlt');
         [...pal.querySelectorAll('.cp-swatch')].forEach(x => x.classList.remove('active'));
         eigen.classList.add('active');
       }, gewaehlt || colorForSection({ id: sec.id }));

@@ -514,8 +514,9 @@ let _nbOnCreate = null;
    Es ist buchstäblich dasselbe Fenster (ui/toolbar.js,
    openCustomColorPopover) – mit Rad, Zahlencode zum Abschreiben und den
    zuletzt benutzten Farben, die dadurch zwischen Stift, Form, Abschnitt
-   und Heft wandern. Der Knopf zeigt den Regenbogen, solange eine der
-   vorgegebenen Farben gilt, und sonst die eigene.
+   und Heft wandern. Der Knopf sieht aus wie der am Stift und bleibt wie
+   dieser bunt – er ist der WEG zur Farbwahl, nicht ihre Anzeige; dass
+   eine eigene Farbe gilt, sagt der goldene Ring.
 
    Dasselbe steht im Abschnitts-Editor (ui/sidebar.js).
    ══════════════════════════════════════════════════════════════════════ */
@@ -536,8 +537,7 @@ function zeichneNbPalette() {
   const eigen = document.createElement('button');
   eigen.type = 'button';
   const eigeneFarbe = !!_nbColor && !NB_COLORS.includes(_nbColor);
-  eigen.className = 'cp-swatch cp-eigen' + (eigeneFarbe ? ' active gewaehlt' : '');
-  if (eigeneFarbe) eigen.style.background = _nbColor;
+  eigen.className = 'cp-swatch cp-eigen' + (eigeneFarbe ? ' active' : '');
   eigen.title = t('colorOwn') || 'Eigene Farbe …';
   eigen.addEventListener('pointerdown', e => e.stopPropagation());
   eigen.addEventListener('click', () => {
@@ -546,8 +546,6 @@ function zeichneNbPalette() {
        und verlöre sonst seinen Anker. */
     openCustomColorPopover('notebook', eigen, farbe => {
       _nbColor = farbe;
-      eigen.style.background = farbe;
-      eigen.classList.add('gewaehlt');
       [...pal.querySelectorAll('.cp-swatch')].forEach(x => x.classList.remove('active'));
       eigen.classList.add('active');
     }, _nbColor || NB_COLORS[0]);
