@@ -774,6 +774,39 @@ function openSectionEditor(sec, onDone, neu = false) {
       b.addEventListener('click', () => { gewaehlt = farbe; zeichnePalette(); });
       pal.appendChild(b);
     }
+
+    /* ── Und alles andere: das Farbrad ────────────────────────────────
+       Acht vorgegebene Farben sind acht Abschnitte, danach wiederholt es
+       sich. Gemeldet wurde genau das – dieselbe Wahl wie bei den Formen
+       soll es auch hier geben. Es ist dasselbe Fenster
+       (ui/toolbar.js, openCustomColorPopover): ein Rad, der Zahlencode
+       zum Abschreiben und die zuletzt benutzten Farben, die damit
+       zwischen Stift, Form und Abschnitt wandern.
+
+       Der Knopf zeigt den Regenbogen, solange eine der vorgegebenen
+       Farben gilt, und sonst die eigene – man sieht ihm also an, ob
+       gerade eine drinsteckt. */
+    const eigen = document.createElement('button');
+    eigen.type = 'button';
+    const eigeneFarbe = !!gewaehlt && !sectionPalette().includes(gewaehlt);
+    eigen.className = 'cp-swatch cp-eigen' + (eigeneFarbe ? ' active gewaehlt' : '');
+    if (eigeneFarbe) eigen.style.background = gewaehlt;
+    eigen.title = t('colorOwn') || 'Eigene Farbe …';
+    eigen.addEventListener('pointerdown', e => e.stopPropagation());
+    eigen.addEventListener('click', () => {
+      if (typeof openCustomColorPopover !== 'function') return;
+      /* Nicht neu zeichnen, sondern nur nachziehen: das Fenster hängt an
+         diesem Knopf, und ein Neubau nähme ihm den Anker unter den
+         Füssen weg. */
+      openCustomColorPopover('section', eigen, farbe => {
+        gewaehlt = farbe;
+        eigen.style.background = farbe;
+        eigen.classList.add('gewaehlt');
+        [...pal.querySelectorAll('.cp-swatch')].forEach(x => x.classList.remove('active'));
+        eigen.classList.add('active');
+      }, gewaehlt || colorForSection({ id: sec.id }));
+    });
+    pal.appendChild(eigen);
   };
   zeichnePalette();
 
@@ -807,7 +840,13 @@ function openSectionEditor(sec, onDone, neu = false) {
   };
   zeichneBg();
 
-  const schliessen = () => { ov.style.display = 'none'; nameIn.onkeydown = null; };
+  /* Die Farbwahl liegt am Dokument, nicht im Fenster – sie bliebe sonst
+     allein stehen, wenn der Abschnitts-Editor zugeht. */
+  const schliessen = () => {
+    ov.style.display = 'none';
+    nameIn.onkeydown = null;
+    if (typeof closeCustomColorPopover === 'function') closeCustomColorPopover();
+  };
 
   E('sec-edit-cancel').onclick = schliessen;
   ov.onclick = e => { if (e.target === ov) schliessen(); };

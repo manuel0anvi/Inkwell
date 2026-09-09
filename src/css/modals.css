@@ -342,6 +342,21 @@
   opacity: 1
 }
 
+/* ── „Eigene Farbe" ──────────────────────────────────────────────────
+   Der Regenbogen-Ring, denselben es in der Werkzeugleiste schon gibt –
+   damit man ihn ohne Erklärung wiedererkennt. Steckt eine eigene Farbe
+   drin, zeigt der Knopf sie statt des Regenbogens (Klasse gewaehlt) und
+   bekommt dafür einen hellen Rand, sonst wäre eine dunkle Farbe vom
+   Hintergrund nicht zu unterscheiden. */
+.cp-swatch.cp-eigen {
+  background: conic-gradient(#e04040, #e8c547, #2e8a46, #2a8a88, #2a5fa8, #7a3aaa, #c0509a, #e04040);
+  position: relative
+}
+
+.cp-swatch.cp-eigen.gewaehlt {
+  box-shadow: inset 0 0 0 1.5px rgba(255, 255, 255, .45)
+}
+
 /* Section manager modal */
 .sec-mgr-modal {
   width: 720px;

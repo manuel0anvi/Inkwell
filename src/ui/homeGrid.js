@@ -504,6 +504,57 @@ let _nbEditId = null, _nbColor = NB_COLORS[0], _nbBg = 'ruled';
    ══════════════════════════════════════════════════════════════════════ */
 let _nbOnCreate = null;
 
+/* ══════════════════════════════════════════════════════════════════════
+   DIE FARBE DES HEFTS – ACHT VORGEGEBENE UND DAS RAD
+
+   Acht Farben sind acht Hefte, danach fängt es von vorn an. Gemeldet
+   wurde genau das: dieselbe Wahl wie bei den Formen soll es auch für
+   Hefte und Abschnitte geben.
+
+   Es ist buchstäblich dasselbe Fenster (ui/toolbar.js,
+   openCustomColorPopover) – mit Rad, Zahlencode zum Abschreiben und den
+   zuletzt benutzten Farben, die dadurch zwischen Stift, Form, Abschnitt
+   und Heft wandern. Der Knopf zeigt den Regenbogen, solange eine der
+   vorgegebenen Farben gilt, und sonst die eigene.
+
+   Dasselbe steht im Abschnitts-Editor (ui/sidebar.js).
+   ══════════════════════════════════════════════════════════════════════ */
+function zeichneNbPalette() {
+  const pal = E('nb-color-palette');
+  if (!pal) return;
+  pal.innerHTML = '';
+
+  for (const c of NB_COLORS) {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'cp-swatch' + (c === _nbColor ? ' active' : '');
+    b.style.background = c;
+    b.addEventListener('click', () => { _nbColor = c; zeichneNbPalette(); });
+    pal.appendChild(b);
+  }
+
+  const eigen = document.createElement('button');
+  eigen.type = 'button';
+  const eigeneFarbe = !!_nbColor && !NB_COLORS.includes(_nbColor);
+  eigen.className = 'cp-swatch cp-eigen' + (eigeneFarbe ? ' active gewaehlt' : '');
+  if (eigeneFarbe) eigen.style.background = _nbColor;
+  eigen.title = t('colorOwn') || 'Eigene Farbe …';
+  eigen.addEventListener('pointerdown', e => e.stopPropagation());
+  eigen.addEventListener('click', () => {
+    if (typeof openCustomColorPopover !== 'function') return;
+    /* Nur nachziehen, nicht neu bauen: das Fenster hängt an diesem Knopf
+       und verlöre sonst seinen Anker. */
+    openCustomColorPopover('notebook', eigen, farbe => {
+      _nbColor = farbe;
+      eigen.style.background = farbe;
+      eigen.classList.add('gewaehlt');
+      [...pal.querySelectorAll('.cp-swatch')].forEach(x => x.classList.remove('active'));
+      eigen.classList.add('active');
+    }, _nbColor || NB_COLORS[0]);
+  });
+  pal.appendChild(eigen);
+}
+
 /**
  * @param {string|null} editId  Heft zum Ändern, sonst null für ein neues
  * @param {object} [optionen]
@@ -519,8 +570,7 @@ function openNbModal(editId, optionen = {}) {
   E('nb-name-in').value = nb ? nb.name : (optionen.name || '');
   E('nb-name-in').placeholder = t('notebookNamePlaceholder');
   _nbColor = nb ? nb.color : NB_COLORS[S.notebooks.length % NB_COLORS.length]; _nbBg = nb ? nb.defaultBg : 'ruled';
-  const pal = E('nb-color-palette'); pal.innerHTML = '';
-  for (const c of NB_COLORS) { const b = document.createElement('button'); b.className = 'cp-swatch' + (c === _nbColor ? ' active' : ''); b.style.background = c; b.addEventListener('click', () => { _nbColor = c;[...pal.querySelectorAll('.cp-swatch')].forEach(x => x.classList.remove('active')); b.classList.add('active'); }); pal.appendChild(b); }
+  zeichneNbPalette();
   buildBgRow(E('nb-bg-row'), _nbBg, id => { _nbBg = id; });
   E('ov-nb').style.display = 'flex'; setTimeout(() => E('nb-name-in').focus(), 30);
 }
@@ -528,7 +578,7 @@ E('nb-modal-cancel').addEventListener('click', () => {
   // Ohne das bliebe der Rückruf stehen und das nächste „Neues Heft"
   // bekäme ungefragt den Inhalt des abgebrochenen Dokuments.
   _nbOnCreate = null;
-  E('ov-nb').style.display = 'none';
+  E('ov-nb').style.display = 'none'; if (typeof closeCustomColorPopover === 'function') closeCustomColorPopover();
 });
 E('nb-modal-ok').addEventListener('click', async () => {
   const name = E('nb-name-in').value.trim(); 
@@ -546,7 +596,7 @@ E('nb-modal-ok').addEventListener('click', async () => {
        hat es sich verdient, behalten zu werden. Vorher ging beim
        Wechseln des Heft-Papiers jede Abschnittswahl verloren. */
     getSections(nb);
-    E('ov-nb').style.display = 'none'; 
+    E('ov-nb').style.display = 'none'; if (typeof closeCustomColorPopover === 'function') closeCustomColorPopover(); 
     if (S.activeNbId === _nbEditId) { setTitleBar(name, _nbColor); renderSideTree(); } 
     renderHomeGrid(); 
     toast(t('notebookUpdated')); 
@@ -602,7 +652,7 @@ E('nb-modal-ok').addEventListener('click', async () => {
     if (_nbOnCreate) {
       const fuellen = _nbOnCreate;
       _nbOnCreate = null;
-      E('ov-nb').style.display = 'none';
+      E('ov-nb').style.display = 'none'; if (typeof closeCustomColorPopover === 'function') closeCustomColorPopover();
       try {
         await fuellen(nb);
       } catch (err) {
@@ -616,7 +666,7 @@ E('nb-modal-ok').addEventListener('click', async () => {
     S.notebooks.push(nb);
     // Refresh home grid so new notebook appears immediately in overview
     try { renderHomeGrid(); } catch (err) { console.error('[HomeGrid] renderHomeGrid after create failed:', err); }
-    E('ov-nb').style.display = 'none'; 
+    E('ov-nb').style.display = 'none'; if (typeof closeCustomColorPopover === 'function') closeCustomColorPopover(); 
     
     // Save immediately after creation
     try {
