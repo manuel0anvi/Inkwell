@@ -1268,6 +1268,13 @@
     const prst = FORM_NACH_WORD[obj.shapeType] || 'rect';
     const fuellung = toHexColor(obj.fill);
     const strich = toHexColor(obj.stroke);
+
+    /* Die Durchsichtigkeit der Fuellung. Word rechnet sie in Tausendstel
+       Prozent, und ohne Angabe gilt dort deckend – also nur schreiben,
+       wenn im Heft wirklich etwas anderes steht. */
+    const deckung = (typeof obj.fillOpacity === 'number' && isFinite(obj.fillOpacity))
+      ? Math.max(0, Math.min(1, obj.fillOpacity)) : 1;
+    const fuellAlpha = deckung < 1 ? `<a:alpha val="${Math.round(deckung * 100000)}"/>` : '';
     const breite = Math.max(1, Math.round((obj.strokeWidth || 2) * EMU_PER_PX));
 
     /* Eine Linie zeigt in Word von links oben nach rechts unten; die
@@ -1292,7 +1299,9 @@
       + `<wps:cNvSpPr/>`
       + `<wps:spPr><a:xfrm${dreh}${spiegel}><a:off x="0" y="0"/><a:ext cx="${cx}" cy="${cy}"/></a:xfrm>`
       + `<a:prstGeom prst="${prst}"><a:avLst/></a:prstGeom>`
-      + (fuellung ? `<a:solidFill><a:srgbClr val="${fuellung}"/></a:solidFill>` : '<a:noFill/>')
+      + (fuellung
+        ? `<a:solidFill><a:srgbClr val="${fuellung}">${fuellAlpha}</a:srgbClr></a:solidFill>`
+        : '<a:noFill/>')
       + (strich
         ? `<a:ln w="${breite}"><a:solidFill><a:srgbClr val="${strich}"/></a:solidFill>${spitze}</a:ln>`
         : '<a:ln><a:noFill/></a:ln>')

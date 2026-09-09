@@ -22,9 +22,20 @@
 /* ── Standardwerte ──────────────────────────────────────────────────── */
 const SHAPE_DEFAULTS = {
   fill: 'none',
+  fillOpacity: 1,
   stroke: '#1a1510',
   strokeWidth: 2
 };
+
+/* ── Wie durchsichtig die Fuellung ist ───────────────────────────────
+   0 = ganz durchsichtig, 1 = deckend. Fehlt der Wert – jede Form aus
+   einem Heft von vor dieser Fassung –, gilt deckend: so sieht dort
+   nichts anders aus als bisher. */
+function shapeFuellDeckung(obj) {
+  const a = obj && obj.fillOpacity;
+  if (typeof a !== 'number' || !isFinite(a)) return 1;
+  return Math.max(0, Math.min(1, a));
+}
 
 /**
  * SVG für eine Form bauen – das Innere des Objekts.
@@ -58,6 +69,14 @@ function shapeEnden(obj) {
 
 function buildShapeSvg(type, w, h, fill, stroke, strokeWidth, obj) {
   const pad = strokeWidth / 2;
+  /* Die Durchsichtigkeit sitzt an der FUELLUNG, nicht an der ganzen Form:
+     ein blasses Rechteck mit klarer Kante ist das, was man beim
+     Hinterlegen von Text will – eine insgesamt blasse Form waere auch mit
+     blassem Rand kaum noch zu sehen. Bei „ohne Fuellung" hat sie nichts
+     zu tun und bleibt weg. */
+  const deckung = shapeFuellDeckung(obj);
+  const alpha = (fill && fill !== 'none' && deckung < 1)
+    ? ' fill-opacity="' + deckung + '"' : '';
   const pw = Math.max(1, w), ph = Math.max(1, h);
   const inner = 'x="' + pad + '" y="' + pad + '" width="' + Math.max(0, pw - pad * 2) + '" height="' + Math.max(0, ph - pad * 2) + '"';
 
@@ -71,10 +90,10 @@ function buildShapeSvg(type, w, h, fill, stroke, strokeWidth, obj) {
   let form = '';
   switch (type) {
     case 'rect':
-      form = '<rect ' + inner + ' fill="' + fill + '" stroke="' + stroke + '" stroke-width="' + strokeWidth + '" rx="2"/>';
+      form = '<rect ' + inner + ' fill="' + fill + '"' + alpha + ' stroke="' + stroke + '" stroke-width="' + strokeWidth + '" rx="2"/>';
       break;
     case 'ellipse':
-      form = '<rect ' + inner + ' fill="' + fill + '" stroke="' + stroke + '" stroke-width="' + strokeWidth + '" rx="50%"/>';
+      form = '<rect ' + inner + ' fill="' + fill + '"' + alpha + ' stroke="' + stroke + '" stroke-width="' + strokeWidth + '" rx="50%"/>';
       break;
     /* Dazugekommen mit dem Glattziehen freihändig gemalter Formen
        (canvas/shapeSnap.js): ein gemaltes Dreieck wird ein Dreieck, und
@@ -86,7 +105,7 @@ function buildShapeSvg(type, w, h, fill, stroke, strokeWidth, obj) {
       form = '<polygon points="' + (pw / 2) + ',' + pad
         + ' ' + (pw - pad) + ',' + (ph - pad)
         + ' ' + pad + ',' + (ph - pad) + '"'
-        + ' fill="' + fill + '" stroke="' + stroke + '" stroke-width="' + strokeWidth
+        + ' fill="' + fill + '"' + alpha + ' stroke="' + stroke + '" stroke-width="' + strokeWidth
         + '" stroke-linejoin="round"/>';
       break;
     case 'line':
@@ -206,6 +225,7 @@ function insertShape(type) {
     h: h,
     rot: 0,
     fill: S.shapeFill || SHAPE_DEFAULTS.fill,
+    fillOpacity: typeof S.shapeFillOpacity === 'number' ? S.shapeFillOpacity : SHAPE_DEFAULTS.fillOpacity,
     stroke: S.shapeStroke || SHAPE_DEFAULTS.stroke,
     strokeWidth: S.shapeStrokeWidth || SHAPE_DEFAULTS.strokeWidth,
     layer: 'front'
@@ -309,6 +329,14 @@ function addShapeChrome(bar, obj, page, objLayer) {
 
     const aktFarbe = obj.fill || 'none';
 
+    /* Der Schieber und der Knopf „ohne Füllung" gehören zu einer
+       vorhandenen Füllung – ohne sie haben beide nichts zu tun. */
+    let _schieber = null, _keineBtn = null;
+    const zeigeFuellSachen = an => {
+      if (_schieber) _schieber.style.display = an ? '' : 'none';
+      if (_keineBtn) _keineBtn.style.display = an ? '' : 'none';
+    };
+
     const fuellBtn = document.createElement('button');
     fuellBtn.type = 'button';
     fuellBtn.className = 'obj-color-btn';
@@ -328,13 +356,53 @@ function addShapeChrome(bar, obj, page, objLayer) {
         obj.fill = c;
         fuellBtn.style.background = c;
         fuellBtn.title = c;
+        zeigeFuellSachen(true);
         if (final) { pushPageHistory(page); neuZeichnen(); }
       }, obj.fill && obj.fill !== 'none' ? obj.fill : '#c04040');
     });
     fuellWahl.appendChild(fuellBtn);
 
+    /* ══════════════════════════════════════════════════════════════
+       WIE DURCHSICHTIG DIE FUELLUNG IST
+
+       Eine Form ueber Text ist nur zu gebrauchen, wenn man den Text
+       darunter noch lesen kann – genau dafuer wurde das gemeldet.
+       Ein Schieber statt fester Stufen: „ein bisschen blasser" ist ein
+       Gefuehl, keine Zahl, und beim Ziehen sieht man das Ergebnis.
+
+       Er steht nur da, wenn es ueberhaupt eine Fuellung gibt. Ohne sie
+       waere er ein Regler ohne Wirkung. */
+    {
+      const schieber = document.createElement('input');
+      schieber.type = 'range';
+      schieber.className = 'obj-alpha';
+      schieber.min = '0';
+      schieber.max = '100';
+      schieber.step = '5';
+      schieber.value = String(Math.round(shapeFuellDeckung(obj) * 100));
+      schieber.title = ((typeof t === 'function' && t('shapeFillOpacity')) || 'Deckkraft der Füllung')
+        + ': ' + schieber.value + '%';
+      schieber.addEventListener('pointerdown', ev => ev.stopPropagation());
+
+      /* Ein Rueckgaengig-Schritt fuer das ganze Ziehen, nicht einer je
+         Rastung – sonst braeuchte man zwanzigmal Strg+Z, um einen
+         einzigen Handgriff zurueckzunehmen. */
+      let gesichert = false;
+      schieber.addEventListener('input', () => {
+        if (!gesichert) { gesichert = true; pushPageHistory(page); }
+        obj.fillOpacity = Number(schieber.value) / 100;
+        S.shapeFillOpacity = obj.fillOpacity;
+        schieber.title = ((typeof t === 'function' && t('shapeFillOpacity')) || 'Deckkraft der Füllung')
+          + ': ' + schieber.value + '%';
+        neuZeichnen();
+      });
+      schieber.addEventListener('change', () => { gesichert = false; });
+      fuellWahl.appendChild(schieber);
+      _schieber = schieber;
+    }
+
     // Knopf für „ohne Füllung"
-    if (aktFarbe !== 'none') {
+    {
       const keineBtn = document.createElement('button');
       keineBtn.type = 'button';
       keineBtn.className = 'obj-fill-sw keine';
@@ -346,10 +414,19 @@ function addShapeChrome(bar, obj, page, objLayer) {
         obj.fill = 'none';
         fuellBtn.style.background = 'repeating-conic-gradient(#ccc 0% 25%, transparent 0% 50%) 50% / 8px 8px';
         fuellBtn.title = (typeof t === 'function' && t('shapeFillNone')) || 'Ohne Füllung';
+        zeigeFuellSachen(false);
         neuZeichnen();
       });
       fuellWahl.appendChild(keineBtn);
+      _keineBtn = keineBtn;
     }
+
+    /* Beide gebaut, nur nicht immer sichtbar.
+
+       Vorher entstanden sie gar nicht erst, wenn die Form ohne Füllung
+       ausgewählt wurde – wer ihr dann eine Farbe gab, hatte weder den
+       Schieber noch den Weg zurück, bis er sie ab- und wieder anwählte. */
+    zeigeFuellSachen(aktFarbe !== 'none');
 
     bar.appendChild(fuellWahl);
   }

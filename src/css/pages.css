@@ -1493,6 +1493,43 @@ body.touch-input .obj-body[data-kind="shape"]::after {
     var(--sh2)
 }
 
+/* ── Deckkraft der Füllung ────────────────────────────────────────────
+   Ein schmaler Schieber in der Leiste über der Form (canvas/shapes.js).
+   Die Bahn zeigt, worum es geht: von durchsichtig nach deckend – mit dem
+   Karo darunter, an dem man „durchsichtig" überall erkennt. */
+.obj-alpha {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 46px;
+  height: 15px;
+  margin: 0 1px;
+  padding: 0;
+  background: transparent;
+  cursor: pointer;
+  flex-shrink: 0
+}
+
+.obj-alpha::-webkit-slider-runnable-track {
+  height: 7px;
+  border-radius: 4px;
+  border: 0.5px solid rgba(255, 255, 255, .25);
+  background:
+    linear-gradient(to right, rgba(255, 255, 255, 0), rgba(255, 255, 255, .95)),
+    repeating-conic-gradient(#8a8a8a 0% 25%, #4a4a4a 0% 50%) 0 0 / 6px 6px
+}
+
+.obj-alpha::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 11px;
+  height: 11px;
+  margin-top: -2.5px;
+  border-radius: 50%;
+  background: #fff;
+  border: 1.5px solid var(--gold);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, .45)
+}
+
 /* Die Linienfarbe ist rund – damit man sie nicht mit der Füllung verwechselt */
 .obj-stroke-sw {
   border-radius: 50%
@@ -1522,6 +1559,18 @@ body.touch-input .obj-body[data-kind="shape"]::after {
   .obj-fill-sw {
     width: 21px;
     height: 21px
+  }
+
+  /* Mit dem Finger braucht der Schieber Weg und einen groesseren Griff */
+  .obj-alpha {
+    width: 66px;
+    height: 21px
+  }
+
+  .obj-alpha::-webkit-slider-thumb {
+    width: 17px;
+    height: 17px;
+    margin-top: -5.5px
   }
 }
 
