@@ -276,7 +276,17 @@ class CloudSyncManager {
     if (this._refreshPromise) return this._refreshPromise;
 
     const refreshToken = Settings.get('cloudRefreshToken');
-    if (!refreshToken) return false;
+    if (!refreshToken) { this._erneuernScheitertAmNetz = false; return false; }
+
+    /* ── Ohne Leitung wird gar nicht erst gefragt ──────────────────────
+       Der Anbieter kann nur antworten, wenn er erreichbar ist. Ist er es
+       nicht, ist das KEIN Urteil ueber die Anmeldung – und genau als
+       solches wurde es bisher gelesen (siehe _handleExpiredToken). */
+    if (!this.isOnline || (typeof navigator !== 'undefined' && navigator.onLine === false)) {
+      this._erneuernScheitertAmNetz = true;
+      return false;
+    }
+    this._erneuernScheitertAmNetz = false;
 
     this._refreshPromise = (async () => {
       try {
@@ -322,6 +332,7 @@ class CloudSyncManager {
         }
 
         console.log('[CloudSync] Sitzung still erneuert');
+        this._erneuernScheitertAmNetz = false;
         this._expiryWarned = false;
         this._notify();
         return true;
@@ -334,6 +345,9 @@ class CloudSyncManager {
         // verlangt wird statt stiller Fehlversuche im Minutentakt.
         if (err?.needsReauth) {
           await Settings.update({ cloudRefreshToken: '' });
+        } else {
+          // Kein Urteil des Anbieters, sondern eine Leitung, die nicht ging
+          this._erneuernScheitertAmNetz = true;
         }
         return false;
       } finally {
@@ -394,8 +408,29 @@ class CloudSyncManager {
     return this.provider.isConfigured();
   }
 
+  /* ══════════════════════════════════════════════════════════════════
+     ABGELAUFEN IST NICHT ABGEMELDET
+
+     Das Zugriffstoken gilt eine Stunde. Wo es still erneuert werden
+     kann – Microsoft immer, Google mit hinterlegtem Client-Secret –,
+     ist sein Ablauf ein Vorgang im Maschinenraum: die naechste Anfrage
+     holt sich ein neues (_request, 401) oder der Takt tut es vorher
+     (_watchSessionExpiry).
+
+     Hier hing trotzdem die ganze Oberflaeche daran. Ohne Internet
+     konnte nicht erneuert werden, also galt der Nutzer als abgemeldet:
+     rotes Zeichen in der Titelleiste, „Sitzung abgelaufen", obwohl im
+     Kontofenster daneben „Sitzung bleibt aktiv" stand. Genau so wurde
+     es gemeldet.
+
+     Wirklich abgemeldet ist, wem das Token FEHLT – beim Abmelden von
+     Hand und wenn der Anbieter das Refresh-Token verworfen hat, wird es
+     geloescht (_handleExpiredToken).
+     ══════════════════════════════════════════════════════════════════ */
   isAuthenticated() {
-    return !!(Settings.get('cloudAccessToken') && Settings.get('cloudUserId')) && !this.isTokenExpired();
+    if (!(Settings.get('cloudAccessToken') && Settings.get('cloudUserId'))) return false;
+    if (!this.isTokenExpired()) return true;
+    return this.sessionIsRenewable();
   }
 
   isTokenExpired() {
@@ -1060,6 +1095,40 @@ class CloudSyncManager {
     if (!Settings.get('cloudAccessToken')) return;
 
     if (this.provider.supportsRefresh && await this._refreshSession()) return;
+
+    /* ══════════════════════════════════════════════════════════════
+       OHNE INTERNET IST NIEMAND ABGEMELDET
+
+       >>> Genau das stand hier <<<
+       Gemeldet: „wenn kein Internet, dann steht Sitzung abgelaufen,
+       also abgemeldet." Der Weg dorthin: das Zugriffstoken gilt eine
+       Stunde, danach wird es still erneuert – und Erneuern braucht den
+       Anbieter. Ist er nicht erreichbar, kam von _refreshSession ein
+       schlichtes „nein", ununterscheidbar von „dein Token ist
+       widerrufen". Die Folge war der ganze Abmelde-Ablauf: Token
+       loeschen, cloudSessionLost setzen, roter Kopf in der
+       Titelleiste, Hinweis beim naechsten Start.
+
+       Und das war nicht nur unschoen, sondern falsch: nach dem
+       Wiederkommen der Leitung haette sich die Sitzung ohne Zutun
+       erneuern lassen. Weggeworfen wurde sie trotzdem, samt der
+       Freigaben und dem Hochladen, das darauf wartete.
+
+       Das Refresh-Token bleibt deshalb liegen und die Sitzung gilt
+       weiter als bestehend. Hochgeladen wird ohnehin nichts, solange
+       nichts geht – dafuer gibt es die Warteschlange. Sobald das Netz
+       zurueck ist, greift _onConnectivityChange und der naechste
+       Durchlauf von _watchSessionExpiry holt ein frisches Token.
+
+       WIRKLICH abgemeldet wird nur, wenn der Anbieter selbst nein
+       gesagt hat – dann hat der Provider needsReauth geworfen und das
+       Refresh-Token ist schon weg (siehe _refreshSession).
+       ══════════════════════════════════════════════════════════════ */
+    if (this._erneuernScheitertAmNetz && this.sessionIsRenewable()) {
+      console.log('[CloudSync] Token abgelaufen, aber kein Netz – Sitzung bleibt');
+      this._notify();
+      return;
+    }
 
     console.warn('[CloudSync] Sitzung abgelaufen');
     this._session = null;
@@ -2457,6 +2526,16 @@ class CloudSyncManager {
     if (!online) return;
 
     this._offlineToastShown = false;
+
+    /* ── Zuerst ein gueltiges Token, dann alles andere ────────────────
+       Ohne Netz laesst sich nicht erneuern; nach einer laengeren Pause
+       ist das Zugriffstoken deshalb abgelaufen und ALLES darunter –
+       Hochladen, Papierkorb, Abgleich – liefe in ein 401. Der Merker
+       aus der Offline-Zeit wird hier ausdruecklich abgeraeumt. */
+    this._erneuernScheitertAmNetz = false;
+    if (this.isTokenExpired() && this.sessionIsRenewable()) {
+      await this._refreshSession();
+    }
 
     // Zurück im Netz: was liegen geblieben ist, sofort hochladen statt den
     // üblichen Mindestabstand abzuwarten.
