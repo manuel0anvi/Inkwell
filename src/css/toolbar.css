@@ -533,7 +533,12 @@
    Farbton steht als eigene Eigenschaft darunter, damit ihn ui/toolbar.js
    an einer Stelle setzen kann. */
 .cc-flaeche {
-  margin-bottom: 9px
+  margin-bottom: 9px;
+  /* Ohne das faengt die Maus beim Ziehen an, den Text daneben zu
+     markieren; der Browser nimmt uns dafuer den Zeiger weg
+     (pointercancel), und das Aussuchen brach mittendrin ab. */
+  user-select: none;
+  -webkit-user-select: none
 }
 
 .cc-feld {

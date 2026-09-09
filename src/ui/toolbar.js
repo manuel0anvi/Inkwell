@@ -930,12 +930,35 @@ function zeigeFarbFlaeche(an) {
   if (f) f.style.display = an ? '' : 'none';
 }
 
-/* ── Ziehen im Feld und auf dem Streifen ──────────────────────────────
-   Beide arbeiten gleich: aufsetzen faengt den Zeiger, jede Bewegung
-   setzt die Farbe sofort (noch ohne Verlaufs-Schritt), und das ABHEBEN
-   ist das „fertig" – dort wird sie festgeschrieben und die Flaeche
-   klappt zu. Genau darum ging es. */
-function bindeFarbZiehen(el, ausPunkt) {
+/* ══════════════════════════════════════════════════════════════════════
+   ZIEHEN IM FELD UND AUF DEM STREIFEN
+
+   Beide arbeiten gleich: aufsetzen faengt den Zeiger, jede Bewegung setzt
+   die Farbe sofort (noch ohne Verlaufs-Schritt), das Abheben schreibt sie
+   fest.
+
+   >>> WANN die Flaeche dabei zugeht – drei Einschraenkungen <<<
+   Alle drei kommen aus derselben Meldung: „mit Maus und Touchpad geht
+   das Fenster randomweise zu, und der Streifen unten macht es auch zu."
+
+     1. NUR DAS FARBFELD macht zu, nicht der Ton-Streifen. Der Ton ist
+        die halbe Wahl: wer ihn verschiebt, ist danach noch nicht fertig,
+        er sucht sich im Feld erst die Helligkeit dazu. Ihm die Flaeche
+        unter der Hand wegzuziehen hiesse, ihn zweimal hinschicken.
+
+     2. NICHT MIT DER MAUS. Gefragt war das Zumachen fuers Tippen: dort
+        verdeckt die Flaeche genau das, was man faerbt. Am Schreibtisch
+        gibt es dieses Problem nicht – dafuer ist auf einem Touchpad
+        jedes Ziehen ein halber Klick, es bricht staendig zwischendurch
+        ab, und dann sprang die Flaeche mitten im Aussuchen zu. Genau das
+        Zufaellige, das gemeldet wurde. Der Stift zaehlt weiter dazu:
+        auch mit ihm sitzt man vor demselben verdeckten Blatt.
+
+     3. NICHT BEI EINEM ABBRUCH. pointercancel heisst „das System hat den
+        Zeiger genommen" – Handballen, Systemfenster, Bildlauf. Das ist
+        kein Fertig, und der Nutzer hat nichts entschieden.
+   ══════════════════════════════════════════════════════════════════════ */
+function bindeFarbZiehen(el, ausPunkt, schliesstBeimAbheben) {
   if (!el) return;
   let zieht = false;
 
@@ -964,20 +987,22 @@ function bindeFarbZiehen(el, ausPunkt) {
     ev.preventDefault();
     setze(ev, false);
   });
-  const fertig = ev => {
+  const fertig = (ev, abgebrochen) => {
     if (!zieht) return;
     zieht = false;
     try { el.releasePointerCapture(ev.pointerId); } catch (e) { }
+    // Die Farbe steht auch nach einem Abbruch – gewaehlt ist gewaehlt
     setze(ev, true);
-    // Finger gehoben heisst fertig – die Flaeche hat ihren Zweck erfuellt
-    zeigeFarbFlaeche(false);
+    if (!abgebrochen && schliesstBeimAbheben && ev.pointerType !== 'mouse') {
+      zeigeFarbFlaeche(false);
+    }
   };
-  el.addEventListener('pointerup', fertig);
-  el.addEventListener('pointercancel', fertig);
+  el.addEventListener('pointerup', ev => fertig(ev, false));
+  el.addEventListener('pointercancel', ev => fertig(ev, true));
 }
 
-bindeFarbZiehen(E('cc-feld'), (x, y) => { _ccBuntheit = x; _ccHelligkeit = 1 - y; });
-bindeFarbZiehen(E('cc-ton'), x => { _ccTon = x * 360; });
+bindeFarbZiehen(E('cc-feld'), (x, y) => { _ccBuntheit = x; _ccHelligkeit = 1 - y; }, true);
+bindeFarbZiehen(E('cc-ton'), x => { _ccTon = x * 360; }, false);
 
 /* Der Knopf mit der Farbe holt die Flaeche zurueck. */
 {

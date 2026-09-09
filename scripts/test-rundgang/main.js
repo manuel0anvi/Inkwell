@@ -240,6 +240,46 @@ app.on('ready', async () => {
       if (flaeche.style.display === 'none') throw new Error('Der Knopf holt sie nicht zurueck');
       closeCustomColorPopover();`);
 
+    /* Drei Einschraenkungen, alle aus derselben Meldung: mit der Maus
+       sprang die Flaeche mitten im Aussuchen zu, und der Ton-Streifen
+       machte sie ebenfalls zu, obwohl man danach erst weitersucht. */
+    await schritt('Maus, Ton-Streifen und Abbruch lassen sie offen', `
+      const feld = document.getElementById('cc-feld');
+      const ton = document.getElementById('cc-ton');
+      const flaeche = document.getElementById('cc-flaeche');
+      let letzte = null;
+
+      const zug = (el, art, anteil, typ) => {
+        const r = el.getBoundingClientRect();
+        el.dispatchEvent(new PointerEvent(art, {
+          bubbles: true, cancelable: true, pointerId: 92, pointerType: typ,
+          clientX: r.left + r.width * anteil, clientY: r.top + r.height * 0.5 }));
+      };
+
+      // 1. Mit der MAUS bleibt sie offen – am Schreibtisch verdeckt sie nichts
+      openCustomColorPopover('shape-fill', document.getElementById('pen-color-ring'),
+        c => { letzte = c; }, '#111111');
+      zug(feld, 'pointerdown', 0.8, 'mouse');
+      zug(feld, 'pointerup', 0.8, 'mouse');
+      if (flaeche.style.display === 'none') throw new Error('Die Maus machte sie zu');
+      if (!letzte) throw new Error('Die Maus faerbte gar nicht');
+
+      // 2. Der TON-STREIFEN macht sie nie zu, auch mit dem Finger nicht
+      zug(ton, 'pointerdown', 0.3, 'touch');
+      zug(ton, 'pointerup', 0.3, 'touch');
+      if (flaeche.style.display === 'none') throw new Error('Der Ton-Streifen machte sie zu');
+
+      // 3. Ein ABBRUCH ist kein Fertig
+      zug(feld, 'pointerdown', 0.6, 'touch');
+      zug(feld, 'pointercancel', 0.6, 'touch');
+      if (flaeche.style.display === 'none') throw new Error('Ein Abbruch machte sie zu');
+
+      // Und das Feld mit dem Finger macht sie weiterhin zu
+      zug(feld, 'pointerdown', 0.4, 'touch');
+      zug(feld, 'pointerup', 0.4, 'touch');
+      if (flaeche.style.display !== 'none') throw new Error('Das Feld macht sie nicht mehr zu');
+      closeCustomColorPopover();`);
+
     await schritt('Farbe hin und zurueck gerechnet bleibt dieselbe', `
       for (const hex of ['#2a5fa8', '#c04040', '#ffffff', '#000000', '#7f7f7f', '#e8c547']) {
         const h = hexNachHsv(hex);
