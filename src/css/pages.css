@@ -3067,3 +3067,136 @@ body.touch-input .obj-body[data-kind="shape"]::after {
 .j-code-obj:has(.j-code-obj-text.schreibt) {
   box-shadow: 0 0 0 2px var(--gold, #c8a96e), 0 2px 10px rgba(0, 0, 0, .18);
 }
+
+/* ══════════════════════════════════════════════════════════════════════
+   EIN BILD ZUSCHNEIDEN (canvas/zuschnitt.js)
+
+   Das ganze Bild liegt abgedunkelt da, darauf ein helles Fenster mit
+   acht Griffen. Was im Fenster steht, bleibt.
+
+   >>> Warum zwei Bilder übereinander <<<
+   Das untere ist das ganze, abgedunkelt; das obere zeigt durch das
+   Fenster hindurch denselben Ausschnitt in voller Helligkeit. Ein
+   einzelnes Bild mit einer Maske daneben wäre dasselbe Ergebnis mit mehr
+   Teilen – und die Maske müsste bei jedem Zug neu berechnet werden.
+   ════════════════════════════════════════════════════════════════════ */
+
+.zuschnitt {
+  position: absolute;
+  z-index: 12;
+  pointer-events: auto;
+  touch-action: none
+}
+
+.zuschnitt-voll {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  opacity: .3;
+  /* Kein object-fit: die Hülle hat schon genau die Form des Bildes */
+  user-select: none;
+  -webkit-user-drag: none
+}
+
+.zuschnitt-fenster {
+  position: absolute;
+  overflow: hidden;
+  outline: 1.5px solid var(--gold, #c8a96e);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, .35)
+}
+
+.zuschnitt-hell {
+  position: absolute;
+  display: block;
+  user-select: none;
+  -webkit-user-drag: none
+}
+
+/* Ein Drittelraster im Fenster – dieselbe Hilfe wie in jedem
+   Bildprogramm, wenn man einen Ausschnitt sucht. */
+.zuschnitt-fenster::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    linear-gradient(to right, transparent calc(33.33% - .5px), rgba(255,255,255,.34) calc(33.33% - .5px) calc(33.33% + .5px), transparent calc(33.33% + .5px)),
+    linear-gradient(to right, transparent calc(66.66% - .5px), rgba(255,255,255,.34) calc(66.66% - .5px) calc(66.66% + .5px), transparent calc(66.66% + .5px)),
+    linear-gradient(to bottom, transparent calc(33.33% - .5px), rgba(255,255,255,.34) calc(33.33% - .5px) calc(33.33% + .5px), transparent calc(33.33% + .5px)),
+    linear-gradient(to bottom, transparent calc(66.66% - .5px), rgba(255,255,255,.34) calc(66.66% - .5px) calc(66.66% + .5px), transparent calc(66.66% + .5px))
+}
+
+/* Die Griffe sitzen als kurze Winkel AUF der Kante, nicht als Punkte
+   daneben: so sieht man, welche Kante man anfasst. */
+.zuschnitt-griff {
+  position: absolute;
+  width: 14px;
+  height: 14px;
+  z-index: 3;
+  pointer-events: auto;
+  touch-action: none;
+  background: var(--gold, #c8a96e);
+  border-radius: 2px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, .4)
+}
+
+.zuschnitt-griff.tl { left: -3px;  top: -3px;    cursor: nwse-resize }
+.zuschnitt-griff.tr { right: -3px; top: -3px;    cursor: nesw-resize }
+.zuschnitt-griff.bl { left: -3px;  bottom: -3px; cursor: nesw-resize }
+.zuschnitt-griff.br { right: -3px; bottom: -3px; cursor: nwse-resize }
+
+.zuschnitt-griff.t { left: 50%; top: -3px;    transform: translateX(-50%); cursor: ns-resize }
+.zuschnitt-griff.b { left: 50%; bottom: -3px; transform: translateX(-50%); cursor: ns-resize }
+.zuschnitt-griff.l { top: 50%;  left: -3px;   transform: translateY(-50%); cursor: ew-resize }
+.zuschnitt-griff.r { top: 50%;  right: -3px;  transform: translateY(-50%); cursor: ew-resize }
+
+/* Die beiden Knöpfe hängen unter dem Bild – über ihm läge oft schon die
+   Leiste des Objekts. */
+.zuschnitt-leiste {
+  position: absolute;
+  left: 50%;
+  top: 100%;
+  transform: translateX(-50%);
+  margin-top: 8px;
+  display: flex;
+  gap: 6px;
+  padding: 4px;
+  border-radius: 8px;
+  background: var(--sp, #2a2a33);
+  border: 1px solid var(--sb, #3a3a44);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, .4)
+}
+
+.zuschnitt-knopf {
+  min-width: 30px;
+  min-height: 30px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text, #e8e4dc);
+  font-size: 15px;
+  cursor: pointer;
+  line-height: 1
+}
+
+.zuschnitt-knopf:hover {
+  background: var(--sh2, #3a3a44)
+}
+
+.zuschnitt-knopf.ja {
+  background: var(--gold, #c8a96e);
+  color: #201c16
+}
+
+.zuschnitt-knopf.ja:hover {
+  filter: brightness(1.1)
+}
+
+/* Solange geschnitten wird, stoeren die Griffe des Objekts nur – man
+   wuerde das Bild verschieben, statt den Ausschnitt zu waehlen. */
+.obj-wrap.schneidet .obj-handle,
+.obj-wrap.schneidet .obj-bar {
+  display: none !important
+}

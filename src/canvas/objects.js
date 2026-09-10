@@ -399,7 +399,10 @@ const OBJ_ICONS = {
   up: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M8 13V4"/><path d="M4.5 7.5 8 4l3.5 3.5"/><path d="M3 2.2h10"/></svg>',
   down: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3v9"/><path d="M11.5 8.5 8 12l-3.5-3.5"/><path d="M3 13.8h10"/></svg>',
   copy: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"><rect x="5.4" y="5.4" width="8.2" height="8.2" rx="1.3"/><path d="M10.6 3.2A1.4 1.4 0 0 0 9.3 2.4H3.7a1.3 1.3 0 0 0-1.3 1.3v5.6c0 .6.35 1.1.85 1.3" stroke-linecap="round"/></svg>',
-  trash: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><path d="M2.6 4.2h10.8"/><path d="M6.4 4.2V2.9h3.2v1.3"/><path d="M3.9 4.2 4.5 13a.9.9 0 0 0 .9.8h5.2a.9.9 0 0 0 .9-.8l.6-8.8"/><path d="M6.7 6.8v4.3M9.3 6.8v4.3"/></svg>'
+  trash: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><path d="M2.6 4.2h10.8"/><path d="M6.4 4.2V2.9h3.2v1.3"/><path d="M3.9 4.2 4.5 13a.9.9 0 0 0 .9.8h5.2a.9.9 0 0 0 .9-.8l.6-8.8"/><path d="M6.7 6.8v4.3M9.3 6.8v4.3"/></svg>',
+  /* Zwei Winkel, die sich ueberkreuzen – das Zeichen fuer Zuschneiden,
+     seit es Bildbearbeitung gibt. */
+  crop: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><path d="M4.4 1.6v10h10"/><path d="M1.6 4.4h10v10"/></svg>'
 };
 
 function placeObject(objLayer, obj, page) {
@@ -936,6 +939,25 @@ function placeObject(objLayer, obj, page) {
   barBtn(OBJ_ICONS.up, objText('objBringForward', 'Ganz nach vorn'), () => reorder(true));
   barBtn(OBJ_ICONS.down, objText('objSendBackward', 'Ganz nach hinten'), () => reorder(false));
   barSep();
+  /* ── Zuschneiden ────────────────────────────────────────────────
+     Nur bei Bildern: eine Form oder eine Formel hat nichts, was sich
+     abschneiden liesse – sie WIRD gezeichnet, statt aus Punkten zu
+     bestehen. Der Knopf steht vor dem Verdoppeln, weil er zum Bild
+     selbst gehoert und nicht zum Umgang damit. */
+  if (obj.kind === 'image' && window.Zuschnitt) {
+    barBtn(OBJ_ICONS.crop, objText('objCrop', 'Zuschneiden'), () => {
+      Zuschnitt.starte(obj, wrap, page, () => {
+        wrap.style.left = obj.x + 'px';
+        wrap.style.top = obj.y + 'px';
+        wrap.style.width = obj.w + 'px';
+        wrap.style.height = obj.h + 'px';
+        const bild = body.querySelector('img');
+        if (bild) bild.src = obj.src;
+      });
+    });
+    barSep();
+  }
+
   barBtn(OBJ_ICONS.copy, objText('objDuplicate', 'Verdoppeln'), duplicate);
   barBtn(OBJ_ICONS.trash, objText('objDelete', 'Löschen'), removeSelf, 'danger');
 

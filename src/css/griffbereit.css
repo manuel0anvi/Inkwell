@@ -336,7 +336,23 @@
 
 .griff-reiter {
   position: fixed;
-  right: 0;
+  /* >>> Der Rollbalken bleibt an der Fensterkante <<<
+     Hier stand 0, und dann lag das Rechteck genau auf dem Rollbalken der
+     Blattspalte – in der Mitte liess er sich nicht mehr fassen. Der
+     erste Versuch schob dafuer die ganze Spalte nach innen; damit war
+     der Rollbalken zwar frei, sass aber mitten auf dem Blatt statt am
+     Rand, wo man ihn sucht.
+
+     Also andersherum: die Spalte behaelt ihre volle Breite und ihren
+     Rollbalken ganz aussen, und das Rechteck rueckt um dessen Breite
+     nach innen.
+
+     >>> Warum gemessen und nicht festgelegt <<<
+     Wie breit ein Rollbalken ist, entscheidet das System: hier waren es
+     11 px, wo die Formatvorlage 6 vorgibt. Ein fester Wert sass deshalb
+     entweder darauf oder unnoetig weit daneben. ui/griffbereit.js misst
+     ihn und schreibt ihn hierher. */
+  right: calc(var(--rollbalken, 12px) + 4px);
   top: 50%;
   transform: translateY(-50%);
   z-index: 1235;
@@ -345,13 +361,6 @@
   gap: 4px;
   /* Gut drei Viertel – ein Rechteck, kein Streifen */
   height: 76vh
-}
-
-/* Sichtbar heisst: die Blattspalte rückt so weit nach innen, wie das
-   Rechteck breit ist (38 px) plus etwas Luft. Damit liegt der Rollbalken
-   links davon und ist wieder zu fassen. */
-body.griff-reiter-da .pg-scroll {
-  margin-right: 46px
 }
 
 .griff-reiter-btn {

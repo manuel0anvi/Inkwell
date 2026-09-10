@@ -70,6 +70,25 @@
      ══════════════════════════════════════════════════════════════════ */
   const heftId = () => (typeof S !== 'undefined' && S.activeNbId) ? String(S.activeNbId) : '';
 
+  /* ══ WER ZULETZT SPRICHT, HAT RECHT ═══════════════════════════════
+     Jede Auskunft, die den Stand ersetzt, zählt einen Schritt weiter.
+     Wer vor dem Warten seine Nummer nimmt und sie danach nicht mehr
+     wiederfindet, hat eine überholte Antwort in der Hand und lässt sie
+     fallen.
+
+     Ohne das machte ein spät eintreffendes liste() ein gerade erfolgtes
+     Ausblenden wieder rückgängig: das Heft wird aufgeschlagen, die Liste
+     ist noch unterwegs, jemand blendet aus – und dann kommt die alte
+     Liste an und stellt die Reiter zurück. Genau das war im Rundgang
+     einmal in zwanzig Läufen zu sehen. */
+  let _standLauf = 0;
+
+  function standAnnehmen(neu) {
+    _standLauf++;
+    _stand = neu;
+    return _stand;
+  }
+
   /* Schmaler als das hier wird die Ansicht nicht – darunter passt keine
      PDF-Seite mehr, auf der man etwas lesen könnte. */
   const MIN_BREITE = 220;
@@ -396,6 +415,22 @@
      Leiste zu ist: dort stehen die Namen ohnehin, und beides zugleich
      wäre zweimal dasselbe an derselben Kante.
      ══════════════════════════════════════════════════════════════════ */
+  /**
+   * Die Breite des Rollbalkens der Blattspalte in --rollbalken schreiben.
+   *
+   * Sie schwankt: mit dem System, mit der Einstellung „Rollbalken immer
+   * anzeigen" und damit, ob die Spalte gerade ueberhaupt rollt. Steht sie
+   * auf 0 – etwa weil das Heft auf eine Seite passt – bleibt der zuletzt
+   * gemessene Wert stehen, sonst ruckte das Rechteck bei jeder Seite hin
+   * und her.
+   */
+  function messeRollbalken() {
+    const k = E('pg-scroll');
+    if (!k) return;
+    const breit = Math.round(k.offsetWidth - k.clientWidth);
+    if (breit > 0) document.documentElement.style.setProperty('--rollbalken', breit + 'px');
+  }
+
   function zeichneReiter() {
     const streifen = E('griff-reiter');
     if (!streifen) return;
@@ -409,12 +444,11 @@
       && !leisteOffen() && !ansichtOffen());
     streifen.style.display = zeigen ? 'flex' : 'none';
 
-    /* Der Rollbalken des Hefts weicht dem Rechteck aus – es liegt sonst
-       genau darauf (css/griffbereit.css). */
-    if (document.body.classList.contains('griff-reiter-da') !== zeigen) {
-      document.body.classList.toggle('griff-reiter-da', zeigen);
-      nachLayout();
-    }
+    /* Der Rollbalken der Blattspalte bleibt an der Fensterkante; das
+       Rechteck rueckt statt dessen um seine Breite nach innen. Wie breit
+       er ist, entscheidet das System – also nachmessen, statt es in der
+       Formatvorlage zu raten (css/griffbereit.css). */
+    if (zeigen) messeRollbalken();
     if (!zeigen) return;
 
     for (const d of _stand.dateien) {
@@ -477,11 +511,11 @@
       toast(txt('griffVoll', 'Drei Unterlagen sind das Höchste. Nimm zuerst eine weg.'), true);
       return;
     }
-    _stand = antwort;
+    standAnnehmen(antwort);
     /* Frisch Hinzugefügtes soll man sehen – auch wenn gerade alles
        ausgeblendet ist. Sonst legt jemand eine Datei ab und nichts
        geschieht. */
-    if (_stand.versteckt) _stand = await api().verstecken(heftId(), false);
+    if (_stand.versteckt) standAnnehmen(await api().verstecken(heftId(), false));
     zeichne();
   }
 
@@ -496,7 +530,7 @@
     if (!d) return;
     const name = await txtModal(txt('griffNameFrage', 'Wie soll die Unterlage heißen?'), d.name);
     if (!name || name === d.name) return;
-    _stand = await api().aendern(heftId(), id, { name });
+    standAnnehmen(await api().aendern(heftId(), id, { name }));
     zeichne();
     if (String(_offen) === String(id)) {
       const anzeige = E('griff-view-name');
@@ -511,7 +545,7 @@
       txt('griffWegFrage', 'Nur der Verweis wird entfernt – die Datei selbst bleibt liegen, wo sie ist.'));
     if (!ok) return;
     if (String(_offen) === String(id)) schliesse();
-    _stand = await api().entfernen(heftId(), id);
+    standAnnehmen(await api().entfernen(heftId(), id));
     zeichne();
   }
 
@@ -593,7 +627,7 @@
       try { liste.releasePointerCapture(e.pointerId); } catch (err) { /* egal */ }
       if (ziel === null) return;
 
-      _stand = await api().ordnen(heftId(), neueFolge(_stand.dateien.map(d => d.id), gezogen, ziel));
+      standAnnehmen(await api().ordnen(heftId(), neueFolge(_stand.dateien.map(d => d.id), gezogen, ziel)));
       zeichne();
     };
 
@@ -703,7 +737,7 @@
         : grund === 'art' ? txt('griffKeineAnzeige', 'Diese Datei lässt sich hier nicht anzeigen.')
         : txt('griffFehlt', 'Datei konnte nicht gefunden werden'));
       // Der Reiter soll das ebenfalls zeigen
-      _stand = await api().liste(heftId());
+      standAnnehmen(await api().liste(heftId()));
       zeichne();
       return;
     }
@@ -1364,7 +1398,7 @@
 
   E('griff-verstecken')?.addEventListener('click', async () => {
     if (!api()) return;
-    _stand = await api().verstecken(heftId(), !_stand.versteckt);
+    standAnnehmen(await api().verstecken(heftId(), !_stand.versteckt));
     if (_stand.versteckt) schliesse();
     zeichne();
     nachLayout();
@@ -1849,6 +1883,9 @@
   /* Das Fenster wird schmaler: die halbe Breite ist eine andere geworden,
      und die Seiten müssen in der neuen Breite noch einmal entstehen. */
   window.addEventListener('resize', () => {
+    /* Der Rollbalken kann mit dem Fenster kommen und gehen – dann sitzt
+       das Rechteck daneben falsch (messeRollbalken). */
+    messeRollbalken();
     if (!ansichtOffen()) return;
     const inner = ansicht().querySelector('.griff-view-inner');
     setzeBreite(inner.getBoundingClientRect().width);
@@ -1885,12 +1922,17 @@
       _fertig = false;
     }
 
+    const meins = _standLauf;
+    let antwort;
     try {
-      _stand = await api().liste(heft);
+      antwort = await api().liste(heft);
     } catch (err) {
       console.warn('[Griffbereit] Liste nicht lesbar:', err?.message || err);
       return;
     }
+    // Inzwischen hat jemand anders den Stand gesetzt – der gilt
+    if (meins !== _standLauf) return;
+    standAnnehmen(antwort);
     zeichne();
     vorladen();
   }

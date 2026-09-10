@@ -662,6 +662,105 @@ app.on('ready', async () => {
       const pg = getNb().pages[0];
       const bild = { url: 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7', w: 100, h: 80 };
       setzeBildObjekt(pg, bild, 200);`);
+    /* >>> Ein Bild zuschneiden <<<
+       Wie in Word: der Knopf in der Leiste macht das ganze Bild sichtbar,
+       darauf ein helles Fenster mit acht Griffen. Zieht man die rechte
+       Kante nach innen, wird der RAHMEN schmaler – der sichtbare Teil
+       behaelt seinen Massstab. Genau das unterscheidet Zuschneiden vom
+       Verkleinern.
+
+       Geprueft wird an einem Bild aus vier verschiedenfarbigen Vierteln:
+       welche Farbe danach wo steht, sagt, was wirklich geschnitten
+       wurde. */
+    await schritt('Ein Bild laesst sich zuschneiden', `
+      const seite = getNb().pages[0];
+      const leinwand = document.createElement('canvas');
+      leinwand.width = 200; leinwand.height = 200;
+      const g = leinwand.getContext('2d');
+      g.fillStyle = '#ff0000'; g.fillRect(0, 0, 100, 200);
+      g.fillStyle = '#00ff00'; g.fillRect(100, 0, 100, 200);
+
+      const o = { id: uid(), kind: 'image', src: leinwand.toDataURL('image/png'),
+        name: 'Zwei Haelften', x: 100, y: 100, w: 200, h: 200, rot: 0 };
+      seite.objects = (seite.objects || []).concat([o]);
+      const ebene = document.querySelector('[data-pgid="' + seite.id + '"] .j-objects');
+      if (!ebene) throw new Error('keine Objektebene');
+      placeObject(ebene, o, seite);
+      await new Promise(r => setTimeout(r, 200));
+
+      const wrap = [...document.querySelectorAll('.obj-wrap')].slice(-1)[0];
+      const koerper = wrap.querySelector('.obj-body');
+      const tippe = (el) => {
+        for (const art of ['pointerdown', 'pointerup']) {
+          el.dispatchEvent(new PointerEvent(art, { pointerId: 41, clientX: 0, clientY: 0, bubbles: true }));
+        }
+      };
+      tippe(koerper);
+      await new Promise(r => setTimeout(r, 300));
+
+      const knopf = () => [...wrap.querySelectorAll('.obj-bar-btn')]
+        .find(b => /Zuschneiden|Crop|Ritaglia/.test(b.getAttribute('aria-label') || ''));
+      if (!knopf()) throw new Error('kein Knopf zum Zuschneiden in der Leiste');
+      knopf().click();
+      await new Promise(r => setTimeout(r, 300));
+
+      if (!wrap.querySelector('.zuschnitt')) throw new Error('das Zuschneiden ging nicht auf');
+      if (wrap.querySelectorAll('.zuschnitt-griff').length !== 8)
+        throw new Error('es sind nicht acht Griffe');
+
+      // Die rechte Kante um die halbe Bildbreite nach innen
+      const zieheRechts = (punkte) => {
+        const griff = wrap.querySelector('.zuschnitt-griff.r');
+        const r = griff.getBoundingClientRect();
+        const mitte = { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+        const zeig = (art, dx) => griff.dispatchEvent(new PointerEvent(art,
+          { pointerId: 42, clientX: Math.round(mitte.x + dx), clientY: Math.round(mitte.y), bubbles: true }));
+        zeig('pointerdown', 0);
+        zeig('pointermove', punkte / 2);
+        zeig('pointermove', punkte);
+        zeig('pointerup', punkte);
+      };
+      zieheRechts(-100);
+      wrap.querySelector('.zuschnitt-knopf.ja').click();
+      for (let i = 0; i < 100; i++) {
+        await new Promise(r => setTimeout(r, 50));
+        if (o.crop) break;
+      }
+
+      if (!o.crop) throw new Error('nichts zugeschnitten');
+      if (!(o.crop.r > 0.2)) throw new Error('die rechte Kante wurde nicht genommen: ' + o.crop.r);
+      if (!o.quelle) throw new Error('das Original wurde nicht aufgehoben');
+      if (o.x !== 100) throw new Error('die linke Kante ist gewandert: ' + o.x);
+      if (!(o.w < 180)) throw new Error('der Rahmen wurde nicht schmaler: ' + o.w);
+      if (o.h !== 200) throw new Error('die Hoehe hat sich geaendert: ' + o.h);
+      if (wrap.querySelector('.zuschnitt')) throw new Error('die Huelle blieb stehen');
+
+      // Und wirklich geschnitten: rechts steht jetzt nicht mehr Gruen
+      const gelesen = new Image(); gelesen.src = o.src;
+      await new Promise(res => { gelesen.onload = res; gelesen.onerror = res; });
+      const c2 = document.createElement('canvas');
+      c2.width = gelesen.naturalWidth; c2.height = gelesen.naturalHeight;
+      c2.getContext('2d').drawImage(gelesen, 0, 0);
+      const punkt = c2.getContext('2d').getImageData(c2.width - 2, 10, 1, 1).data;
+      if (!(punkt[0] > 200 && punkt[1] < 60))
+        throw new Error('am rechten Rand steht nicht Rot: ' + [...punkt].slice(0, 3).join(','));
+
+      // Zurueck auf das ganze Bild: dann faellt auch die zweite Fassung weg
+      knopf().click();
+      await new Promise(r => setTimeout(r, 300));
+      zieheRechts(400);
+      wrap.querySelector('.zuschnitt-knopf.ja').click();
+      for (let i = 0; i < 100; i++) {
+        await new Promise(r => setTimeout(r, 50));
+        if (!o.crop) break;
+      }
+      if (o.crop) throw new Error('der Zuschnitt liess sich nicht ganz zuruecknehmen');
+      if (o.quelle) throw new Error('das Original blieb doppelt liegen');
+
+      // Aufraeumen – die naechsten Schritte rechnen mit ihrer eigenen Seite
+      seite.objects = (seite.objects || []).filter(x => x.id !== o.id);
+      wrap.remove();`, 340);
+
     await schritt('Eine Tabelle', `typeof insertTable === 'function' ? insertTable(2, 2) : 'ok'`);
 
     /* ── Zeilen und Spalten ───────────────────────────────────────────
