@@ -4390,6 +4390,12 @@
    */
   async function start(id, notebook, crdt, canEdit, opts = {}) {
     await stop();
+
+    /* Auch hier: was in den Raum geht, braucht sein Bild. Eine Seite, die
+       nach der Freigabe aus einem PDF dazukam, hätte sonst beim anderen
+       keinen Inhalt – der Vergleich läuft über die Länge von bgImg. */
+    if (window.PdfSeiten) await window.PdfSeiten.materialisiere(notebook);
+
     const meineSitzung = ++sitzungNr;
     docId = id;
     ownerUidJetzt = String(opts.ownerUid || '');

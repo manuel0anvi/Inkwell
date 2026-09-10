@@ -1388,6 +1388,14 @@ async function shareDocument(notebook, options = {}) {
   const isNew = !options.docId;
   const linkMode = normalizeLinkMode(options.linkMode);
 
+  /* >>> Eine PDF-Seite trägt hinaus ein BILD <<<
+     Im Heft ist sie nur ein Verweis auf die Datei darin
+     (core/pdfSeiten.js). Der Empfänger, die Web-Ansicht und ein älterer
+     Stand der App kennen das nicht – sie würden eine leere Seite sehen.
+     Gerechnet wird nur, was noch keines hat; beim zweiten Mal kostet es
+     nichts. */
+  if (window.PdfSeiten) await window.PdfSeiten.materialisiere(notebook);
+
   const parts = splitNotebook(notebook);
 
   let existing = null;
@@ -1759,6 +1767,14 @@ async function saveDocumentContent(docId, notebook, options = {}) {
   const isOwner = head.owner === me.uid;
   const role = head.roleFor(me.email);
   if (!isOwner && role !== 'edit') throw new Error('NOT_ALLOWED');
+
+  /* >>> Eine PDF-Seite trägt hinaus ein BILD <<<
+     Im Heft ist sie nur ein Verweis auf die Datei darin
+     (core/pdfSeiten.js). Der Empfänger, die Web-Ansicht und ein älterer
+     Stand der App kennen das nicht – sie würden eine leere Seite sehen.
+     Gerechnet wird nur, was noch keines hat; beim zweiten Mal kostet es
+     nichts. */
+  if (window.PdfSeiten) await window.PdfSeiten.materialisiere(notebook);
 
   const parts = splitNotebook(notebook);
   const fingerprint = fingerprintNotebook(notebook);

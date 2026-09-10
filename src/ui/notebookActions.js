@@ -37,7 +37,13 @@
     toast(t('pdfBuilding') || 'PDF wird erstellt…');
 
     try {
-      const html = buildPdf(nb, options);
+      /* Eine PDF-Seite trägt kein Bild mehr; für den Ausdruck wird ihr
+         eines gerechnet, in Druckauflösung (core/pdfSeiten.js). Früher
+         landete hier das JPEG des Imports – 892 Punkte auf 210 mm, also
+         108 dpi, und das sah man dem Ausdruck an. */
+      const seitenBilder = window.PdfSeiten
+        ? await PdfSeiten.bilderFuer(nb, PdfSeiten.DRUCK_FEINHEIT) : null;
+      const html = buildPdf(nb, { ...options, seitenBilder });
       const defaultName = (typeof window.InkwellsDocx?.safeFileName === 'function'
         ? InkwellsDocx.safeFileName(nb.name)
         : 'inkwells') + '.pdf';

@@ -106,6 +106,10 @@ class FileManager {
       throw new Error('Kein Speicherort festgelegt');
     }
 
+    /* Was keine Seite mehr braucht, geht nicht mit auf die Platte: ein
+       gelöschtes 40-MB-Buch blähte das Heft sonst für immer auf. */
+    if (window.PdfSeiten) PdfSeiten.raeumeAuf(notebook);
+
     try {
       const saveData = { notebooks: [notebook] };
       const result = await window.api.saveToPath(filePath, saveData);

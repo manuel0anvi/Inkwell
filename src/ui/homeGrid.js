@@ -217,7 +217,7 @@ E('btn-open-doc').addEventListener('click', async () => {
             if (typeof showAlert === 'function') await showAlert(t('pdfNoText'));
             else toast(t('pdfNoText'), true);
             // Dann eben doch als Bild – besser als ein leeres Heft
-            const ersatz = await fillNotebookFromPdf(nb, datei.dataUrl);
+            const ersatz = await fillNotebookFromPdf(nb, datei.dataUrl, datei.name);
             toast((t('openDocDonePdf') || '{n} Seiten übernommen.').replace('{n}', ersatz.seiten));
             return;
           }
@@ -234,7 +234,7 @@ E('btn-open-doc').addEventListener('click', async () => {
         }
 
         if (datei.kind === 'pdf') {
-          const bericht = await fillNotebookFromPdf(nb, datei.dataUrl);
+          const bericht = await fillNotebookFromPdf(nb, datei.dataUrl, datei.name);
           toast((t('openDocDonePdf') || '{n} Seiten übernommen.')
             .replace('{n}', bericht.seiten));
           return;

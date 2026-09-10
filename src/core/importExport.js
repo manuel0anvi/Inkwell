@@ -85,10 +85,7 @@ const BILD_KOPF_PX = 56;
    (buildPdfPage) und der Word-Export (sectionXml) lesen es von dort und
    bekommen ihre Seite ohne weiteres Zutun quer.
    ══════════════════════════════════════════════════════════════════════ */
-function makeImagePage(dataUrl, breite, hoehe) {
-  const pg = makePage('blank');
-  pg.bgImg = dataUrl;
-
+function blattMass(pg, breite, hoehe) {
   // Die lange Kante von A4 als Breite, sobald die Vorlage quer liegt
   const quer = breite > hoehe;
   const blattBreite = quer ? CFG.PAGE_H : CFG.PAGE_W;
@@ -97,7 +94,84 @@ function makeImagePage(dataUrl, breite, hoehe) {
   pg.h = Math.round(blattBreite * (hoehe / (breite || 1))) + BILD_KOPF_PX;
   return pg;
 }
+
+function makeImagePage(dataUrl, breite, hoehe) {
+  const pg = makePage('blank');
+  pg.bgImg = dataUrl;
+  return blattMass(pg, breite, hoehe);
+}
 window.makeImagePage = makeImagePage;
+
+/**
+ * Eine Seite, die auf eine Seite eines im Heft liegenden PDF zeigt.
+ *
+ * Sie trägt KEIN Bild. Gezeichnet wird sie beim Ansehen, in der
+ * Auflösung, die der Zoom gerade verlangt (core/pdfSeiten.js) – und
+ * für Ausdruck, Word und Freigabe wird eines gerechnet, wenn es
+ * gebraucht wird.
+ */
+function makePdfPage(pdfId, nr, breite, hoehe) {
+  const pg = makePage('blank');
+  pg.pdfRef = { datei: String(pdfId), seite: nr };
+  return blattMass(pg, breite, hoehe);
+}
+window.makePdfPage = makePdfPage;
+
+/* ═══════════════════════════════════════════════════════════════════════
+   EIN PDF INS HEFT LEGEN
+
+   Tritt an die Stelle von parsePdfToImages, wo ganze SEITEN entstehen.
+   Gemalt wird hier nichts mehr – nur nachgesehen, wie gross jede Seite
+   ist und was an Text darauf steht.
+
+   >>> Warum der Text trotzdem gelesen wird <<<
+   Er kommt als unsichtbare Ebene auf die Heftseite (folienTextEbene).
+   Nur so findet die Suche etwas und nur so lässt sich etwas
+   herauskopieren – was in der gezeichneten Fläche steht, ist für beides
+   nicht mehr als Farbe.
+
+   @returns {Promise<Array>} je Seite { pdfId, nr, w, h, zeilen, pdfW, pdfH }
+   ══════════════════════════════════════════════════════════════════════ */
+async function pdfInsHeft(nb, dataUrl, name, onFortschritt) {
+  const base64 = String(dataUrl || '').split(',')[1] || '';
+  if (!base64) throw new Error('PDF_UNLESBAR');
+
+  const pdfId = PdfSeiten.lege(nb, base64, name);
+  const doc = await PdfSeiten.doc(nb, pdfId);
+  if (!doc) throw new Error('PDF_UNLESBAR');
+
+  const seiten = [];
+  for (let nr = 1; nr <= doc.numPages; nr++) {
+    const s = await doc.getPage(nr);
+    const v = s.getViewport({ scale: 1 });
+
+    /* Ein eingescanntes Blatt hat keine Textebene, dann bleibt es beim
+       blossen Bild. Ein Fehler hier darf den Import nicht aufhalten. */
+    let zeilen = [];
+    try {
+      zeilen = pdfZeilen(await s.getTextContent());
+    } catch (err) {
+      console.warn('[PDF] Textebene der Seite', nr, err?.message || err);
+    }
+
+    seiten.push({
+      pdfId, nr,
+      w: Math.round(v.width), h: Math.round(v.height),
+      zeilen, pdfW: v.width, pdfH: v.height
+    });
+    if (onFortschritt) onFortschritt(nr, doc.numPages);
+  }
+  return seiten;
+}
+window.pdfInsHeft = pdfInsHeft;
+
+/** Aus einer beschriebenen Seite die fertige Heftseite bauen. */
+function pdfSeiteZuHeftseite(b) {
+  const pg = makePdfPage(b.pdfId, b.nr, b.w, b.h);
+  const ebene = folienTextEbene(b.zeilen, pg, b.pdfW, b.pdfH);
+  if (ebene) pg.textContent = ebene;
+  return pg;
+}
 
 /* ══════════════════════════════════════════════════════════════════════
    EIN BILD AUS DER ZWISCHENABLAGE
@@ -366,19 +440,18 @@ document.addEventListener('paste', (e) => {
    @param {string} dataUrl   die PDF-Datei
    @returns {Promise<{seiten:number}>}
    ══════════════════════════════════════════════════════════════════════ */
-async function fillNotebookFromPdf(nb, dataUrl) {
-  const bilder = await parsePdfToImages(dataUrl);
+async function fillNotebookFromPdf(nb, dataUrl, name) {
+  const bilder = await pdfInsHeft(nb, dataUrl, name || nb.name);
   if (!bilder.length) throw new Error(t('pdfNoPages') || 'Das PDF hat keine Seiten.');
 
   /* Die leere Startseite faellt weg – sie stuende sonst vor der ersten
      Seite des Dokuments, und niemand hat sie bestellt. */
   let mitText = 0;
   nb.pages = bilder.map(b => {
-    const pg = makeImagePage(b.url, b.w, b.h);
-    /* Und der Text derselben Seite unsichtbar darueber, damit die Suche
-       ihn findet und man ihn herauskopieren kann (folienTextEbene). */
-    const ebene = folienTextEbene(b.zeilen, pg, b.pdfW, b.pdfH);
-    if (ebene) { pg.textContent = ebene; mitText++; }
+    /* Der Text derselben Seite unsichtbar darueber, damit die Suche ihn
+       findet und man ihn herauskopieren kann (folienTextEbene). */
+    const pg = pdfSeiteZuHeftseite(b);
+    if (pg.textContent) mitText++;
     return pg;
   });
   nb.sections = [];
@@ -711,7 +784,7 @@ function pdfZeileImBereich(z, b) {
  *   später das Seitenverhältnis der Bildseite. zeilen = die übrigen;
  *   was im Bild steht, fällt heraus
  */
-async function pdfSeitenBilder(seite, zeilen, lage) {
+async function pdfSeitenBilder(seite, zeilen, lage, ohneGanzeSeite) {
   const blatt = seite.view || [0, 0, 612, 792];
   const blattBreite = Math.max(1, blatt[2] - blatt[0]);
   const blattFlaeche = Math.max(1, blattBreite * (blatt[3] - blatt[1]));
@@ -754,6 +827,22 @@ async function pdfSeitenBilder(seite, zeilen, lage) {
   }
 
   if (!bereiche.length) return { bilder: [], zeilen };
+
+  /* >>> Ein eingescanntes Blatt wird gar nicht erst gemalt <<<
+     Es wird eine Seite, die auf das PDF im Heft zeigt (core/pdfSeiten.js),
+     und die zeichnet sich beim Ansehen selbst. Es hier trotzdem zu einem
+     JPEG zu rechnen waere bei einem 300-seitigen Scan eine Viertelstunde
+     Arbeit fuer etwas, das niemand ansieht. */
+  if (seiteIstBild && ohneGanzeSeite) {
+    const v = seite.getViewport({ scale: 1 });
+    return {
+      bilder: [{
+        y: blatt[3],
+        bild: { ganzeSeite: true, nr: seite.pageNumber, w: Math.round(v.width), h: Math.round(v.height) }
+      }],
+      zeilen: []
+    };
+  }
 
   // Einmal malen; aus diesem einen Blatt werden alle Stellen geschnitten
   const mal = seite.getViewport({ scale: PDF_MAL_STUFE });
@@ -944,6 +1033,18 @@ async function fillNotebookFromPdfText(nb, dataUrl, onFortschritt) {
 
   const bg = nb.defaultBg || 'ruled';
 
+  /* Ein eingescanntes Blatt wird eine Seite, die auf das PDF im Heft
+     zeigt (core/pdfSeiten.js). Abgelegt wird die Datei erst, wenn
+     wirklich eine solche Seite entsteht: bei einem reinen Textdokument
+     traege sie sonst jeder Abgleich mit, bis das Speichern sie wieder
+     herausnimmt. */
+  let pdfDatei = '';
+  const legeDateiAn = () => {
+    if (pdfDatei || !window.PdfSeiten) return pdfDatei;
+    pdfDatei = PdfSeiten.lege(nb, base64, nb.name);
+    return pdfDatei;
+  };
+
   /* Erst den Text aller Seiten und die Lage ihrer Bilder sammeln. Die
      übliche Schriftgroesse laesst sich erst danach bestimmen: ohne sie
      waere „gross" ein Wert aus der Luft. Gemalt wird in diesem Durchgang
@@ -980,7 +1081,9 @@ async function fillNotebookFromPdfText(nb, dataUrl, onFortschritt) {
   for (let i = 0; i < proSeite.length; i++) {
     const s = proSeite[i];
     try {
-      const ausbeute = await pdfSeitenBilder(s.seite, s.zeilen, s.lage);
+      /* Ganze Seiten als Verweis statt als Bild, solange das Modul da
+         ist – ohne es bliebe es beim alten Weg. */
+      const ausbeute = await pdfSeitenBilder(s.seite, s.zeilen, s.lage, !!window.PdfSeiten);
       s.zeilen = ausbeute.zeilen;
       s.bilder = ausbeute.bilder;
       bilderZahl += ausbeute.bilder.length;
@@ -1036,7 +1139,12 @@ async function fillNotebookFromPdfText(nb, dataUrl, onFortschritt) {
       /* Dieselbe Seite wie beim Weg „als Bild": das Bild IST die Seite,
          nicht ein Ding darauf. Es lässt sich damit nicht versehentlich
          verschieben, und der Stift schreibt darauf. */
-      heftSeiten.push(makeImagePage(block.bildSeite.src, block.bildSeite.w, block.bildSeite.h));
+      const b = block.bildSeite;
+      if (b.ganzeSeite && legeDateiAn()) {
+        heftSeiten.push(makePdfPage(pdfDatei, b.nr, b.w, b.h));
+      } else {
+        heftSeiten.push(makeImagePage(b.src, b.w, b.h));
+      }
       continue;
     }
     puffer.push(block);
@@ -1437,20 +1545,25 @@ async function insertFilesFlow() {
   for (const f of files) {
     if (f.kind === 'pdf') {
       try {
-        const pdfImageUrls = await parsePdfToImages(f.dataUrl);
-
+        /* Ganze Seiten zeigen auf das PDF im Heft; einzelne Bilder auf
+           einer Seite bleiben Bilder. Ein Bild ist dort nur ein Drittel
+           breit – die Punkte aus parsePdfToImages reichen dafür
+           reichlich, und ein zweites Verfahren wäre Aufwand ohne
+           sichtbaren Unterschied. */
         if (insertType === 'page') {
+          const seiten = await pdfInsHeft(nb, f.dataUrl, f.name);
           // Die Stelle zaehlt im HEFT, nicht im Abschnitt
           const insertIdx = pageNumberOf(nb, info.page.id);
 
-          pdfImageUrls.forEach((imgObj, i) => {
-            const newPg = makeImagePage(imgObj.url, imgObj.w, imgObj.h);
+          seiten.forEach((b, i) => {
+            const newPg = pdfSeiteZuHeftseite(b);
             insertPageInto(nb, sec, newPg, insertIdx + i);
             if (!firstNewPageId) firstNewPageId = newPg.id;
           });
           addedPages = true;
           if (window.markCurrentNotebookDirty) window.markCurrentNotebookDirty();
         } else {
+          const pdfImageUrls = await parsePdfToImages(f.dataUrl);
           const pages = pagesOfSec(sec, nb);
           let curIdx = pages.indexOf(info.page);
           const MAX_PER_PAGE = 5;
@@ -1691,7 +1804,7 @@ function escapeAttr(value) {
 }
 
 /** @param {number} pageNo Seitenzahl des HEFTS (1-basiert), nicht des Abschnitts */
-function buildPdfPage(nb, sec, page, pageNo) {
+function buildPdfPage(nb, sec, page, pageNo, seitenBilder) {
   const bgId = page.bg || sec?.defaultBg || nb.defaultBg || 'ruled';
   const lh = lhForBg(bgId);
   const pt = ptForBg(bgId);
@@ -1701,8 +1814,13 @@ function buildPdfPage(nb, sec, page, pageNo) {
 
   let html = `<div class="pg bg-${bgId}" data-pgid="${escapeAttr(page.id)}" style="width:${w}px;height:${h}px">`;
 
-  if (page.bgImg) {
-    html += `<img class="pg-bgimg" src="${escapeAttr(page.bgImg)}">`;
+  /* Eine PDF-Seite trägt selbst kein Bild mehr (core/pdfSeiten.js). Für
+     den Ausdruck wird ihr eines gerechnet, in Druckauflösung – und die
+     Karte damit reicht der Aufrufer herein, weil das Rechnen dauert und
+     diese Funktion eine Zeichenkette zurückgibt, keine Zusage. */
+  const bgBild = (seitenBilder && seitenBilder.get(page.id)) || page.bgImg;
+  if (bgBild) {
+    html += `<img class="pg-bgimg" src="${escapeAttr(bgBild)}">`;
   }
 
   html += `<div class="ph"><span>${t('page') || 'Seite'} ${pageNo}</span><span>${fmt(page.date)}</span></div>`;
@@ -1867,7 +1985,7 @@ function buildPdf(nb, options = {}) {
   let body = '';
   for (const entry of exportPageList(nb)) {
     if (selected && !selected.has(entry.page.id)) continue;
-    body += buildPdfPage(nb, entry.sec, entry.page, entry.pageNo);
+    body += buildPdfPage(nb, entry.sec, entry.page, entry.pageNo, options.seitenBilder);
   }
 
   if (!body) {

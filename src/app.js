@@ -55,6 +55,10 @@ function _snapshotPageState(page) {
     objects: JSON.stringify(page.objects || []),
     bg: page.bg ?? null,
     bgImg: page.bgImg ?? null,
+    /* Der Verweis auf die PDF-Seite gehört dazu: ohne ihn brächte ein
+       Rückgängig die Seite zurück, aber ohne ihren Inhalt. Als Text, weil
+       die Abbilder verglichen werden. */
+    pdfRef: page.pdfRef ? JSON.stringify(page.pdfRef) : null,
     /* Wie oft ein anderer bis hierher an dieser Seite geschrieben hat.
        Stimmt die Zahl beim Zurücknehmen nicht mehr, gehört der Text
        nicht mehr uns allein – siehe _applyPageSnapshot. */
@@ -121,6 +125,7 @@ function _applyPageSnapshot(page, snap) {
   page.objects = JSON.parse(snap.objects || '[]');
   if (snap.bg !== null) page.bg = snap.bg;
   if (snap.bgImg !== null) page.bgImg = snap.bgImg; else delete page.bgImg;
+  if (snap.pdfRef) page.pdfRef = JSON.parse(snap.pdfRef); else delete page.pdfRef;
 
   /* ── Was der andere gezeichnet hat, bleibt ───────────────────────────
      Der Verlauf hält je Schritt die VOLLSTÄNDIGE Strichliste. Ein
@@ -168,6 +173,23 @@ function _applyPageSnapshot(page, snap) {
      Es hängt am selben Schritt: _snapshotPageState hält es fest, oben
      wird es zurückgesetzt – ohne das hier bliebe ein zurückgenommenes
      Bild sichtbar oder ein wiederhergestelltes unsichtbar. */
+  const alteFlaeche = pgEl.querySelector('canvas.j-page-bgcanvas');
+  if (window.PdfSeiten && PdfSeiten.hat(page)) {
+    if (!alteFlaeche) {
+      const flaeche = document.createElement('canvas');
+      flaeche.className = 'j-page-bgcanvas';
+      flaeche.style.cssText = BGIMG_STIL;
+      pgEl.style.backgroundImage = 'none';
+      pgEl.style.backgroundColor = '#fff';
+      pgEl.insertBefore(flaeche, pgEl.querySelector('.j-page-hdr')?.nextSibling || pgEl.firstChild);
+    }
+    PdfSeiten.zeichne(pgEl, page);
+  } else if (alteFlaeche) {
+    alteFlaeche.remove();
+    pgEl.style.backgroundImage = '';
+    pgEl.style.backgroundColor = '';
+  }
+
   const altesBild = pgEl.querySelector('img.j-page-bgimg');
   if (page.bgImg) {
     if (altesBild) altesBild.src = page.bgImg;
@@ -633,6 +655,9 @@ function redoPage() { return _stepHistory('redo', 'undo', 'redoNothing'); }
  */
 function openNotebook(id, opts = {}) {
   S.activeNbId = id; const nb = getNb();
+  /* Die PDFs des vorigen Hefts freigeben – sonst hängen die Dokumente
+     samt Puffern am Speicher, bis die App zugemacht wird. */
+  if (window.PdfSeiten) PdfSeiten.reset(id);
   // Eine offene Suche gehoert zum vorigen Heft. Ohne Neuzeichnen – das
   // uebernimmt openSection weiter unten ohnehin.
   if (typeof closeNbSearch === 'function') closeNbSearch(false);
@@ -884,7 +909,20 @@ function appendPageDOM(page, index) {
   });
   hdr.style.pointerEvents = 'auto';
   div.appendChild(hdr);
-  if (page.bgImg) {
+  /* Eine Seite aus einem PDF trägt kein Bild, sondern einen Verweis auf
+     die Datei im Heft. Sie bekommt eine leere Fläche, die beim Ansehen
+     gefüllt wird – in der Auflösung, die der Zoom gerade verlangt
+     (core/pdfSeiten.js). */
+  if (window.PdfSeiten && PdfSeiten.hat(page)) {
+    const flaeche = document.createElement('canvas');
+    flaeche.className = 'j-page-bgcanvas';
+    flaeche.style.cssText = BGIMG_STIL;
+    div.style.backgroundImage = 'none';
+    div.style.backgroundColor = '#fff';
+    div.appendChild(flaeche);
+    // Nach dem Einhängen, sonst hat die Fläche noch keine Maße
+    requestAnimationFrame(() => PdfSeiten.zeichne(div, page));
+  } else if (page.bgImg) {
     const bgImgEl = document.createElement('img');
     // Die Klasse ist der Griff für _applyPageSnapshot – ohne sie liesse
     // sich das Bild beim Rückgängigmachen nicht wiederfinden.

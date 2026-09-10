@@ -91,6 +91,11 @@ const PageCanvases = {
 
     delete canvas.dataset.unloaded;
     redrawStrokes(canvas, S.strokeHistory[pgId] || []);
+
+    /* Und der Grund darunter, wenn die Seite aus einem PDF stammt. Sie
+       hängt an derselben Entscheidung: was weit weg ist, braucht keine
+       Bildpunkte (core/pdfSeiten.js). */
+    if (window.PdfSeiten && info?.page) PdfSeiten.zeichne(pageEl, info.page);
   },
 
   _unload(pageEl) {
@@ -108,6 +113,7 @@ const PageCanvases = {
     canvas.dataset.unloaded = '1';
     canvas.width = 0;
     canvas.height = 0;
+    if (window.PdfSeiten) PdfSeiten.entlaste(pageEl);
   },
 
   /** Stellt sicher, dass die Zeichenfläche einer Seite bereit ist. */

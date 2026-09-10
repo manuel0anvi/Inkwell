@@ -244,6 +244,11 @@ function rerenderCanvasesForZoom() {
     ctx.imageSmoothingEnabled = true;
     ctx.imageSmoothingQuality = 'high';
     redrawStrokes(canvas, S.strokeHistory[pgId] || []);
+
+    /* Und die PDF-Seite darunter in derselben Feinheit. Das ist der
+       ganze Unterschied zum früheren Bild: dieses wurde beim Zoomen
+       aufgezogen, diese Fläche wird neu gezeichnet. */
+    if (window.PdfSeiten && info?.page) PdfSeiten.zeichne(pgEl, info.page);
   });
 }
 

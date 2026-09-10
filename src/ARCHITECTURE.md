@@ -45,6 +45,16 @@ src/
 > **nicht kopiert** — gemerkt wird der Ort, und die Liste dazu führt der
 > Hauptprozess (`main.js`), weil sie zugleich die Erlaubnis ist, ausserhalb
 > des Speicherorts zu lesen.
+> Und `core/pdfSeiten.js`: ein eingefügtes PDF liegt **einmal im Heft**
+> (`nb.pdfs`), eine Seite ist nur ein Verweis darauf (`page.pdfRef`) und
+> wird beim Ansehen gezeichnet – in der Feinheit, die der Zoom verlangt.
+> Früher wurde beim Import je Seite ein JPEG gerechnet und die Datei
+> weggeworfen; damit stand die Schärfe für immer fest. Was das Heft
+> VERLÄSST (Freigabe, Live-Bearbeitung, Word, Ausdruck), bekommt
+> weiterhin ein Bild – gerechnet, wenn es gebraucht wird. Seiten mit
+> `bgImg` und ohne `pdfRef` sind der alte Stand und laufen unverändert
+> weiter.
+>
 > Was eine Datei tut, steht in ihrem Kopf; die Statistik weiter unten ist
 > ebenfalls nicht mehr aktuell.
 

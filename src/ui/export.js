@@ -283,9 +283,15 @@
 
     /* Das Papier steht am Abschnitt, nicht am Heft – core/docx.js kennt
        keine Abschnitte und bekommt es deshalb hier mitgegeben. */
+    /* Dasselbe für Word wie für den Ausdruck: eine PDF-Seite bekommt ihr
+       Bild hier gerechnet und nicht aus dem Heft (core/pdfSeiten.js). */
+    const pdfBilder = window.PdfSeiten
+      ? await PdfSeiten.bilderFuer(nb, PdfSeiten.DRUCK_FEINHEIT) : null;
+
     const docxEntries = chosen.map(entry => ({
       page: entry.page,
-      bg: entry.page.bg || entry.sec?.defaultBg || nb.defaultBg || 'ruled'
+      bg: entry.page.bg || entry.sec?.defaultBg || nb.defaultBg || 'ruled',
+      bgBild: pdfBilder ? pdfBilder.get(entry.page.id) : null
     }));
 
     try {

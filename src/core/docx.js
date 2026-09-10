@@ -513,10 +513,15 @@
     const w = page.w || DEFAULT_PAGE_W;
     const h = page.h || DEFAULT_PAGE_H;
 
-    const ohneMuster = entry.bg === 'blank' || entry.bg === 'craft';
-    if (!page.bgImg && ohneMuster) return null;
+    /* Eine Seite aus einem PDF trägt ihr Bild nicht mehr selbst; es wird
+       vorher gerechnet und liegt an der Zeile (ui/export.js). Hier steht
+       deshalb der Grund der Seite und nicht page.bgImg. */
+    const grund = entry.bgBild || page.bgImg;
 
-    const feinheit = page.bgImg ? scale : 1;
+    const ohneMuster = entry.bg === 'blank' || entry.bg === 'craft';
+    if (!grund && ohneMuster) return null;
+
+    const feinheit = grund ? scale : 1;
 
     const canvas = document.createElement('canvas');
     canvas.width = Math.round(w * feinheit);
@@ -529,11 +534,11 @@
 
     let hasPhoto = false;
 
-    if (page.bgImg) {
+    if (grund) {
       // Eine eingefügte PDF- oder Bildseite deckt das Papier ab
       ctx.fillStyle = '#ffffff';
       ctx.fillRect(0, 0, w, h);
-      const img = await loadImage(page.bgImg);
+      const img = await loadImage(grund);
       if (img) {
         const box = containBox(img.naturalWidth, img.naturalHeight, w, h - HEADER_H);
         ctx.drawImage(img, box.x, HEADER_H + box.y, box.w, box.h);

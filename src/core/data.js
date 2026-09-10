@@ -69,7 +69,7 @@ function makePage(bgId = null) {
 }
 
 function pageIsEmpty(p) {
-  if (p.bgImg || p.inkStrokes?.length || p.objects?.length) return false;
+  if (p.bgImg || p.pdfRef || p.inkStrokes?.length || p.objects?.length) return false;
   return !(p.textContent || '').replace(/<[^>]+>/g, '').replace(/\s/g, '');
 }
 
@@ -305,7 +305,7 @@ function setSectionOfPage(nb, pgId, secId) {
   if (String(page.secId || '') === next) return false;
   if (next) page.secId = next; else delete page.secId;
 
-  if (next && !page.bgImg) {
+  if (next && !page.bgImg && !page.pdfRef) {
     const sec = (nb.sections || []).find(s => String(s.id) === next);
     if (sec) page.bg = bgForSection(sec, nb);
   }

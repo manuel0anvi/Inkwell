@@ -69,22 +69,25 @@ document.addEventListener('drop', async e => {
 
     if (f.type === 'application/pdf') {
       try {
-        const pdfImageUrls = await parsePdfToImages(dataUrl);
+        let pdfImageUrls = null;
         if (insertType === 'page') {
+          /* Das PDF wandert ins Heft, die Seiten zeigen darauf
+             (core/pdfSeiten.js). Hier stand einmal dasselbe Rechnen wie
+             in insertFile, nur mit eigener Massformel – zwei Fassungen
+             derselben Sache, von denen eine falsch werden konnte. */
+          const seiten = await pdfInsHeft(nb, dataUrl, f.name);
           // Direkt hinter die Seite, auf die abgelegt wurde – die Stelle
           // zaehlt jetzt im HEFT, nicht im Abschnitt
           const insertIdx = pageNumberOf(nb, info.page.id);
-          pdfImageUrls.forEach((imgObj, i) => {
-            const newPg = makePage('blank');
-            newPg.bgImg = imgObj.url;
-            newPg.w = CFG.PAGE_W;
-            newPg.h = Math.round(CFG.PAGE_W * (imgObj.h / (imgObj.w || 1))) + 56;
+          seiten.forEach((b, i) => {
+            const newPg = pdfSeiteZuHeftseite(b);
             insertPageInto(nb, sec, newPg, insertIdx + i);
             if (!firstNewPageId) firstNewPageId = newPg.id;
           });
           addedPages = true;
           if (window.markCurrentNotebookDirty) window.markCurrentNotebookDirty();
         } else {
+          pdfImageUrls = await parsePdfToImages(dataUrl);
           const pages = pagesOfSec(sec, nb);
           let curIdx = pages.indexOf(info.page);
           const MAX_PER_PAGE = 5;
