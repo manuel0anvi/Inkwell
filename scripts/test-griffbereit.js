@@ -276,7 +276,77 @@ console.log('\n7. Die Form der Kaesten\n');
   check('Gleichstand: die erste', f([A4, QUER]), A4);
 }
 
-console.log('\n8. Die Vereinbarung zwischen den Prozessen\n');
+console.log('\n8. Der gemerkte Stand\n');
+{
+  /* >>> Der Fehler, der wie „es laedt schon wieder" aussah <<<
+     Seit ein PDF stueckweise geholt wird, geht JEDE Bereichsanfrage
+     durch griffAusliefern und damit durch griffLies. Beim Rollen in
+     einem Buch sind das Dutzende Lesevorgaenge derselben unveraenderten
+     Datei in der Sekunde.
+
+     Unter Windows schlaegt so ein Zugriff hin und wieder fehl, weil der
+     Virenscanner oder die Ordnersynchronisierung die Datei offen hat.
+     Der Fehler wurde gefangen, und zurueck kam eine LEERE LISTE - fuer
+     das Fenster heisst das: die Unterlage gibt es nicht mehr. Reiter
+     weg, Datei zu, Inhalt weggeraeumt, naechstes Aufschlagen laedt das
+     ganze Buch neu.
+
+     Geprueft wird deshalb beides: dass nicht unnoetig gelesen wird, und
+     dass ein Fehlschlag den letzten guten Stand stehen laesst. */
+  const gut = JSON.stringify({ versteckt: false, dateien: [
+    { id: 'a', name: 'Skript', pfad: 'C:/Uni/Skript.pdf', art: 'pdf' }] });
+
+  let zeit = 100, gelesen = 0, fehler = null;
+  const ctx = umgebung();
+  // Der Fehlschlag unten ist gewollt – seine Meldung waere hier nur Laerm
+  ctx.console = { error: () => {}, log: () => {} };
+  ctx.fs = {
+    statSync: () => { if (fehler) throw fehler; return { mtimeMs: zeit }; },
+    readFileSync: () => { gelesen++; if (fehler) throw fehler; return gut; },
+    writeFileSync: (ziel, inhalt) => { ctx.geschrieben = inhalt; },
+    existsSync: () => true
+  };
+  vm.runInContext("const griffPath = 'stand.json'; const GRIFF_MAX = 3;", ctx);
+  vm.runInContext('let griffStand = null; let griffStandZeit = -1;', ctx);
+  vm.runInContext(funktion(mainQuelle, 'griffAntwort'), ctx);
+  vm.runInContext(funktion(mainQuelle, 'griffLies'), ctx);
+  vm.runInContext(funktion(mainQuelle, 'griffSchreib'), ctx);
+
+  check('Beim ersten Mal wird gelesen', ctx.griffLies().dateien.length, 1);
+  check('Dafuer genau einmal', gelesen, 1);
+
+  // Unveraenderte Datei: der gemerkte Stand genuegt
+  ctx.griffLies(); ctx.griffLies(); ctx.griffLies();
+  check('Unveraendert wird nicht noch einmal gelesen', gelesen, 1);
+
+  // Geaenderte Datei: dann natuerlich schon
+  zeit = 200;
+  check('Geaendert schon', ctx.griffLies().dateien.length, 1);
+  check('Und zwar einmal mehr', gelesen, 2);
+
+  /* >>> Der Kern der Sache <<<
+     Ein Zugriffsfehler darf die Liste nicht wegwerfen. */
+  fehler = Object.assign(new Error('EPERM'), { code: 'EPERM' });
+  const trotzdem = ctx.griffLies();
+  check('Ein Zugriffsfehler wirft die Liste nicht weg', trotzdem.dateien.length, 1);
+  check('Und es ist dieselbe Datei', trotzdem.dateien[0].id, 'a');
+
+  // Ist die Datei wirklich weg, ist die leere Liste die Wahrheit
+  fehler = Object.assign(new Error('ENOENT'), { code: 'ENOENT' });
+  check('Gar keine Datei heisst leer', ctx.griffLies().dateien.length, 0);
+
+  /* Nach dem Schreiben gilt das Geschriebene, ohne es erst wieder
+     einzulesen - sonst waere jeder Zug ein Lesen mehr. */
+  fehler = null; zeit = 300;
+  const vorher = gelesen;
+  ctx.griffSchreib({ versteckt: true, dateien: [
+    { id: 'b', name: 'Buch', pfad: 'C:/Buecher/b.pdf', art: 'pdf' }] });
+  check('Schreiben liest nicht nach', gelesen, vorher);
+  check('Der geschriebene Stand gilt sofort', ctx.griffLies().dateien[0].id, 'b');
+  check('Auch das Ausblenden', ctx.griffLies().versteckt, true);
+}
+
+console.log('\n9. Die Vereinbarung zwischen den Prozessen\n');
 {
   /* Ein Kanal, den preload.js anbietet und main.js nicht bedient, faellt
      erst im Betrieb auf — und dann als Fenster, in dem nichts geschieht. */

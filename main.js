@@ -2173,25 +2173,71 @@ function griffMass(wert, klein, gross, vorgabe) {
   return Math.min(gross, Math.max(klein, n));
 }
 
+/* ══ DER GEMERKTE STAND ═══════════════════════════════════════════════
+
+   >>> Warum die Datei nicht mehr bei jedem Zugriff gelesen wird <<<
+   Seit ein PDF stückweise geholt wird, geht JEDE Bereichsanfrage durch
+   griffAusliefern – und die rief griffLies, also einmal statSync,
+   einmal readFileSync, einmal JSON.parse pro Anfrage. Beim Rollen in
+   einem Buch sind das Dutzende Lesevorgänge derselben unveränderten
+   Datei in der Sekunde.
+
+   Das kostet nicht nur; es geht auch schief. Unter Windows schlägt ein
+   Dateizugriff hin und wieder mit EPERM oder EBUSY fehl, weil der
+   Virenscanner oder die Ordnersynchronisierung die Datei gerade offen
+   hat. Beim Bauen dieser Änderung ist genau das hier aufgetreten.
+
+   >>> Und warum das so schlimm war <<<
+   Der Fehler wurde gefangen, und zurück kam eine LEERE LISTE. Eine leere
+   Liste ist aber keine Auskunft, sondern eine Falschaussage: das Fenster
+   liest daraus, dass es die Unterlage nicht mehr gibt. Die Reiter
+   verschwinden, die offene Datei geht zu, ihr Inhalt wird weggeräumt –
+   und das nächste Aufschlagen lädt das ganze Buch neu. Genau so wurde es
+   gemeldet: „es bleibt nicht offen, und dann lädt es wieder".
+
+   Jetzt wird nur gelesen, wenn sich die Datei wirklich geändert hat, und
+   ein Fehlschlag lässt den letzten guten Stand stehen, statt ihn durch
+   eine Unwahrheit zu ersetzen. */
+let griffStand = null;      // der Stand, wie er zuletzt richtig gelesen wurde
+let griffStandZeit = -1;    // Änderungszeit der Datei dazu
+
 function griffLies() {
   try {
-    if (fs.existsSync(griffPath)) {
-      const stand = JSON.parse(fs.readFileSync(griffPath, 'utf-8'));
-      const dateien = Array.isArray(stand && stand.dateien) ? stand.dateien : [];
-      return {
-        versteckt: !!(stand && stand.versteckt),
-        dateien: dateien.filter(d => d && d.id && d.pfad).slice(0, GRIFF_MAX)
-      };
-    }
+    const stat = fs.statSync(griffPath);
+    // Unverändert: der gemerkte Stand ist derselbe, den die Datei enthält
+    if (griffStand && stat.mtimeMs === griffStandZeit) return griffStand;
+
+    const stand = JSON.parse(fs.readFileSync(griffPath, 'utf-8'));
+    const dateien = Array.isArray(stand && stand.dateien) ? stand.dateien : [];
+    griffStand = {
+      versteckt: !!(stand && stand.versteckt),
+      dateien: dateien.filter(d => d && d.id && d.pfad).slice(0, GRIFF_MAX)
+    };
+    griffStandZeit = stat.mtimeMs;
+    return griffStand;
   } catch (err) {
+    /* Gibt es die Datei gar nicht, ist die leere Liste die Wahrheit –
+       und zwar nur dann. Jeder andere Fehler lässt stehen, was zuletzt
+       wirklich dastand. */
+    if (err && err.code === 'ENOENT') {
+      griffStand = { versteckt: false, dateien: [] };
+      griffStandZeit = -1;
+      return griffStand;
+    }
     console.error('[Griffbereit] Laden fehlgeschlagen:', err.message);
   }
-  return { versteckt: false, dateien: [] };
+  return griffStand || { versteckt: false, dateien: [] };
 }
 
 function griffSchreib(stand) {
   try {
     fs.writeFileSync(griffPath, JSON.stringify(stand, null, 2), 'utf-8');
+    /* Den eigenen Schreibvorgang gleich übernehmen, statt ihn im nächsten
+       Zug wieder einzulesen. Die Zeit dazu kommt aus der Datei selbst –
+       geraten wäre sie beim nächsten Vergleich falsch. */
+    griffStand = stand;
+    try { griffStandZeit = fs.statSync(griffPath).mtimeMs; }
+    catch (err2) { griffStandZeit = -1; }
   } catch (err) {
     console.error('[Griffbereit] Sichern fehlgeschlagen:', err.message);
   }

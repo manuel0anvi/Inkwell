@@ -93,29 +93,45 @@
      Ladens wieder zugemacht wurde, darf ihren Inhalt nicht mehr
      einhängen – sonst steht im Fenster das PDF von vorhin. */
   let _lauf = 0;
-  /* Steht der Inhalt vollständig? Nur dann lohnt es, ihn aufzuheben –
-     eine halb geladene Datei wieder hervorzuholen zeigte halbe Arbeit. */
-  let _fertig = false;
-
   /* ══════════════════════════════════════════════════════════════════
-     DAS LAGER — EINE DATEI BLEIBT LIEGEN
+     ZUMACHEN HEISST NICHT WEGRÄUMEN
 
-     >>> Warum es das gibt <<<
-     Zugemacht hiess: pdf.js beenden, alles wegwerfen. Beim nächsten
-     Aufschlagen fing die Datei von vorn an – Katalog holen, zwei Dutzend
-     Seiten vermessen, sichtbare Seiten neu zeichnen. Bei einem Buch ist
-     das jedes Mal dieselbe Wartezeit für dasselbe Ergebnis, und
-     zugemacht wird oft: die Kommentare gehen daneben nicht auf.
+     >>> Warum die Datei stehen bleibt <<<
+     Zugemacht hiess einmal: pdf.js beenden, den Kasten leeren, alles
+     wegwerfen. Beim nächsten Aufschlagen fing das Buch von vorn an –
+     Katalog holen, Seiten vermessen, Sichtbares neu zeichnen. Bei einem
+     abfotografierten Buch sind das jedes Mal Sekunden für dasselbe Bild,
+     und zugemacht wird oft: die Kommentare gehen daneben nicht auf.
 
-     Aufgehoben wird deshalb GENAU EINE Datei – die zuletzt angesehene,
-     mit ihren gezeichneten Seiten und der Rollstelle. Wer sie gleich
-     wieder aufschlägt, sieht sie ohne Warten und an derselben Stelle.
+     Jetzt bleibt der Inhalt einfach STEHEN. Zumachen nimmt nur die
+     Klasse 'open' weg – der Kasten ist dann 0 px breit und schneidet ab
+     (css/griffbereit.css), der Inhalt darin rührt sich nicht. Aufmachen
+     setzt die Klasse wieder: kein Laden, kein Vermessen, kein Zeichnen,
+     und die Rollstelle stimmt von selbst, weil nie etwas ausgehängt
+     wurde.
 
-     Genau eine, nicht mehr: ein Buch hängt an Arbeitern, Puffern und
-     Leinwänden. Zwei davon wären schon spürbar, und drei stünden
-     dauerhaft im Speicher, obwohl höchstens eines angesehen wird. Wer
-     eine andere Datei aufschlägt, räumt die vorige damit weg. */
-  let _lager = null;   // { id, knoten, pdf, bildUrl, beobachter, sichtbar, rollte }
+     >>> Warum nicht ausgehängt und aufgehoben <<<
+     Genau das stand hier zuerst: die Knoten wanderten beim Zumachen in
+     ein Lager und beim Aufmachen zurück. Das ist dieselbe Ersparnis mit
+     mehr Teilen – ausgehängte Knoten, ein Beobachter, der ins Leere
+     zeigt, eine von Hand gemerkte Rollstelle. Jedes dieser Teile kann
+     für sich verlorengehen, und dann lädt die Datei doch wieder neu.
+     Stehenlassen hat keines davon.
+
+     >>> Genau EINE Datei <<<
+     Ein Buch hängt an Arbeitern, Puffern und Leinwänden. Wer eine andere
+     Unterlage aufschlägt, räumt die bisherige damit weg – zwei
+     nebeneinander wären schon spürbar, drei stünden dauerhaft im
+     Speicher, obwohl höchstens eine angesehen wird.
+     ══════════════════════════════════════════════════════════════════ */
+
+  /* Welche Datei im Kasten liegt – ob sie gerade zu sehen ist oder
+     nicht. _offen dagegen ist die, die AUFGESCHLAGEN ist. Nach dem
+     Zumachen ist _offen null und _imKasten steht weiter. */
+  let _imKasten = null;
+  /* Erst wenn der Inhalt vollständig steht, darf er stehen bleiben –
+     eine halb geladene Datei wieder aufzuschlagen zeigte halbe Arbeit. */
+  let _fertig = false;
 
   const txt = (schluessel, ersatz) =>
     (typeof t === 'function' ? t(schluessel) : ersatz) || ersatz;
@@ -326,11 +342,11 @@
     zeichneReiter();
     // Eine ausgeblendete oder weggenommene Datei bleibt nicht offen stehen
     if (_offen && (_stand.versteckt || !datei(_offen))) schliesse();
-    /* Und was weggenommen oder ausgeblendet wurde, hat auch im Lager
+    /* Und was weggenommen oder ausgeblendet wurde, hat auch im Kasten
        nichts mehr zu suchen. Sonst hinge ein Buch im Speicher, das es
-       nicht mehr gibt – oder eines, das der Nutzer gerade ausdrücklich
-       aus dem Weg geräumt hat. */
-    if (_lager && (_stand.versteckt || !datei(_lager.id))) raeumeLagerWeg();
+       nicht mehr gibt – oder eines, das gerade ausdrücklich aus dem Weg
+       geräumt wurde. */
+    if (_imKasten && (_stand.versteckt || !datei(_imKasten))) raeumeKastenWeg();
   }
 
   /* ══════════════════════════════════════════════════════════════════
@@ -518,16 +534,18 @@
     // Erst die Stelle der bisher offenen Datei sichern, dann wechseln
     merkeStelle();
 
-    /* >>> Liegt die gewünschte Datei noch im Lager? <<<
-       Dann wird sie DORT HERAUSGENOMMEN, bevor die bisherige
-       hineinkommt – sonst räumte das Einlagern genau das weg, was gleich
-       gebraucht wird (beim Hin- und Herwechseln zwischen zwei Dateien). */
-    const bereit = (_lager && _lager.id === String(id)) ? _lager : null;
-    if (bereit) _lager = null;
+    /* Liegt sie schon im Kasten und ist vollständig, wird gar nichts
+       angefasst – aufschlagen heisst dann nur noch: sichtbar machen.
 
-    if (!legeInsLager()) raeumeInhaltWeg();
-    _fertig = false;
-    zeigeZoomWert();
+       Nachgesehen wird auch, ob wirklich noch etwas drinliegt. Würde die
+       Oberfläche den Kasten irgendwann neu aufbauen, stimmte _imKasten
+       zwar weiter, der Inhalt wäre aber weg – und der kurze Weg zeigte
+       eine leere Fläche statt der Datei. Ein Blick auf das erste Kind
+       beantwortet das ohne eigene Buchhaltung. */
+    const koerper = E('griff-view-body');
+    const stehtSchon = _fertig && String(_imKasten) === String(id)
+      && !!(koerper && koerper.firstChild);
+    if (!stehtSchon) raeumeKastenWeg();
     _offen = String(id);
     const lauf = ++_lauf;
 
@@ -536,7 +554,7 @@
     setzeBreite(d.breite || VORGABE_BREITE);
     /* VOR dem Einhängen des Inhalts: die Kästen sollen gleich in ihrer
        richtigen Breite entstehen. Nachträglich wäre es ein zweiter
-       Umbruch und, beim Weg über das Lager, ein zweites Zeichnen. */
+       Umbruch und ein zweites Zeichnen. */
     zoomAnwenden(d.zoom);
     v?.classList.add('open');
     const anzeige = E('griff-view-name');
@@ -544,20 +562,15 @@
     zeichneReiter();
     nachLayout();
 
-    const koerper = E('griff-view-body');
-
-    /* Der kurze Weg: alles steht noch, es muss nur wieder eingehängt
-       werden. Kein Lesen, kein Vermessen, kein Zeichnen – und die Datei
-       steht an der Stelle, an der sie zugemacht wurde. */
-    if (bereit && holeAusLager(bereit)) {
-      _fertig = true;
-      zeigeZoomWert();
-      // Die Breite kann sich seither geändert haben
+    /* Der kurze Weg: der Inhalt steht schon da. Nichts zu laden, nichts
+       zu leeren, keine Rollstelle wiederherzustellen – nur die Breite
+       kann sich seither geändert haben. Der Zoom steht schon: ihn hat
+       zoomAnwenden oben gesetzt, und zeigeZoomWert lief dabei mit. */
+    if (stehtSchon) {
       setTimeout(zeichneSichtbareNeu, 300);
       return;
     }
 
-    leere(koerper);
     const laedt = document.createElement('div');
     laedt.className = 'griff-hinweis';
     laedt.textContent = txt('griffLaedt', 'wird geöffnet …');
@@ -598,6 +611,7 @@
     }
     if (lauf !== _lauf) return;
 
+    _imKasten = String(id);
     _fertig = true;
     zeigeZoomWert();
 
@@ -621,6 +635,8 @@
     if (anzeige) anzeige.textContent = name || '';
     const koerper = E('griff-view-body');
     leere(koerper);
+    _imKasten = null;
+    _fertig = false;
     const p = document.createElement('div');
     p.className = 'griff-fehlt-text';
     p.textContent = text;
@@ -628,87 +644,45 @@
     nachLayout();
   }
 
+  /**
+   * Zumachen.
+   *
+   * >>> Der Inhalt bleibt stehen <<<
+   * Weggeräumt wird nur, was ohnehin nichts taugt: eine halb geladene
+   * Datei oder eine Fehlermeldung. Alles Vollständige bleibt im Kasten
+   * liegen und ist beim nächsten Aufschlagen sofort wieder da – samt
+   * Rollstelle, denn es wurde ja nie ausgehängt.
+   *
+   * Auch der NAME bleibt in der Kopfzeile stehen. Er wurde hier einmal
+   * geleert; zu sehen war das nie (der Kasten ist dann 0 px breit), aber
+   * beim Aufschlagen flackerte die Zeile einmal leer auf.
+   */
   function schliesse() {
     merkeStelle();
-    /* Aufgehoben, nicht weggeworfen: zugemacht wird oft, und dieselbe
-       Datei noch einmal zu laden dauert bei einem Buch spürbar lange
-       (siehe DAS LAGER). Einlagern MUSS vor dem Nullsetzen von _offen
-       stehen – daran hängt die Kennung. */
-    if (!legeInsLager()) raeumeInhaltWeg();
-    _fertig = false;
-    zeigeZoomWert();
     _offen = null;
     _lauf++;
+    if (!_fertig) raeumeKastenWeg();
+
     const v = ansicht();
     if (v) v.classList.remove('open');
-    const anzeige = E('griff-view-name');
-    if (anzeige) anzeige.textContent = '';
-    leere(E('griff-view-body'));
     zeichneReiter();
     nachLayout();
   }
 
-  /**
-   * Den jetzigen Inhalt ins Lager legen, statt ihn wegzuwerfen.
-   *
-   * Die Knoten wandern nur aus dem Blick; Leinwände, Arbeiter und der
-   * Beobachter bleiben, wie sie sind. Ein Beobachter darf auf Knoten
-   * zeigen, die gerade nirgends hängen – er meldet dann schlicht nichts.
-   *
-   * Gibt false zurück, wenn es nichts zu lagern gibt; dann muss der
-   * Aufrufer aufräumen wie bisher.
-   */
-  function legeInsLager() {
-    const koerper = E('griff-view-body');
-    if (!_offen || !koerper || !_fertig || (!_pdf && !_bildUrl)) return false;
-
-    raeumeLagerWeg();          // das vorige Stück macht Platz
-    _lager = {
-      id: String(_offen),
-      knoten: Array.from(koerper.childNodes),
-      pdf: _pdf, bildUrl: _bildUrl,
-      beobachter: _beobachter, sichtbar: _sichtbar,
-      rollte: koerper.scrollTop, quer: koerper.scrollLeft
-    };
-    for (const k of _lager.knoten) k.remove();
-
-    _pdf = null; _bildUrl = ''; _beobachter = null; _sichtbar = new Set();
-    return true;
-  }
-
-  /** Ein gelagertes Stück wieder einhängen – ohne einen einzigen Ladevorgang. */
-  function holeAusLager(eintrag) {
-    const koerper = E('griff-view-body');
-    if (!eintrag || !koerper) return false;
-
-    leere(koerper);
-    for (const k of eintrag.knoten) koerper.appendChild(k);
-    _pdf = eintrag.pdf;
-    _bildUrl = eintrag.bildUrl;
-    _beobachter = eintrag.beobachter;
-    _sichtbar = eintrag.sichtbar;
-
-    /* Erst nach dem Einhängen steht die Höhe wieder – vorher zeigte
-       scrollTop ins Leere und die Stelle wäre verloren. */
-    requestAnimationFrame(() => {
-      koerper.scrollTop = eintrag.rollte;
-      koerper.scrollLeft = eintrag.quer || 0;
-    });
-    return true;
-  }
-
-  function raeumeLagerWeg() {
-    if (!_lager) return;
-    if (_lager.beobachter) { try { _lager.beobachter.disconnect(); } catch (err) { /* egal */ } }
-    if (_lager.pdf) { try { _lager.pdf.destroy(); } catch (err) { /* egal */ } }
-    if (_lager.bildUrl) { try { URL.revokeObjectURL(_lager.bildUrl); } catch (err) { /* egal */ } }
-    _lager = null;
+  /** Alles weg, was im Kasten liegt – Inhalt, Arbeiter, Puffer. */
+  function raeumeKastenWeg() {
+    raeumeInhaltWeg();
+    leere(E('griff-view-body'));
+    _imKasten = null;
+    _fertig = false;
+    // Ohne Inhalt gibt es nichts zu vergrössern – die Knöpfe gehen weg
+    zeigeZoomWert();
   }
 
   /* Ein PDF hängt an Arbeitern und Puffern, ein Bild an einer URL. Beides
-     muss weg, wenn es nicht ins Lager geht – sonst sammelt sich mit jedem
-     Aufschlagen ein weiterer Satz an, und nach dem zehnten Mal steht die
-     App. */
+     muss weg, sobald eine ANDERE Datei in den Kasten kommt – sonst
+     sammelt sich mit jedem Aufschlagen ein weiterer Satz an, und nach dem
+     zehnten Mal steht die App. */
   function raeumeInhaltWeg() {
     if (_beobachter) { _beobachter.disconnect(); _beobachter = null; }
     _sichtbar = new Set();
