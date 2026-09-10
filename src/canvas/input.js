@@ -1594,9 +1594,9 @@ function attachInput(canvas, textDiv, objLayer, page) {
   }
 
   /* ══════════════════════════════════════════════════════════════════
-     DREIMAL: DIE ZEILE – FUENFMAL: DIE SEITE
+     DREIMAL: DIE ZEILE – VIERMAL: DIE SEITE
 
-     >>> Gewuenscht: „dreimal druecken waehlt die ganze Zeile, fuenfmal
+     >>> Gewuenscht: „dreimal druecken waehlt die ganze Zeile, viermal
      die ganze Seite" <<<
      Dreimal markierte vorher den ABSATZ – und bei einem frei stehenden
      Wort ist das genau dasselbe wie das Wort vom Doppelklick: es sah
@@ -1681,7 +1681,7 @@ function attachInput(canvas, textDiv, objLayer, page) {
     if (e.shiftKey) return;   // erweitert schon im pointerdown
     const anzahl = Math.max(e.detail || 1, letzterDruck ? letzterDruck.anzahl : 1);
     if (anzahl === 2) markiereWortAn(e.clientX, e.clientY);
-    else if (anzahl >= 5) markiereSeite();
+    else if (anzahl >= 4) markiereSeite();
     else if (anzahl >= 3) markiereZeileAn(e.clientX, e.clientY);
   });
 

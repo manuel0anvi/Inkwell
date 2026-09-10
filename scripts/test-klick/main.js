@@ -569,7 +569,7 @@ app.on('ready', async () => {
     pruefe('Doppelklick auf „' + wort + '" waehlt genau dieses Wort', s === wort, JSON.stringify(s));
   }
 
-  /* Gewuenscht: dreimal druecken waehlt die ganze Zeile, fuenfmal die
+  /* Gewuenscht: dreimal druecken waehlt die ganze Zeile, viermal die
      ganze Seite. Dreimal markierte vorher den Absatz – bei einem frei
      stehenden Wort sah das aus, als passiere gar nichts. */
   async function mehrfachklick(x, y, n) {
@@ -588,11 +588,11 @@ app.on('ready', async () => {
   pruefe('Dreimal gedrueckt waehlt die ganze Zeile („oben links" bis „oben rechts")',
     dreimal.includes('oben links') && dreimal.includes('oben rechts') && !dreimal.includes('mitte'),
     JSON.stringify(dreimal));
-  await mehrfachklick(obenLinks.l + 6, (obenLinks.t + obenLinks.b) / 2, 5);
-  const fuenfmal = await auswahl();
-  pruefe('Fuenfmal gedrueckt waehlt die ganze Seite',
-    ['oben links', 'oben rechts', 'die mitte', 'unten links', 'unten rechts'].every(w => fuenfmal.includes(w)),
-    JSON.stringify(fuenfmal));
+  await mehrfachklick(obenLinks.l + 6, (obenLinks.t + obenLinks.b) / 2, 4);
+  const viermal = await auswahl();
+  pruefe('Viermal gedrueckt waehlt die ganze Seite',
+    ['oben links', 'oben rechts', 'die mitte', 'unten links', 'unten rechts'].every(w => viermal.includes(w)),
+    JSON.stringify(viermal));
 
   // Die Marke im Wort setzt jetzt die App, nicht mehr der Browser
   const zwischen = await js(`(() => { const td = document.querySelector('.j-text');
