@@ -37,11 +37,13 @@
      Leisten nebeneinander liessen vom Blatt nichts übrig.
 
    ── Was sich je Datei merkt ────────────────────────────────────────
-   Breite und Rollstelle. Wer ein Skript auf Seite 40 zuklappt, will
-   beim nächsten Aufschlagen wieder dort stehen. Die Stelle wird als
-   ANTEIL gespeichert (0 … 1) und nicht in Pixeln: bei einem PDF hängt
-   die Gesamthöhe an der Breite, und eine gemerkte Pixelzahl zeigte nach
-   dem Ziehen der Kante irgendwohin.
+   Breite der Spalte, Vergrößerung und die Stelle darin – nach unten wie
+   zur Seite. Wer ein Skript auf Seite 40 zuklappt, will beim nächsten
+   Aufschlagen wieder dort stehen, und zwar so groß wie vorher.
+
+   Beide Stellen werden als ANTEIL gespeichert (0 … 1) und nicht in
+   Pixeln: bei einem PDF hängt die Gesamthöhe an Breite und Zoom, und
+   eine gemerkte Pixelzahl zeigte nach dem Ziehen der Kante irgendwohin.
 
    ── Warum die Seiten erst beim Hinsehen entstehen ──────────────────
    Ein Skript hat schnell 300 Seiten. Alle vorab zu zeichnen dauert
@@ -68,6 +70,14 @@
      verzieht damit nicht mehr die Höhe aller übrigen Kästen – genau das
      tat es vorher, und zwar umso schlimmer, je weniger gemessen wurde. */
   const HOECHSTENS_GEMESSEN = 8;
+
+  /* So breit wird eine Leinwand höchstens, in Bildpunkten. Bei
+     vierfachem Zoom in einer breiten Spalte kämen sonst gut 5000 × 7000
+     Punkte je Seite zusammen – 140 MB für ein Blatt, und es stehen
+     mehrere gleichzeitig da. Darüber hinaus zieht der Browser das
+     Vorhandene auf; das fällt nicht auf, weil die Grenze weit über der
+     Auflösung des Schirms liegt. */
+  const MAX_LEINWAND = 2600;
 
   /** Der Spiegel dessen, was der Hauptprozess hält. */
   let _stand = { versteckt: false, dateien: [] };
@@ -517,12 +527,17 @@
 
     if (!legeInsLager()) raeumeInhaltWeg();
     _fertig = false;
+    zeigeZoomWert();
     _offen = String(id);
     const lauf = ++_lauf;
 
     const v = ansicht();
     v?.classList.remove('zieht');
     setzeBreite(d.breite || VORGABE_BREITE);
+    /* VOR dem Einhängen des Inhalts: die Kästen sollen gleich in ihrer
+       richtigen Breite entstehen. Nachträglich wäre es ein zweiter
+       Umbruch und, beim Weg über das Lager, ein zweites Zeichnen. */
+    zoomAnwenden(d.zoom);
     v?.classList.add('open');
     const anzeige = E('griff-view-name');
     if (anzeige) anzeige.textContent = d.name;
@@ -536,6 +551,7 @@
        steht an der Stelle, an der sie zugemacht wurde. */
     if (bereit && holeAusLager(bereit)) {
       _fertig = true;
+      zeigeZoomWert();
       // Die Breite kann sich seither geändert haben
       setTimeout(zeichneSichtbareNeu, 300);
       return;
@@ -583,9 +599,13 @@
     if (lauf !== _lauf) return;
 
     _fertig = true;
+    zeigeZoomWert();
 
     // Dort weitermachen, wo zuletzt aufgehört wurde
-    requestAnimationFrame(() => rolleZuAnteil(d.stelle || 0));
+    requestAnimationFrame(() => {
+      rolleZuAnteil(d.stelle || 0);
+      rolleQuer(d.quer || 0);
+    });
 
     /* Und noch einmal, wenn die Leiste ausgefahren ist. Während der
        Bewegung stimmt die Breite noch nicht ganz, und eine Seite, die in
@@ -616,6 +636,7 @@
        stehen – daran hängt die Kennung. */
     if (!legeInsLager()) raeumeInhaltWeg();
     _fertig = false;
+    zeigeZoomWert();
     _offen = null;
     _lauf++;
     const v = ansicht();
@@ -647,7 +668,7 @@
       knoten: Array.from(koerper.childNodes),
       pdf: _pdf, bildUrl: _bildUrl,
       beobachter: _beobachter, sichtbar: _sichtbar,
-      rollte: koerper.scrollTop
+      rollte: koerper.scrollTop, quer: koerper.scrollLeft
     };
     for (const k of _lager.knoten) k.remove();
 
@@ -669,7 +690,10 @@
 
     /* Erst nach dem Einhängen steht die Höhe wieder – vorher zeigte
        scrollTop ins Leere und die Stelle wäre verloren. */
-    requestAnimationFrame(() => { koerper.scrollTop = eintrag.rollte; });
+    requestAnimationFrame(() => {
+      koerper.scrollTop = eintrag.rollte;
+      koerper.scrollLeft = eintrag.quer || 0;
+    });
     return true;
   }
 
@@ -798,8 +822,14 @@
     if (!_pdf || kasten._zeichnet) return;
     const breite = kasten.clientWidth;
     if (breite < 10) return;
-    // Schon in dieser Breite gezeichnet: dann gibt es nichts zu tun
-    if (kasten._beiBreite && Math.abs(kasten._beiBreite - breite) < 8) return;
+
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const leinwandBreite = Math.min(Math.round(breite * dpr), MAX_LEINWAND);
+
+    /* Verglichen wird die LEINWAND und nicht die Kästchenbreite: jenseits
+       der Obergrenze ändert sich die Breite weiter, das Bild aber nicht
+       mehr – und jede weitere Stufe zeichnete dann dasselbe noch einmal. */
+    if (kasten._beiLeinwand && Math.abs(kasten._beiLeinwand - leinwandBreite) < 8) return;
 
     kasten._zeichnet = true;
     const lauf = _lauf;
@@ -807,9 +837,8 @@
       const seite = await _pdf.getPage(Number(kasten.dataset.nr));
       if (lauf !== _lauf) return;
 
-      const dpr = Math.min(window.devicePixelRatio || 1, 2);
       const roh = seite.getViewport({ scale: 1 });
-      const viewport = seite.getViewport({ scale: (breite * dpr) / roh.width });
+      const viewport = seite.getViewport({ scale: leinwandBreite / roh.width });
 
       const leinwand = document.createElement('canvas');
       leinwand.width = Math.round(viewport.width);
@@ -822,7 +851,7 @@
       kasten.style.aspectRatio = String(roh.width / roh.height);
       leere(kasten);
       kasten.appendChild(leinwand);
-      kasten._beiBreite = breite;
+      kasten._beiLeinwand = leinwandBreite;
     } catch (err) {
       console.warn('[Griffbereit] Seite', kasten.dataset.nr, err?.message || err);
     } finally {
@@ -834,6 +863,154 @@
   function zeichneSichtbareNeu() {
     for (const k of _sichtbar) zeichneSeite(k);
   }
+
+  /* ══════════════════════════════════════════════════════════════════
+     DER ZOOM
+
+     Eine Unterlage steht in einer Spalte von vielleicht 400 px. Ein
+     Skript in A4 ist darin lesbar, eine abfotografierte Doppelseite mit
+     Fußnoten nicht. Deshalb lässt sich die Seite größer ziehen – und das
+     ist etwas anderes, als die Spalte breiter zu machen: die nimmt sich
+     ihren Platz vom Heft daneben.
+
+     >>> Warum keine Transformation <<<
+     `transform: scale()` wäre eine Zeile und sieht bei einem PDF nach
+     nichts aus: vergrößert wird dabei das FERTIGE Bild, die Schrift also
+     unscharf – genau das, wogegen man zoomt. Stattdessen wird der Kasten
+     breiter, und `zeichneSeite()` zeichnet die Seite in der neuen Breite
+     neu. Bei einem Bild macht der Browser dasselbe von selbst.
+
+     Neu gezeichnet wird aber erst, wenn die Finger stillhalten. Während
+     der Geste zieht der Browser die vorhandene Leinwand auf – das kostet
+     eine Bildzeile statt einer Seitenberechnung je Schritt.
+     ══════════════════════════════════════════════════════════════════ */
+
+  /* Unter 0,5 wäre eine Seite ein Daumennagel, über 4 kommt nichts mehr
+     dazu – die Leinwand ist bei dieser Stufe ohnehin abgeriegelt
+     (MAX_LEINWAND). Dieselben Grenzen stehen in main.js. */
+  const MIN_ZOOM = 0.5, MAX_ZOOM = 4;
+  const ZOOM_SCHRITT = 1.25;
+
+  let _zoom = 1;
+  let _zoomTimer = null;
+
+  /** Nur setzen und anzeigen – ohne Anker, ohne Merken. */
+  function zoomAnwenden(z) {
+    const wert = Number(z);
+    _zoom = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, Number.isFinite(wert) && wert ? wert : 1));
+    ansicht()?.style.setProperty('--griff-zoom', String(_zoom));
+    zeigeZoomWert();
+  }
+
+  function zeigeZoomWert() {
+    // Ohne Inhalt gibt es nichts zu vergrössern – dann steht da auch nichts
+    const feld = E('griff-zoom');
+    if (feld) feld.hidden = !_fertig;
+    const wert = E('griff-zoom-wert');
+    if (wert) wert.textContent = Math.round(_zoom * 100) + '%';
+    // Am Anschlag tut der Knopf nichts mehr, und das soll man sehen
+    const raus = E('griff-zoom-raus'), rein = E('griff-zoom-rein');
+    if (raus) raus.disabled = _zoom <= MIN_ZOOM + 0.001;
+    if (rein) rein.disabled = _zoom >= MAX_ZOOM - 0.001;
+  }
+
+  /**
+   * Auf einen neuen Zoom stellen.
+   *
+   * @param {number} neu      der gewünschte Faktor
+   * @param {number} [ankerX] Punkt auf dem Schirm, der stehen bleiben
+   * @param {number} [ankerY] soll (Finger, Mauszeiger). Sonst die Mitte.
+   */
+  function setzeZoom(neu, ankerX, ankerY) {
+    const k = E('griff-view-body');
+    const v = ansicht();
+    if (!k || !v || !_fertig) return;
+    const z = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, neu));
+    if (Math.abs(z - _zoom) < 0.002) return;
+
+    /* Der Punkt unter dem Finger soll unter dem Finger bleiben. Gemerkt
+       wird er als ANTEIL am Inhalt und nicht in Pixeln – dessen Höhe ist
+       gleich eine andere. */
+    const r = k.getBoundingClientRect();
+    const ax = ankerX == null ? k.clientWidth / 2 : ankerX - r.left;
+    const ay = ankerY == null ? k.clientHeight / 2 : ankerY - r.top;
+    const vorX = (k.scrollLeft + ax) / Math.max(1, k.scrollWidth);
+    const vorY = (k.scrollTop + ay) / Math.max(1, k.scrollHeight);
+
+    zoomAnwenden(z);
+
+    /* Das Lesen von scrollWidth erzwingt den neuen Umbruch – ohne diese
+       Zeile stünden hier noch die Masse von vorhin, und der Anker
+       sprünge. */
+    k.scrollLeft = Math.max(0, vorX * k.scrollWidth - ax);
+    k.scrollTop = Math.max(0, vorY * k.scrollHeight - ay);
+
+    clearTimeout(_zoomTimer);
+    _zoomTimer = setTimeout(() => {
+      _zoomTimer = null;
+      zeichneSichtbareNeu();
+      merkeStelle();
+    }, 260);
+  }
+
+  /* ── Mit zwei Fingern ────────────────────────────────────────────────
+     Auf einem Tablett ist das der einzige naheliegende Weg. Gerechnet
+     wird höchstens einmal je Bildzeile: setzeZoom() liest scrollWidth,
+     und das erzwingt jedes Mal einen Umbruch – bei einem Buch mit 400
+     Kästen nichts, was man dreimal pro Bildzeile tun will. */
+  (function kneifen() {
+    const k = E('griff-view-body');
+    if (!k) return;
+    let start = 0, zoomStart = 1, aktiv = false, geplant = 0, letzte = null;
+
+    const abstand = (t) => Math.hypot(t[1].clientX - t[0].clientX, t[1].clientY - t[0].clientY);
+
+    k.addEventListener('touchstart', (e) => {
+      if (e.touches.length !== 2 || !_fertig) { aktiv = false; return; }
+      aktiv = true;
+      start = abstand(e.touches) || 1;
+      zoomStart = _zoom;
+    }, { passive: true });
+
+    k.addEventListener('touchmove', (e) => {
+      if (!aktiv || e.touches.length !== 2) return;
+      e.preventDefault();
+      letzte = {
+        d: abstand(e.touches),
+        x: (e.touches[0].clientX + e.touches[1].clientX) / 2,
+        y: (e.touches[0].clientY + e.touches[1].clientY) / 2
+      };
+      if (geplant) return;
+      geplant = requestAnimationFrame(() => {
+        geplant = 0;
+        if (!aktiv || !letzte) return;
+        setzeZoom(zoomStart * (letzte.d / start), letzte.x, letzte.y);
+      });
+    }, { passive: false });
+
+    const ende = () => {
+      aktiv = false; start = 0; letzte = null;
+      if (geplant) { cancelAnimationFrame(geplant); geplant = 0; }
+    };
+    k.addEventListener('touchend', ende, { passive: true });
+    k.addEventListener('touchcancel', ende, { passive: true });
+  })();
+
+  /* ── Mit Strg und dem Rad ────────────────────────────────────────────
+     Ohne Strg bleibt das Rad das Rollen – in einem Dokument ist das die
+     häufigere Absicht, und der Zoom hätte sie überall verdrängt. */
+  E('griff-view-body')?.addEventListener('wheel', (e) => {
+    if (!e.ctrlKey || !ansichtOffen() || !_fertig) return;
+    e.preventDefault();
+    /* Kein fester Betrag je Rasten: ein Rollfeld schickt viele kleine
+       Werte, ein Mausrad wenige grosse. exp() macht aus beidem dieselbe
+       gefühlte Geschwindigkeit. */
+    setzeZoom(_zoom * Math.exp(-e.deltaY / 400), e.clientX, e.clientY);
+  }, { passive: false });
+
+  E('griff-zoom-rein')?.addEventListener('click', () => setzeZoom(_zoom * ZOOM_SCHRITT));
+  E('griff-zoom-raus')?.addEventListener('click', () => setzeZoom(_zoom / ZOOM_SCHRITT));
+  E('griff-zoom-wert')?.addEventListener('click', () => setzeZoom(1));
 
   /* ══════════════════════════════════════════════════════════════════
      DIE STELLE MERKEN
@@ -856,13 +1033,33 @@
     if (weg > 0) k.scrollTop = Math.round(weg * anteil);
   }
 
+  /* Dasselbe zur Seite. Es gibt nur etwas zu merken, solange
+     hineingezoomt ist – sonst ist die Seite so breit wie die Spalte und
+     der Anteil immer 0. */
+  function querJetzt() {
+    const k = E('griff-view-body');
+    if (!k) return 0;
+    const weg = k.scrollWidth - k.clientWidth;
+    return weg > 0 ? Math.min(1, Math.max(0, k.scrollLeft / weg)) : 0;
+  }
+
+  function rolleQuer(anteil) {
+    const k = E('griff-view-body');
+    if (!k) return;
+    const weg = k.scrollWidth - k.clientWidth;
+    if (weg > 0) k.scrollLeft = Math.round(weg * anteil);
+  }
+
   function merkeStelle() {
     if (!_offen || !api()) return;
     const d = datei(_offen);
     if (!d) return;
-    const anteil = anteilJetzt();
-    d.stelle = anteil;                       // im Spiegel gleich mitziehen
-    api().aendern(_offen, { stelle: anteil }).catch(() => { /* egal */ });
+    /* Alle drei zusammen: sie beschreiben EINE Ansicht. Getrennt
+       geschrieben könnte ein Absturz dazwischenfallen und beim nächsten
+       Aufschlagen stünde die alte Vergrößerung an der neuen Stelle. */
+    const stand = { stelle: anteilJetzt(), quer: querJetzt(), zoom: _zoom };
+    Object.assign(d, stand);                 // im Spiegel gleich mitziehen
+    api().aendern(_offen, stand).catch(() => { /* egal */ });
   }
 
   /* ══════════════════════════════════════════════════════════════════
@@ -912,8 +1109,19 @@
        Hand wegzieht, soll nichts anderes auslösen. */
     const aufKnopf = (ziel) => !!(ziel && ziel.closest && ziel.closest('button'));
 
+    /* >>> Zugezoomt gibt es nichts zu wischen <<<
+       Ist die Seite breiter als die Spalte, schiebt ein Finger nach
+       rechts den Ausschnitt – wer links am Rand lesen will, hätte die
+       Datei sonst zugemacht. Die Kopfzeile bleibt frei davon, dort geht
+       der Wisch weiterhin, und das ✕ sowieso. */
+    const kannQuer = () => {
+      const k = E('griff-view-body');
+      return !!k && k.scrollWidth > k.clientWidth + 1;
+    };
+
     v.addEventListener('touchstart', (e) => {
-      aktiv = e.touches.length === 1 && ansichtOffen() && !aufKnopf(e.target);
+      aktiv = e.touches.length === 1 && ansichtOffen() && !aufKnopf(e.target)
+        && !(kannQuer() && E('griff-view-body')?.contains(e.target));
       if (!aktiv) return;
       x0 = e.touches[0].clientX; y0 = e.touches[0].clientY;
     }, { passive: true });

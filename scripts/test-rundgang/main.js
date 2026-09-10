@@ -72,7 +72,8 @@ ipcMain.handle('griff-waehlen', () => ({ id: 'g1', art: 'bild', vorschlag: 'Tafe
 ipcMain.handle('griff-abgelegt', () => [{ id: 'g2', art: 'pdf', vorschlag: 'Skript' }]);
 ipcMain.handle('griff-uebernehmen', (_, id, name) => {
   griffStand.dateien.push({
-    id: String(id), name: String(name), art: 'bild', breite: 0, stelle: 0, da: true
+    id: String(id), name: String(name), art: 'bild',
+    breite: 0, stelle: 0, zoom: 1, quer: 0, da: true
   });
   return griffAbbild();
 });
@@ -1521,6 +1522,52 @@ app.on('ready', async () => {
       if (!E('comment-panel')?.classList.contains('open'))
         throw new Error('die Kommentarleiste geht jetzt nicht mehr auf');
       E('comment-panel-close').click();`, 260);
+
+    /* Der Zoom. Geprüft wird nicht die Zahl in der Anzeige, sondern was
+       sie bewirkt: wird die Seite wirklich breiter als die Spalte, und
+       kommt man an ihren linken Rand? Genau daran scheitert eine mittige
+       Ausrichtung ohne „safe" (css/griffbereit.css). */
+    await schritt('Der Zoom macht die Seite breiter als die Spalte', `
+      // Der Schritt davor hat zugemacht – erst wieder aufschlagen
+      const b = E('griff-reiter').querySelector('.griff-reiter-btn');
+      const zeig = (a, x) => b.dispatchEvent(new PointerEvent(a,
+        { pointerId: 11, clientX: x, clientY: 300, bubbles: true }));
+      zeig('pointerdown', 300); zeig('pointerup', 240);
+      await new Promise(r => setTimeout(r, 700));
+      const k = E('griff-view-body');
+      if (!k.querySelector('.griff-seite, .griff-blatt')) throw new Error('kein Inhalt da');
+      if (E('griff-zoom').hidden) throw new Error('die Zoom-Knoepfe bleiben weg');
+      const vorher = k.querySelector('.griff-seite, .griff-blatt').getBoundingClientRect().width;
+      E('griff-zoom-rein').click();
+      E('griff-zoom-rein').click();
+      await new Promise(r => setTimeout(r, 400));
+      const nachher = k.querySelector('.griff-seite, .griff-blatt').getBoundingClientRect().width;
+      if (!(nachher > vorher * 1.4)) throw new Error('kaum breiter: ' + vorher + ' -> ' + nachher);
+      if (E('griff-zoom-wert').textContent !== '156%')
+        throw new Error('falscher Wert: ' + E('griff-zoom-wert').textContent);
+      if (!(k.scrollWidth > k.clientWidth + 1)) throw new Error('nichts zu schieben');`, 420);
+
+    await schritt('Und der linke Rand der Seite bleibt erreichbar', `
+      const k = E('griff-view-body');
+      k.scrollLeft = 9999;
+      if (!(k.scrollLeft > 0)) throw new Error('nach rechts geht nichts');
+      k.scrollLeft = 0;
+      const seite = k.querySelector('.griff-seite, .griff-blatt').getBoundingClientRect();
+      if (seite.left < k.getBoundingClientRect().left - 1)
+        throw new Error('die linke Kante liegt ausserhalb: ' + Math.round(seite.left));`, 260);
+
+    await schritt('Der Wert stellt zurueck, und am Anschlag ist Schluss', `
+      E('griff-zoom-wert').click();
+      await new Promise(r => setTimeout(r, 350));
+      if (E('griff-zoom-wert').textContent !== '100%')
+        throw new Error('nicht zurueckgestellt: ' + E('griff-zoom-wert').textContent);
+      for (let i = 0; i < 12; i++) E('griff-zoom-raus').click();
+      await new Promise(r => setTimeout(r, 350));
+      if (E('griff-zoom-wert').textContent !== '50%')
+        throw new Error('unter den Anschlag: ' + E('griff-zoom-wert').textContent);
+      if (!E('griff-zoom-raus').disabled) throw new Error('der Knopf ist noch scharf');
+      E('griff-zoom-wert').click();
+      await new Promise(r => setTimeout(r, 350));`, 420);
 
     await schritt('Ein Wisch nach rechts faehrt sie wieder ein', `
       const kopf = document.querySelector('.griff-view-head');

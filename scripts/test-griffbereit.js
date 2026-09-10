@@ -112,6 +112,15 @@ console.log('\n2. Was das Fenster schicken darf\n');
   check('Zu klein auch', mass(-5, 0, 4000, 42), 0);
   check('Ein Anteil bleibt im Rahmen', mass(1.7, 0, 1, 0), 1);
 
+  /* Der Zoom. Die Grenzen stehen in main.js UND in ui/griffbereit.js –
+     hier wird die Fassung im Hauptprozess geprüft, denn nur sie steht
+     zwischen einer von Hand geänderten Datei und einer Leinwand, die
+     die Anzeige lahmlegt. */
+  check('Zweifach ist erlaubt', mass(2, 0.5, 4, 1), 2);
+  check('Vierzigfach wird auf vier gekappt', mass(40, 0.5, 4, 1), 4);
+  check('Und ein Zehntel auf ein halbes', mass(0.1, 0.5, 4, 1), 0.5);
+  check('Null ist kein Zoom', mass(0, 0.5, 4, 1), 0.5);
+
   /* Kein Wert heisst: alles bleibt, wie es war. Ohne diesen Zweig würde
      aus einem NaN eine Breite von NaN, und die Leiste verschwände. */
   check('Text aendert nichts', mass('breit', 0, 4000, 42), 42);
@@ -173,7 +182,8 @@ console.log('\n5. Der Ort geht nie ans Fenster\n');
   const antwort = ctx.griffAntwort({
     versteckt: false,
     dateien: [
-      { id: 'a', name: 'Skript', pfad: 'C:\\Uni\\Skript.pdf', art: 'pdf', breite: 380, stelle: .5 },
+      { id: 'a', name: 'Skript', pfad: 'C:\\Uni\\Skript.pdf', art: 'pdf',
+        breite: 380, stelle: .5, zoom: 2, quer: .25 },
       { id: 'b', name: 'Tafel', pfad: 'D:\\weg.png', art: 'bild', breite: 0, stelle: 0 }
     ]
   });
@@ -190,6 +200,12 @@ console.log('\n5. Der Ort geht nie ans Fenster\n');
   check('Die verschobene nicht', antwort.dateien[1].da, false);
   check('Breite und Stelle reisen mit', [antwort.dateien[0].breite, antwort.dateien[0].stelle],
     [380, .5]);
+
+  /* Vergrößerung und Querstelle gehören dazu: ohne sie stünde eine Datei
+     nach dem Neustart wieder in einfacher Größe am linken Rand, und das
+     Merken wäre nur zur Hälfte eines. */
+  check('Zoom und Querstelle auch', [antwort.dateien[0].zoom, antwort.dateien[0].quer],
+    [2, .25]);
 
   daSind.delete('C:\\Uni\\Skript.pdf');
   const nochmal = ctx.griffAntwort({

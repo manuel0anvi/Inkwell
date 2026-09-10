@@ -773,6 +773,19 @@
       <div class="griff-view-inner">
         <div class="griff-view-head">
           <span class="griff-view-name" id="griff-view-name"></span>
+          <!-- Dieselben drei Knöpfe wie der Zoom des Hefts in der
+               Werkzeugzeile, und in derselben Reihenfolge: − Wert +.
+               Der Wert stellt auf 100 % zurück. Mit dem Finger geht es
+               ausserdem über zwei Finger, mit der Maus über Strg+Rad
+               (ui/griffbereit.js). -->
+          <span class="griff-zoom" id="griff-zoom" hidden>
+            <button class="griff-zoom-btn" id="griff-zoom-raus"
+                    data-i18n-title="zoomOut" title="Verkleinern">−</button>
+            <button class="griff-zoom-wert" id="griff-zoom-wert"
+                    data-i18n-title="zoomReset" title="Zoom">100%</button>
+            <button class="griff-zoom-btn" id="griff-zoom-rein"
+                    data-i18n-title="zoomIn" title="Vergrößern">+</button>
+          </span>
           <button class="modal-close-x" id="griff-view-close" title="✕">✕</button>
         </div>
         <div class="griff-view-body" id="griff-view-body"></div>

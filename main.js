@@ -2208,7 +2208,10 @@ function griffAntwort(stand) {
     dateien: stand.dateien.map(d => {
       let da = false;
       try { da = fs.existsSync(d.pfad); } catch (err) { da = false; }
-      return { id: d.id, name: d.name, art: d.art, breite: d.breite, stelle: d.stelle, da };
+      return {
+        id: d.id, name: d.name, art: d.art,
+        breite: d.breite, stelle: d.stelle, zoom: d.zoom, quer: d.quer, da
+      };
     })
   };
 }
@@ -2365,7 +2368,9 @@ ipcMain.handle('griff-uebernehmen', (_, id, name) => {
     pfad: angebot.pfad,
     art: angebot.art,
     breite: 0,     // 0 heisst „noch nie eingestellt" – dann gilt die Vorgabe
-    stelle: 0      // wie weit hineingerollt, als Anteil (0 … 1)
+    stelle: 0,     // wie weit hineingerollt, als Anteil (0 … 1)
+    zoom: 1,       // 1 heisst: eine Seite so breit wie die Spalte
+    quer: 0        // wie weit nach rechts geschoben, ebenfalls als Anteil
   });
   return griffSchreib(stand);
 });
@@ -2381,6 +2386,12 @@ ipcMain.handle('griff-aendern', (_, id, patch) => {
   }
   if (patch && 'breite' in patch) d.breite = Math.round(griffMass(patch.breite, 0, 4000, d.breite));
   if (patch && 'stelle' in patch) d.stelle = griffMass(patch.stelle, 0, 1, d.stelle);
+  /* Dieselben Grenzen wie in der Oberfläche (ui/griffbereit.js). Sie
+     stehen hier ein zweites Mal, weil eine von Hand geänderte Datei
+     sonst eine Unterlage in 40-facher Vergrößerung aufschlüge – und
+     eine Leinwand in dieser Größe legt die Anzeige lahm. */
+  if (patch && 'zoom' in patch) d.zoom = griffMass(patch.zoom, 0.5, 4, d.zoom);
+  if (patch && 'quer' in patch) d.quer = griffMass(patch.quer, 0, 1, d.quer);
   return griffSchreib(stand);
 });
 

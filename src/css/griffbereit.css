@@ -472,10 +472,21 @@ body.griff-reiter-da .pg-scroll {
 .griff-view-body {
   flex: 1;
   overflow-y: auto;
-  overflow-x: hidden;
+  /* Zugezoomt ist die Seite breiter als die Spalte – dann muss sich der
+     Ausschnitt zur Seite schieben lassen. */
+  overflow-x: auto;
+  /* Der Browser soll weder wegrollen noch selbst zoomen, wenn zwei
+     Finger aufliegen: das Kneifen wertet ui/griffbereit.js aus. */
+  touch-action: pan-x pan-y;
   padding: 10px;
   display: flex;
   flex-direction: column;
+  /* „safe" ist hier der ganze Trick: eine mittig ausgerichtete Zeile,
+     die breiter ist als ihr Behälter, ragt links UND rechts heraus –
+     und an das linke Ende kommt man beim Rollen nie. Mit safe fällt die
+     Ausrichtung genau dann auf „am Anfang" zurück. Ohne das wäre die
+     linke Spalte einer zugezoomten Seite unerreichbar. */
+  align-items: safe center;
   gap: 10px;
   /* Derselbe dunkle Grund wie der Rollbereich des Hefts: die Blätter
      sollen darin liegen wie die Heftseiten daneben. */
@@ -485,7 +496,8 @@ body.griff-reiter-da .pg-scroll {
 }
 
 .griff-view-body::-webkit-scrollbar {
-  width: 6px
+  width: 6px;
+  height: 6px
 }
 
 .griff-view-body::-webkit-scrollbar-thumb {
@@ -493,9 +505,13 @@ body.griff-reiter-da .pg-scroll {
   border-radius: 3px
 }
 
+/* Die Breite trägt den Zoom. Nicht transform: scale() – vergrössert
+   würde damit das fertige Bild, und die Schrift eines PDF wäre unscharf.
+   So wird der Kasten breiter und die Seite darin neu gezeichnet
+   (ui/griffbereit.js, zeichneSeite). */
 .griff-blatt,
 .griff-seite {
-  width: 100%;
+  width: calc(100% * var(--griff-zoom, 1));
   height: auto;
   display: block;
   border-radius: 3px;
@@ -509,6 +525,57 @@ body.griff-reiter-da .pg-scroll {
   height: 100%;
   display: block;
   border-radius: 3px
+}
+
+/* ── Die drei Zoom-Knöpfe in der Kopfzeile ──────────────────────────
+   Gebaut wie der Zoom des Hefts in der Werkzeugleiste (css/toolbar.css,
+   .tb-zoom), nur kleiner: dieselbe Sache soll auch gleich aussehen. */
+
+.griff-zoom {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  gap: 1px;
+  border: 1px solid var(--sb);
+  border-radius: 5px;
+  padding: 1px
+}
+
+.griff-zoom-btn,
+.griff-zoom-wert {
+  background: none;
+  border: none;
+  border-radius: 4px;
+  color: var(--md);
+  cursor: pointer;
+  padding: 2px 5px;
+  line-height: 1;
+  transition: background .12s, color .12s
+}
+
+.griff-zoom-btn {
+  font-size: 13px;
+  min-width: 18px
+}
+
+.griff-zoom-wert {
+  font-family: 'DM Mono', 'Consolas', 'Courier New', monospace;
+  font-size: 10px;
+  min-width: 38px
+}
+
+.griff-zoom-btn:hover:not(:disabled),
+.griff-zoom-wert:hover {
+  background: var(--sh2);
+  color: var(--hi)
+}
+
+/* Am Anschlag bleibt der Knopf stehen, statt zu verschwinden – ein
+   Knopf, der springt, ist schwerer zu treffen als einer, der grau ist. */
+.griff-zoom-btn:disabled {
+  opacity: .3;
+  cursor: default;
+  pointer-events: none
 }
 
 .griff-hinweis,
