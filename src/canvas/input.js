@@ -918,9 +918,57 @@ function attachInput(canvas, textDiv, objLayer, page) {
      das ist genau die Stelle, die man meint: links vom Text der
      Zeilenanfang, rechts davon das Zeilenende, unterhalb das Ende des
      Textes.
+
+     >>> Und auch IN der Spalte, neben dem Zeilenende <<<
+     Gemeldet ein zweites Mal: „man muss genau beim letzten Zeichen
+     sein". Rechts neben einer kurzen Zeile, zwischen frei stehenden
+     Absaetzen oder unter dem Text liegt der Druck zwar im Feld, aber auf
+     keinem Zeichen – und genau dort bricht der mousedown-Hoerer unten den
+     Browser ab, damit er die Marke nicht an den Anfang setzt. Mit der
+     Marke fiel dabei das Markieren weg. Von dort fuehrt das Ziehen jetzt
+     ebenfalls dieser Lauf (siehe den pointerdown-Hoerer an textDiv).
+
+     Der Treffertest hilft dort nicht weiter: neben einem frei stehenden
+     Absatz antwortet er mit „das Feld selbst, Stelle N", und das ist
+     irgendwo. Gefragt wird dann die naechste geschriebene Zeile – wie
+     beim Setzen der Marke (canvas/text.js, placeCaretAnywhere).
      ══════════════════════════════════════════════════════════════════ */
   const MARKIER_WEG = 4;      // so weit muss der Zeiger, damit es zaehlt
   let _markieren = null;
+
+  /* Eine Stelle, von der aus sich markieren laesst: im Text, aber weder
+     das Feld selbst noch der Absatz, den der Klick eben erst angelegt hat
+     – der verschwindet, sobald gezogen wird. */
+  function markierbareStelle(knoten) {
+    if (!knoten || knoten === textDiv || !textDiv.contains(knoten)) return false;
+    for (let n = knoten; n && n !== textDiv; n = n.parentNode) {
+      if (n[VORLAEUFIG]) return false;
+    }
+    return true;
+  }
+
+  /** Die Stelle in der naechsten geschriebenen Zeile. */
+  function stelleInNaechsterZeile(x, y) {
+    if (typeof _naechsteTextZeile !== 'function') return null;
+    const zeile = _naechsteTextZeile(textDiv, x, y);
+    if (!zeile) return null;
+    const rc = zeile.rc;
+    let rg = null;
+    try {
+      rg = document.caretRangeFromPoint(
+        Math.min(Math.max(x, rc.left + 1), rc.right - 1),
+        Math.min(Math.max(y, rc.top + 1), rc.bottom - 1));
+    } catch (err) { rg = null; }
+    if (rg && markierbareStelle(rg.startContainer)) return rg;
+
+    // Der Treffertest kommt nicht durch (fremde Marken darueber) – messen
+    const stelle = _stelleInZeile(zeile.knoten, rc, x);
+    if (stelle === null) return null;
+    rg = document.createRange();
+    rg.setStart(zeile.knoten, stelle);
+    rg.collapse(true);
+    return rg;
+  }
 
   /** Die Textstelle an einem Punkt – notfalls die naechste in der Spalte. */
   function stelleAnPunkt(x, y) {
@@ -931,8 +979,8 @@ function attachInput(canvas, textDiv, objLayer, page) {
     const cy = Math.max(r.top + 1, Math.min(r.bottom - 1, y));
     let rg = null;
     try { rg = document.caretRangeFromPoint(cx, cy); } catch (err) { return null; }
-    if (!rg || !textDiv.contains(rg.startContainer)) return null;
-    return rg;
+    if (rg && markierbareStelle(rg.startContainer)) return rg;
+    return stelleInNaechsterZeile(cx, cy);
   }
 
   function randMarkierenZieht(ev) {
@@ -953,6 +1001,11 @@ function attachInput(canvas, textDiv, objLayer, page) {
     if (!(ev.buttons & 1)) { randMarkierenEnde(ev); return; }
 
     if (!m.laeuft && Math.hypot(ev.clientX - m.sx, ev.clientY - m.sy) < MARKIER_WEG) return;
+
+    /* Der Druck auf freie Flaeche hat einen vorlaeufigen Absatz angelegt.
+       Wird gezogen, war es kein Klick zum Schreiben – er kommt weg, bevor
+       er in die Markierung geraet. */
+    if (!m.laeuft && typeof raeumeVorlaeufiges === 'function') raeumeVorlaeufiges(textDiv);
 
     const ziel = stelleAnPunkt(ev.clientX, ev.clientY);
     if (!ziel) return;
@@ -1414,8 +1467,11 @@ function attachInput(canvas, textDiv, objLayer, page) {
     if (textDiv.contains(e.target)) {
       const forceManual = isFreeEditorAreaClick(e.clientX, e.clientY);
       if (forceManual || e.target === textDiv) {
-        // No preventDefault to allow selection, but update DOM immediately
         activateTextEditingAt(e.clientX, e.clientY, forceManual);
+        /* Genau hier bricht der mousedown-Hoerer oben den Browser ab – und
+           damit sein Markieren. Das Ziehen fuehrt deshalb der eigene Lauf
+           (MARKIEREN DARF NEBEN DEM TEXT ANFANGEN). */
+        starteRandMarkieren(e);
       }
     }
   });

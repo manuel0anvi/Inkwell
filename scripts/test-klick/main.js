@@ -452,6 +452,54 @@ app.on('ready', async () => {
     (await js(`document.getElementById('fmt-style-lbl').textContent`)) === '¶',
     await js(`document.getElementById('fmt-style-lbl').textContent`));
 
+  /* ══════════════════════════════════════════════════════════════════
+     4g  MARKIEREN FAENGT AUCH NEBEN DEM ZEILENENDE AN
+
+     Gemeldet: „wenn man mit dem Cursor nicht genau vor oder nach dem
+     Text ist, waehlt es den Text nicht aus – man muss genau beim letzten
+     Zeichen sein." Rechts neben einem frei stehenden Absatz liegt kein
+     Zeichen, und genau dort bricht canvas/input.js den Browser beim
+     mousedown ab, damit er die Marke nicht an den Anfang setzt. Mit der
+     Marke fiel dabei das Markieren weg.
+     ══════════════════════════════════════════════════════════════════ */
+  zeilen.push('\n  4g Markieren neben dem Text');
+
+  async function ziehe(von, bis) {
+    await dbg.sendCommand('Input.dispatchMouseEvent',
+      { type: 'mousePressed', x: Math.round(von.x), y: Math.round(von.y),
+        button: 'left', clickCount: 1, buttons: 1 });
+    for (let i = 1; i <= 8; i++) {
+      await dbg.sendCommand('Input.dispatchMouseEvent',
+        { type: 'mouseMoved', x: Math.round(von.x + (bis.x - von.x) * i / 8),
+          y: Math.round(von.y + (bis.y - von.y) * i / 8), button: 'left', buttons: 1 });
+      await new Promise(r => setTimeout(r, 20));
+    }
+    await dbg.sendCommand('Input.dispatchMouseEvent',
+      { type: 'mouseReleased', x: Math.round(bis.x), y: Math.round(bis.y),
+        button: 'left', clickCount: 1, buttons: 0 });
+    await new Promise(r => setTimeout(r, 250));
+  }
+
+  async function markiereVonRechts(abstand) {
+    await js(`(() => { document.querySelector('.j-text').innerHTML = ''; return true; })()`);
+    await klick(feld.l + 60, zeileY(2));
+    await tippe('markier mich');
+    const k = await wortKasten('markier mich');
+    const y = (k.t + k.b) / 2;
+    await ziehe({ x: k.r + abstand, y }, { x: k.l - 20, y });
+    return { auswahl: await js(`String(getSelection())`),
+             bloecke: await js(`document.querySelectorAll('.j-text p.j-frei').length`) };
+  }
+
+  const weitRechts = await markiereVonRechts(150);
+  pruefe('Weit rechts neben der Zeile angesetzt, markiert das Ziehen den Text',
+    weitRechts.auswahl === 'markier mich', JSON.stringify(weitRechts));
+  pruefe('Und laesst dort keinen leeren Absatz zurueck',
+    weitRechts.bloecke === 1, weitRechts.bloecke + ' Absaetze');
+  const knappRechts = await markiereVonRechts(15);
+  pruefe('Knapp neben dem letzten Zeichen ebenso',
+    knappRechts.auswahl === 'markier mich', JSON.stringify(knappRechts));
+
   // ── 5  Ein blosser Klick hinterlaesst nichts ──────────────────────
   zeilen.push('\n  5  Der blosse Klick');
   const vorher = await inhalt();
