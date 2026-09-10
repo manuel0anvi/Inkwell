@@ -137,7 +137,16 @@ app.on('ready', async () => {
       await warte(300);
     };
 
+    /* Solange der Stift in der Naehe ist, gilt eine Beruehrung als die Hand,
+       die beim Schreiben aufliegt (core/state.js, stiftInDerNaehe). Ein
+       Finger kommt deshalb erst, wenn der Stift wirklich weg ist – wie in
+       echt: erst den Stift absetzen, dann tippen. */
+    async function bisStiftWeg() {
+      for (let i = 0; i < 40 && await js('stiftInDerNaehe()'); i++) await warte(50);
+    }
+
     async function fingerTippt(x, y) {
+      await bisStiftWeg();
       await dbg.sendCommand('Input.dispatchTouchEvent', {
         type: 'touchStart', touchPoints: [{ x: Math.round(x), y: Math.round(y), id: 1, force: 1 }] });
       await warte(60);
@@ -146,6 +155,7 @@ app.on('ready', async () => {
     }
 
     async function fingerZieht(punkte, pause = 40) {
+      await bisStiftWeg();
       await dbg.sendCommand('Input.dispatchTouchEvent', {
         type: 'touchStart', touchPoints: [{ x: Math.round(punkte[0].x), y: Math.round(punkte[0].y), id: 1, force: 1 }] });
       for (let i = 1; i < punkte.length; i++) {
@@ -605,6 +615,7 @@ app.on('ready', async () => {
          das Raster gerade versteht. Beides getrennt zu prüfen sagt im
          Fehlerfall, woran es lag – am Verfolgen oder am Einsetzen. */
       const mitte = { x: Math.round((a1.x + a34.x) / 2), y: Math.round((a1.y + a34.y) / 2) };
+      await bisStiftWeg();
       await dbg.sendCommand('Input.dispatchTouchEvent', {
         type: 'touchStart', touchPoints: [{ x: a1.x, y: a1.y, id: 1, force: 1 }] });
       for (const p of [mitte, a34]) {
@@ -960,6 +971,86 @@ app.on('ready', async () => {
         danach.oben !== null && Math.abs(danach.oben - soll) <= 14,
         'es ist beim Seitenwechsel weggesprungen');
     }
+
+    /* ══════════════════════════════════════════════════════════════════
+       DIE HAND KOMMT VOR DEM STIFT
+
+       Gemeldet: „sobald die Hand angeht, springt die ganze Seite an einen
+       anderen Punkt – der Stift wird ja nicht sofort erkannt, erst die
+       Hand." Ein Handballen meldet sich als zwei dicht beieinander
+       liegende Beruehrungen, und das war fuer app.js ein Zoomen.
+       ══════════════════════════════════════════════════════════════════ */
+    abschnitt('Die Hand vor dem Stift');
+    await js(`(() => { deselectStroke(); S.touchDraw = true; switchMode('pen1');
+      S.strokeHistory[S.activePgId] = []; setZoom(1); return true; })()`);
+    await warte(400);
+    await bisStiftWeg();
+    const ansicht = () => js(`(() => ({ zoom: Math.round(getZoom() * 1000) / 1000,
+      oben: Math.round(document.getElementById('pg-scroll').scrollTop),
+      striche: (S.strokeHistory[S.activePgId] || []).length }))()`);
+    await js(`document.getElementById('pg-scroll').scrollTop = 150; true`);
+    await warte(100);
+    const vorHand = await ansicht();
+    const handPunkt = await stelle(400);
+    const ballen = (dx, dy) => ([
+      { x: handPunkt.x + dx, y: handPunkt.y + dy, id: 1, force: 1 },
+      { x: handPunkt.x + 28 - dx, y: handPunkt.y + 6, id: 2, force: 1 }
+    ]);
+    const handZiehe = async (touchPoints) => {
+      await dbg.sendCommand('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints });
+      await warte(40);
+    };
+
+    await dbg.sendCommand('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: ballen(0, 0) });
+    await warte(40);
+    for (const d of [3, -2, 5, 1]) await handZiehe(ballen(d, d));
+    const gewackelt = await ansicht();
+    pruefe('Ein aufliegender Handballen zoomt nicht (' + JSON.stringify(gewackelt) + ')',
+      gewackelt.zoom === vorHand.zoom && Math.abs(gewackelt.oben - vorHand.oben) < 2,
+      'vorher ' + JSON.stringify(vorHand));
+    pruefe('Und malt keinen Punkt', gewackelt.striche === 0, gewackelt.striche + ' Striche');
+
+    // Die Hand rollt ab – weit genug, dass es wie ein Zoomen aussieht
+    for (let i = 1; i <= 6; i++) await handZiehe(ballen(-i * 12, 0));
+    await warte(80);
+    const gerollt = await ansicht();
+
+    // Jetzt meldet sich der Stift, knapp ueber dem Bildschirm
+    await dbg.sendCommand('Input.dispatchMouseEvent', {
+      type: 'mouseMoved', button: 'none', buttons: 0, pointerType: 'pen',
+      x: handPunkt.x - 150, y: handPunkt.y - 60 });
+    await warte(120);
+    const zurueck = await ansicht();
+    pruefe('Meldet sich der Stift, steht die Seite wieder wie vor der Hand ('
+      + gerollt.zoom + ' → ' + zurueck.zoom + ')',
+      zurueck.zoom === vorHand.zoom && Math.abs(zurueck.oben - vorHand.oben) < 3,
+      'vorher ' + JSON.stringify(vorHand) + ', danach ' + JSON.stringify(zurueck));
+
+    for (let i = 7; i <= 10; i++) await handZiehe(ballen(-i * 12, 0));
+    await warte(80);
+    const weiter = await ansicht();
+    pruefe('Und die Hand bewegt danach nichts mehr',
+      weiter.zoom === zurueck.zoom && Math.abs(weiter.oben - zurueck.oben) < 2,
+      JSON.stringify(weiter));
+    await dbg.sendCommand('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+    await warte(100);
+
+    // Schwebt der Stift schon, malt eine aufgesetzte Hand gar nicht erst
+    await dbg.sendCommand('Input.dispatchMouseEvent', {
+      type: 'mouseMoved', button: 'none', buttons: 0, pointerType: 'pen',
+      x: handPunkt.x - 150, y: handPunkt.y - 40 });
+    await warte(30);
+    await dbg.sendCommand('Input.dispatchTouchEvent', {
+      type: 'touchStart', touchPoints: [{ x: handPunkt.x, y: handPunkt.y, id: 1, force: 1 }] });
+    for (let i = 1; i <= 4; i++) {
+      await handZiehe([{ x: handPunkt.x + i * 15, y: handPunkt.y + i * 6, id: 1, force: 1 }]);
+    }
+    await dbg.sendCommand('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+    await warte(150);
+    const schwebend = await ansicht();
+    pruefe('Schwebt der Stift, malt die Hand nicht (' + schwebend.striche + ' Striche)',
+      schwebend.striche === 0 && Math.abs(schwebend.oben - vorHand.oben) < 3,
+      JSON.stringify(schwebend));
 
     fertig(0);
   } catch (err) {

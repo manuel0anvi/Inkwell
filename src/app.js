@@ -1726,8 +1726,81 @@ E('btn-zoom-reset')?.addEventListener('click', zoomReset);
     if (typeof beendeZoomGeste === 'function') beendeZoomGeste();
   }
 
+  /* ══════════════════════════════════════════════════════════════════
+     DIE HAND, DIE VOR DEM STIFT DA WAR
+
+     Schwebt der Stift schon, wird aus der Beruehrung gar nicht erst eine
+     Geste (core/state.js, stiftInDerNaehe). Setzt die Hand aber auf,
+     BEVOR sich der Stift meldet, ist sie fuer einen Augenblick nicht von
+     zwei Fingern zu unterscheiden. Dafuer zwei Dinge:
+
+       · eine TOTZONE: zwei Beruehrungen zoomen erst, wenn sie wirklich
+         ziehen. Ein aufgelegter Handballen wackelt nur – und weil seine
+         beiden Auflagen dicht beieinander liegen, machte schon dieses
+         Wackeln aus dem Abstand ein Vielfaches, also einen Zoomsprung.
+       · das ZURUECKNEHMEN: meldet sich der Stift, solange die Hand noch
+         liegt, kommt die Ansicht dorthin zurueck, wo sie beim Aufsetzen
+         war, und der Rest dieser Beruehrung zaehlt nicht mehr.
+     ══════════════════════════════════════════════════════════════════ */
+  const PINCH_TOTZONE = 14;         // Pixel, bis zwei Beruehrungen ziehen
+  const HAND_VOR_STIFT_MS = 1500;   // so spaet darf der Stift nachkommen
+  let _pinchGezogen = false;
+  let _hand = null;                 // { anfang, ansicht, verworfen }
+
+  function ansichtMerken() {
+    return {
+      zoom: _zoom, einpassen: _verticalAutoFit,
+      oben: sc.scrollTop, links: sc.scrollLeft, pan: getPanOffset()
+    };
+  }
+
+  function ansichtZurueck(a) {
+    const zoomLief = typeof zoomGesteLaeuft === 'function' && zoomGesteLaeuft();
+    _zoom = a.zoom;
+    _verticalAutoFit = a.einpassen;
+    _pinchDist = 0;
+    _panActive = false;
+    // Lief ein Zoom, zieht pinchBeenden ihn einmal nach – sonst hier
+    pinchBeenden();
+    if (!zoomLief) _applyZoom();
+    if (a.zoom > panThreshold()) setPan(a.pan.x, a.pan.y); else resetPan();
+    sc.scrollTop = a.oben;
+    sc.scrollLeft = a.links;
+    pruefeLetzteLeer();
+  }
+
+  /** Meldet der Stift die Beruehrung selbst? Chromium schickt ihn auch so. */
+  function stiftBeruehrung(e) {
+    return Array.from(e.changedTouches || []).some(t => t.touchType === 'stylus');
+  }
+
+  function stiftMeldetSich(e) {
+    if (e.pointerType !== 'pen') return;
+    /* Ein Strich, den die Hand angefangen hat, war keiner. Ohne das bliebe
+       dort, wo sie aufsetzte, ein Punkt stehen. */
+    if (S.isDrawing && S._drawPointerTyp === 'touch' && typeof cancelActiveStroke === 'function') {
+      cancelActiveStroke();
+    }
+    const h = _hand;
+    if (!h || h.verworfen) return;
+    h.verworfen = true;
+    // Lag sie schon lange, hat wirklich jemand gezoomt – das bleibt
+    if (performance.now() - h.anfang > HAND_VOR_STIFT_MS) return;
+    ansichtZurueck(h.ansicht);
+  }
+  document.addEventListener('pointermove', stiftMeldetSich, { capture: true, passive: true });
+  document.addEventListener('pointerdown', stiftMeldetSich, { capture: true, passive: true });
+
   sc.addEventListener('touchstart', e => {
     if (penIsActive()) { e.preventDefault(); return; }
+
+    // Alles, was jetzt liegt, ist neu: hier faengt eine Beruehrung an
+    if (e.touches.length === e.changedTouches.length && !stiftBeruehrung(e)) {
+      _hand = { anfang: performance.now(), ansicht: ansichtMerken(), verworfen: false };
+    }
+    // Der Stift schwebt schon – dann ist das die Hand (siehe oben)
+    if (_hand && !_hand.verworfen && stiftInDerNaehe() && !stiftBeruehrung(e)) _hand.verworfen = true;
+    if (_hand && _hand.verworfen) { e.preventDefault(); return; }
 
     /* Zeichnet der Finger, gehoert ihm der Strich – nicht das Scrollen.
        Zwei Finger bleiben aber das Zoomen, sonst kaeme man aus einer
@@ -1750,6 +1823,7 @@ E('btn-zoom-reset')?.addEventListener('click', zoomReset);
       if (S.isDrawing && typeof cancelActiveStroke === 'function') cancelActiveStroke();
       _pinchDist = Math.hypot(e.touches[1].clientX - e.touches[0].clientX, e.touches[1].clientY - e.touches[0].clientY);
       _pinchZoom = _zoom;
+      _pinchGezogen = false;
       const m = mitte(e); _pinchMidX = m.x; _pinchMidY = m.y;
       _panActive = false;
       // Ab jetzt nur noch skalieren, alles Übrige beim Loslassen
@@ -1768,6 +1842,7 @@ E('btn-zoom-reset')?.addEventListener('click', zoomReset);
 
   sc.addEventListener('touchmove', e => {
     if (penIsActive()) { e.preventDefault(); return; }
+    if (_hand && _hand.verworfen) { e.preventDefault(); return; }
 
     // Ein zeichnender Finger scrollt nicht mit
     if (typeof touchDrawActive === 'function' && touchDrawActive()
@@ -1781,13 +1856,19 @@ E('btn-zoom-reset')?.addEventListener('click', zoomReset);
          rechnen und den Umbruch mehrmals zu erzwingen. Gemerkt wird
          deshalb nur der letzte Stand, gerechnet wird einmal je Bild. */
       const m = mitte(e);
-      _pinchZuletzt = {
-        d: Math.hypot(e.touches[1].clientX - e.touches[0].clientX,
-                      e.touches[1].clientY - e.touches[0].clientY),
-        mx: m.x, my: m.y
-      };
-      planePinch();
+      const d = Math.hypot(e.touches[1].clientX - e.touches[0].clientX,
+                           e.touches[1].clientY - e.touches[0].clientY);
       e.preventDefault();
+      if (!_pinchGezogen) {
+        if (Math.abs(d - _pinchDist) < PINCH_TOTZONE
+            && Math.hypot(m.x - _pinchMidX, m.y - _pinchMidY) < PINCH_TOTZONE) return;
+        /* Ab hier gemessen, nicht vom Aufsetzen: sonst sprang die Seite
+           beim Verlassen der Totzone um genau deren Breite. */
+        _pinchGezogen = true;
+        _pinchDist = d; _pinchMidX = m.x; _pinchMidY = m.y;
+      }
+      _pinchZuletzt = { d, mx: m.x, my: m.y };
+      planePinch();
     } else if (e.touches.length === 1 && _panActive && _zoom > panThreshold()) {
       const dx = (e.touches[0].clientX - _panStartX) / _zoom;
       const dy = (e.touches[0].clientY - _panStartY) / _zoom;
@@ -1798,17 +1879,21 @@ E('btn-zoom-reset')?.addEventListener('click', zoomReset);
   }, { passive: false });
 
   sc.addEventListener('touchend', e => {
+    /* Die Hand hebt ab: aus ihrem Aufsetzen darf kein Klick werden, sonst
+       setzt er mitten ins Geschriebene die Schreibmarke. */
+    if (_hand && _hand.verworfen && e.cancelable) e.preventDefault();
     if (e.touches.length < 2) { _pinchDist = 0; pinchBeenden(); }
-    if (e.touches.length === 0) _panActive = false;
+    if (e.touches.length === 0) { _panActive = false; _hand = null; }
     pruefeLetzteLeer();
-  }, { passive: true });
+  }, { passive: false });
 
   /* Ein abgebrochener Zug – der Finger rutscht vom Rand, ein Anruf kommt
      herein – meldet kein touchend. Ohne das hier bliebe die Geste offen
      und die Zeichenflächen für immer in der groben Auflösung stehen. */
-  sc.addEventListener('touchcancel', () => {
+  sc.addEventListener('touchcancel', e => {
     _pinchDist = 0;
     _panActive = false;
+    if (e.touches.length === 0) _hand = null;
     pinchBeenden();
   }, { passive: true });
 

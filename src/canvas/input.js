@@ -832,6 +832,8 @@ function attachInput(canvas, textDiv, objLayer, page) {
       S._restoreMode = null;
     }
     S._drawPointerId = e.pointerId;
+    // Ein Strich der Hand wird verworfen, sobald der Stift kommt (app.js)
+    S._drawPointerTyp = e.pointerType;
     _strichAnfang = performance.now();
     /* Eine Auswahl aus einer vorigen Schlinge gilt nur, bis wieder
        gezeichnet wird – sonst bliebe ihr Rahmen als Fremdkörper stehen,
@@ -1122,6 +1124,14 @@ function attachInput(canvas, textDiv, objLayer, page) {
     }
 
     if (e.pointerType === 'touch') {
+      /* Schwebt der Stift, ist das die Hand, die beim Schreiben aufliegt:
+         sie malt nicht und tippt nichts an (core/state.js). */
+      if (stiftInDerNaehe()) return;
+      /* Ein zweiter Finger faengt keinen zweiten Strich an. Sonst blieb vom
+         Handballen, der mit zwei Auflagen zugleich aufsetzt, der erste
+         Strich als Punkt liegen: das Zoomen (app.js) nimmt nur den
+         laufenden zurueck, und das war schon der zweite. */
+      if (S.isDrawing) return;
       if (touchDrawActive()) { handleDrawStart(e); return; }
       /* Der Finger scrollt hier – abgefangen wird nichts. Gemerkt wird
          nur, wo er aufgesetzt hat: bleibt er liegen und lag dort ein
@@ -1139,6 +1149,8 @@ function attachInput(canvas, textDiv, objLayer, page) {
     const start = _tippStart;
     _tippStart = null;
     if (!start || e.pointerId !== start.id || S.readOnly) return;
+    // Die Hand hebt ab, waehrend der Stift schreibt – das war kein Tipp
+    if (stiftInDerNaehe()) return;
     if (Math.hypot(e.clientX - start.sx, e.clientY - start.sy) > TIPP_WEG) return;
     if (typeof window.strichBeiPunkt !== 'function') return;
 
@@ -1440,6 +1452,7 @@ function attachInput(canvas, textDiv, objLayer, page) {
     const anfang = tippAufFrei;
     tippAufFrei = null;
     if (!anfang || !anfang.frei) return;
+    if (e.pointerType === 'touch' && stiftInDerNaehe()) return;   // die Hand, siehe oben
     if (Math.abs(e.clientX - anfang.x) > TIPP_WEG
         || Math.abs(e.clientY - anfang.y) > TIPP_WEG) return;   // geschoben
     activateTextEditingAt(e.clientX, e.clientY, true);

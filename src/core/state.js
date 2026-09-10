@@ -49,6 +49,36 @@ document.addEventListener('pointercancel', e => {
 }, { capture: true, passive: true });
 
 /* ══════════════════════════════════════════════════════════════════════
+   DER HANDBALLEN KOMMT VOR DEM STIFT
+
+   >>> Gemeldet: „sobald die Hand angeht, springt die ganze Seite" <<<
+   penIsActive greift erst, wenn der Stift AUFLIEGT. Beim Schreiben setzt
+   aber die Hand zuerst auf – und ein Handballen meldet sich gern als
+   zwei Beruehrungen. Das ist fuer app.js ein Zoomen mit zwei Fingern,
+   und schon ein Wackeln der Hand zoomt dann die Seite woanders hin.
+
+   Ein Stift, der knapp ueber dem Bildschirm schwebt, meldet sich aber
+   schon: mit pointermove ohne Druck. Wer so nah ist, schreibt gleich –
+   eine Beruehrung in dieser Zeit ist die Hand, nicht der Finger. Das
+   gilt auch noch kurz danach: zwischen zwei Woertern hebt der Stift ab,
+   die Hand bleibt liegen oder setzt neu auf.
+
+   Gilt in jeder Stellung, nicht nur beim Zeichnen: der Stift greift aus
+   der Zeigerstellung heraus ohnehin zum Stift (canvas/input.js). */
+let _stiftGesehen = 0;
+const STIFT_NAEHE_MS = 1000;
+
+document.addEventListener('pointermove', e => {
+  if (e.pointerType === 'pen') _stiftGesehen = Date.now();
+}, { capture: true, passive: true });
+
+/** Ist ein Stift auf oder knapp ueber dem Bildschirm – oder war es gerade? */
+function stiftInDerNaehe() {
+  if (_penPointers.size > 0) return true;
+  return Date.now() - Math.max(_stiftGesehen, _penLiftTime) < STIFT_NAEHE_MS;
+}
+
+/* ══════════════════════════════════════════════════════════════════════
    WIRD DAS GERAET GERADE ANGEFASST ODER GEZEIGT?
 
    Gebraucht fuer alles, was sich sonst erst bei :hover einblendet – der
