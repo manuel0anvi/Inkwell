@@ -525,10 +525,15 @@
     const w = page.w || DEFAULT_PAGE_W;
     const h = page.h || DEFAULT_PAGE_H;
 
-    const ohneMuster = entry.bg === 'blank' || entry.bg === 'craft';
-    if (!page.bgImg && ohneMuster) return null;
+    /* Eine Seite aus einem PDF trägt ihr Bild nicht mehr selbst; es wird
+       vorher gerechnet und liegt an der Zeile (ui/export.js). Hier steht
+       deshalb der Grund der Seite und nicht page.bgImg. */
+    const grund = entry.bgBild || page.bgImg;
 
-    const feinheit = page.bgImg ? scale : 1;
+    const ohneMuster = entry.bg === 'blank' || entry.bg === 'craft';
+    if (!grund && ohneMuster) return null;
+
+    const feinheit = grund ? scale : 1;
 
     const canvas = document.createElement('canvas');
     canvas.width = Math.round(w * feinheit);
@@ -541,11 +546,11 @@
 
     let hasPhoto = false;
 
-    if (page.bgImg) {
+    if (grund) {
       // Eine eingefügte PDF- oder Bildseite deckt das Papier ab
       ctx.fillStyle = '#ffffff';
       ctx.fillRect(0, 0, w, h);
-      const img = await loadImage(page.bgImg);
+      const img = await loadImage(grund);
       if (img) {
         const box = containBox(img.naturalWidth, img.naturalHeight, w, h - HEADER_H);
         ctx.drawImage(img, box.x, HEADER_H + box.y, box.w, box.h);
@@ -1280,6 +1285,13 @@
     const prst = FORM_NACH_WORD[obj.shapeType] || 'rect';
     const fuellung = toHexColor(obj.fill);
     const strich = toHexColor(obj.stroke);
+
+    /* Die Durchsichtigkeit der Fuellung. Word rechnet sie in Tausendstel
+       Prozent, und ohne Angabe gilt dort deckend – also nur schreiben,
+       wenn im Heft wirklich etwas anderes steht. */
+    const deckung = (typeof obj.fillOpacity === 'number' && isFinite(obj.fillOpacity))
+      ? Math.max(0, Math.min(1, obj.fillOpacity)) : 1;
+    const fuellAlpha = deckung < 1 ? `<a:alpha val="${Math.round(deckung * 100000)}"/>` : '';
     const breite = Math.max(1, Math.round((obj.strokeWidth || 2) * EMU_PER_PX));
 
     /* Eine Linie zeigt in Word von links oben nach rechts unten; die
@@ -1304,7 +1316,9 @@
       + `<wps:cNvSpPr/>`
       + `<wps:spPr><a:xfrm${dreh}${spiegel}><a:off x="0" y="0"/><a:ext cx="${cx}" cy="${cy}"/></a:xfrm>`
       + `<a:prstGeom prst="${prst}"><a:avLst/></a:prstGeom>`
-      + (fuellung ? `<a:solidFill><a:srgbClr val="${fuellung}"/></a:solidFill>` : '<a:noFill/>')
+      + (fuellung
+        ? `<a:solidFill><a:srgbClr val="${fuellung}">${fuellAlpha}</a:srgbClr></a:solidFill>`
+        : '<a:noFill/>')
       + (strich
         ? `<a:ln w="${breite}"><a:solidFill><a:srgbClr val="${strich}"/></a:solidFill>${spitze}</a:ln>`
         : '<a:ln><a:noFill/></a:ln>')
