@@ -513,6 +513,8 @@ body.griff-reiter-da .pg-scroll {
    ════════════════════════════════════════════════════════════════════ */
 
 .griff-satz {
+  /* Der Auswahlrahmen liegt darin und rechnet in seinen Koordinaten */
+  position: relative;
   width: 100%;
   display: flex;
   flex-direction: column;
@@ -658,4 +660,48 @@ body.griff-reiter-da .pg-scroll {
 .griff-zieher:hover .griff-zieher-strich,
 .griff-view.zieht .griff-zieher-strich {
   background: var(--gold)
+}
+
+/* ══ AUSSCHNEIDEN ═════════════════════════════════════════════════════
+   Lange auf eine Seite drücken, dann ein Rechteck aufziehen – das Stück
+   landet als Objekt auf der Heftseite (ui/griffbereit.js).
+
+   >>> Warum der Schleier <<<
+   Ein Finger auf dem Blatt kann zweierlei heissen: die Seite schieben
+   oder etwas auswählen. Ohne sichtbaren Wechsel wüsste man bis zum
+   Loslassen nicht, welches von beidem gerade läuft. Die angefasste Seite
+   bleibt hell, alles andere tritt zurück.
+   ════════════════════════════════════════════════════════════════════ */
+
+.griff-view.schneidet .griff-seite,
+.griff-view.schneidet .griff-blatt {
+  opacity: .38;
+  transition: opacity .12s ease
+}
+
+.griff-view.schneidet .griff-schnitt-blatt {
+  opacity: 1;
+  /* Ein Schimmer an der Kante: das hier ist das Blatt, um das es geht */
+  outline: 2px solid var(--acc, #c8a96e);
+  outline-offset: 1px
+}
+
+/* Beim Auswählen soll nichts markiert oder aufgezogen werden – der
+   Finger und die Maus tun hier gerade etwas anderes. */
+.griff-view.schneidet .griff-view-body {
+  cursor: crosshair;
+  user-select: none;
+  -webkit-user-select: none
+}
+
+.griff-schnitt-rahmen {
+  position: absolute;
+  z-index: 3;
+  pointer-events: none;
+  border: 1.5px solid var(--acc, #c8a96e);
+  border-radius: 2px;
+  background: rgba(200, 169, 110, .16);
+  /* Aussen dunkler, damit das Gewählte heraussticht statt nur umrandet
+     zu sein – dieselbe Wirkung wie beim Zuschneiden am Telefon. */
+  box-shadow: 0 0 0 9999px rgba(0, 0, 0, .34)
 }

@@ -1027,7 +1027,7 @@
     const abstand = (t) => Math.hypot(t[1].clientX - t[0].clientX, t[1].clientY - t[0].clientY);
 
     k.addEventListener('touchstart', (e) => {
-      if (e.touches.length !== 2 || !_fertig) { aktiv = false; return; }
+      if (e.touches.length !== 2 || !_fertig || schneidetGerade()) { aktiv = false; return; }
       aktiv = true;
       start = abstand(e.touches) || 1;
       zoomStart = _zoom;
@@ -1181,7 +1181,11 @@
     };
 
     v.addEventListener('touchstart', (e) => {
+      /* Beim Ausschneiden zieht der Finger ein Rechteck auf. Nach rechts
+         ist das dieselbe Bewegung wie das Zumachen – und die Datei ging
+         weg, während man noch auswählte. */
       aktiv = e.touches.length === 1 && ansichtOffen() && !aufKnopf(e.target)
+        && !schneidetGerade()
         && !(kannQuer() && E('griff-view-body')?.contains(e.target));
       if (!aktiv) return;
       x0 = e.touches[0].clientX; y0 = e.touches[0].clientY;
@@ -1191,7 +1195,7 @@
       if (!aktiv) return;
       aktiv = false;
       const t = e.changedTouches && e.changedTouches[0];
-      if (!t || aufKnopf(e.target)) return;
+      if (!t || aufKnopf(e.target) || schneidetGerade()) return;
       const dx = t.clientX - x0, dy = t.clientY - y0;
       if (dx > WISCH_MIN && Math.abs(dx) > Math.abs(dy)) schliesse();
     }, { passive: true });
@@ -1333,6 +1337,396 @@
     _rollTimer = setTimeout(merkeStelle, 400);
   }, { passive: true });
 
+  /* ══════════════════════════════════════════════════════════════════
+     AUSSCHNEIDEN — EIN STÜCK DER UNTERLAGE INS HEFT
+
+     >>> Die Geste <<<
+     Lange auf eine Seite drücken (480 ms, wie im Chat). Dann legt sich
+     ein Schleier über die Unterlage und die Seite unter dem Finger hebt
+     sich ab. Von dort zwei Wege:
+
+       ziehen           ein Rechteck aufziehen; loslassen legt den
+                        Ausschnitt als Objekt auf die Heftseite
+       gleich loslassen die GANZE Seite – dann die Frage, ob als Objekt
+                        oder als neue Seite
+
+     Ein Ausschnitt wird nie eine eigene Seite: ein Stück Tafelbild ist
+     etwas, das man neben seine Notiz legt, kein Blatt.
+
+     >>> Warum der Schleier <<<
+     Ohne ihn wüsste niemand, ob das Ziehen jetzt die Seite verschiebt
+     oder auswählt – beides ist ein Finger auf demselben Blatt.
+
+     >>> Warum nicht aus der angezeigten Fläche geschnitten wird <<<
+     Die ist auf MAX_LEINWAND gedeckelt und in Spaltenbreite gezeichnet.
+     Ein Ausschnitt daraus wäre eine Briefmarke, sobald man ihn im Heft
+     grösser zieht. Stattdessen zeichnet pdf.js das Stück NEU, in der
+     Auflösung, die es im Heft braucht (schneideAusPdf).
+     ══════════════════════════════════════════════════════════════════ */
+
+  // Dieselben Werte wie beim langen Drücken im Chat (ui/chat.js)
+  const HALTEN_MS = 480;
+  const HALTEN_ZITTERN = 10;
+  // Darunter war es kein Rechteck, sondern ein Tippen mit zittriger Hand
+  const SCHNITT_MIN = 16;
+  /* Wie breit das gerechnete Bild wird. Dreifach, damit es im Heft auch
+     vergrössert und im Ausdruck scharf bleibt – gedeckelt, weil ein
+     Ausschnitt sonst grösser würde als die Seite, aus der er stammt. */
+  const SCHNITT_FEINHEIT = 3;
+  const SCHNITT_MAX_PUNKTE = 2400;
+
+  let _schnitt = null;   // { blatt, satz, zeiger, x0, y0, x1, y1, rahmen, zieht }
+
+  const schneidetGerade = () => !!_schnitt;
+
+  /** Die Ecken in Koordinaten des Blattes, immer von links oben. */
+  function schnittRechteck() {
+    if (!_schnitt) return null;
+    const x = Math.min(_schnitt.x0, _schnitt.x1), y = Math.min(_schnitt.y0, _schnitt.y1);
+    return {
+      x, y,
+      w: Math.abs(_schnitt.x1 - _schnitt.x0),
+      h: Math.abs(_schnitt.y1 - _schnitt.y0)
+    };
+  }
+
+  function schnittZeichnen() {
+    const r = schnittRechteck();
+    if (!_schnitt || !r) return;
+    const blattRand = _schnitt.blatt.getBoundingClientRect();
+    const satzRand = _schnitt.satz.getBoundingClientRect();
+    const rahmen = _schnitt.rahmen;
+    rahmen.style.left = (blattRand.left - satzRand.left + r.x) + 'px';
+    rahmen.style.top = (blattRand.top - satzRand.top + r.y) + 'px';
+    rahmen.style.width = r.w + 'px';
+    rahmen.style.height = r.h + 'px';
+    rahmen.hidden = !_schnitt.zieht;
+  }
+
+  function schnittBeginnen(blatt, x, y, zeiger) {
+    const satz = blatt.closest('.griff-satz');
+    const v = ansicht();
+    if (!satz || !v) return;
+
+    const rand = blatt.getBoundingClientRect();
+    const rahmen = document.createElement('div');
+    rahmen.className = 'griff-schnitt-rahmen';
+    rahmen.hidden = true;
+    satz.appendChild(rahmen);
+
+    _schnitt = {
+      blatt, satz, zeiger, rahmen, zieht: false,
+      x0: x - rand.left, y0: y - rand.top,
+      x1: x - rand.left, y1: y - rand.top
+    };
+    v.classList.add('schneidet');
+    blatt.classList.add('griff-schnitt-blatt');
+    /* Ein kurzer Ruck sagt auf dem Tablett, dass das Halten erkannt
+       wurde. Nur nach einer echten Berührung: ohne die lehnt Chromium
+       es ab und schreibt eine Warnung in die Konsole. */
+    if (navigator.vibrate && navigator.userActivation?.hasBeenActive) {
+      try { navigator.vibrate(12); } catch (err) { /* egal */ }
+    }
+  }
+
+  function schnittAbbrechen() {
+    if (!_schnitt) return;
+    _schnitt.rahmen.remove();
+    _schnitt.blatt.classList.remove('griff-schnitt-blatt');
+    ansicht()?.classList.remove('schneidet');
+    _schnitt = null;
+  }
+
+  (function haengeSchneidenAn() {
+    const k = kasten();
+    if (!k) return;
+    let uhr = null, start = null;
+
+    const uhrAus = () => { if (uhr) { clearTimeout(uhr); uhr = null; } start = null; };
+
+    k.addEventListener('pointerdown', (e) => {
+      if (!ansichtOffen() || !_fertig || _schnitt) return;
+      if (e.pointerType === 'mouse' && e.button !== 0) return;
+      const blatt = e.target.closest('.griff-seite, .griff-blatt');
+      if (!blatt) return;
+      uhrAus();
+      start = { x: e.clientX, y: e.clientY, id: e.pointerId, blatt };
+      uhr = setTimeout(() => {
+        uhr = null;
+        if (!start) return;
+        schnittBeginnen(start.blatt, start.x, start.y, start.id);
+        try { k.setPointerCapture(start.id); } catch (err) { /* egal */ }
+        start = null;
+      }, HALTEN_MS);
+    });
+
+    k.addEventListener('pointermove', (e) => {
+      /* Vor dem Auslösen zählt jede Bewegung als Schieben – dann war es
+         kein Halten, und die Seite soll ganz normal rollen. */
+      if (start && e.pointerId === start.id
+        && Math.hypot(e.clientX - start.x, e.clientY - start.y) > HALTEN_ZITTERN) uhrAus();
+
+      if (!_schnitt || e.pointerId !== _schnitt.zeiger) return;
+      const rand = _schnitt.blatt.getBoundingClientRect();
+      _schnitt.x1 = Math.min(rand.width, Math.max(0, e.clientX - rand.left));
+      _schnitt.y1 = Math.min(rand.height, Math.max(0, e.clientY - rand.top));
+      const r = schnittRechteck();
+      if (r.w > HALTEN_ZITTERN || r.h > HALTEN_ZITTERN) _schnitt.zieht = true;
+      schnittZeichnen();
+    });
+
+    /* Der Finger würde die Seite sonst mitnehmen: welche Richtung ein
+       Zug bedeutet, entscheidet der Browser beim Aufsetzen, und da war
+       vom Halten noch nichts zu ahnen. Ein spätes touch-action käme zu
+       spät, ein preventDefault hier nicht. */
+    k.addEventListener('touchmove', (e) => {
+      if (_schnitt) e.preventDefault();
+    }, { passive: false });
+
+    const fertig = async (e) => {
+      if (start && e.pointerId === start.id) uhrAus();
+      if (!_schnitt || e.pointerId !== _schnitt.zeiger) return;
+      const blatt = _schnitt.blatt;
+      const r = schnittRechteck();
+      const gezogen = _schnitt.zieht && r.w >= SCHNITT_MIN && r.h >= SCHNITT_MIN;
+      schnittAbbrechen();
+      try { k.releasePointerCapture(e.pointerId); } catch (err) { /* egal */ }
+      /* Nichts darf hier still danebengehen: wer eine halbe Minute
+         lang ein Rechteck aufzieht und dann gar nichts sieht, sucht den
+         Fehler bei sich. */
+      try {
+        await schnittEinfuegen(blatt, gezogen ? r : null, !gezogen);
+      } catch (err) {
+        console.warn('[Griffbereit] Einfuegen:', (err && err.message) || err);
+        toast(txt('griffSchnittFehler', 'Der Ausschnitt liess sich nicht rechnen'), true);
+      }
+    };
+
+    k.addEventListener('pointerup', fertig);
+    k.addEventListener('pointercancel', () => { uhrAus(); schnittAbbrechen(); });
+
+    /* Zwei Finger heissen kneifen. Wer beim Halten den zweiten aufsetzt,
+       wollte zoomen – dann tritt das Ausschneiden zurück. */
+    k.addEventListener('touchstart', (e) => {
+      if (e.touches.length > 1) { uhrAus(); schnittAbbrechen(); }
+    }, { passive: true });
+  })();
+
+  /* ── Das Stück rechnen ──────────────────────────────────────────────
+     Aus einem PDF wird NEU gezeichnet, aus einem Bild geschnitten.
+
+     >>> Der Kniff mit transform <<<
+     pdf.js zeichnet immer die ganze Seite. Wer nur ein Stück will,
+     schiebt die Seite auf der Leinwand so weit nach links oben, dass
+     genau dieses Stück darauf zu liegen kommt, und macht die Leinwand
+     nur so gross wie das Stück. Das ist etwas anderes als hinterher
+     zuzuschneiden: gezeichnet wird in voller Feinheit, nicht
+     heruntergerechnet und wieder aufgezogen. */
+  async function schneideAusPdf(blatt, r) {
+    const satz = blatt.closest('.griff-satz');
+    const pdf = satz && satz._pdf;
+    if (!pdf) throw new Error('kein PDF');
+
+    const seite = await pdf.getPage(Number(blatt.dataset.nr));
+    const roh = seite.getViewport({ scale: 1 });
+
+    // Vom Blatt auf dem Schirm in die Masse des Dokuments
+    const jePunkt = roh.width / (blatt.clientWidth || 1);
+    const xPt = r ? r.x * jePunkt : 0;
+    const yPt = r ? r.y * jePunkt : 0;
+    const bPt = r ? r.w * jePunkt : roh.width;
+    const hPt = r ? r.h * jePunkt : roh.height;
+
+    /* Die Feinheit richtet sich danach, wie breit das Stück im Heft
+       liegen wird – nicht danach, wie gross es hier auf dem Schirm ist. */
+    const zielBreite = Math.min(SCHNITT_MAX_PUNKTE,
+      Math.round((r ? r.w : blatt.clientWidth) * SCHNITT_FEINHEIT * (window.devicePixelRatio || 1)));
+    const skala = zielBreite / bPt;
+
+    const lein = document.createElement('canvas');
+    lein.width = Math.max(1, Math.round(bPt * skala));
+    lein.height = Math.max(1, Math.round(hPt * skala));
+    const ctx = lein.getContext('2d');
+    // Weisser Grund: ein PDF zeichnet nur, was daraufsteht
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(0, 0, lein.width, lein.height);
+
+    await seite.render({
+      canvasContext: ctx,
+      viewport: seite.getViewport({ scale: skala }),
+      transform: [1, 0, 0, 1, -xPt * skala, -yPt * skala]
+    }).promise;
+    return lein;
+  }
+
+  /** Aus einem Bild als Unterlage – da gibt es nichts neu zu zeichnen. */
+  function schneideAusBild(blatt, r) {
+    const bx = blatt.naturalWidth / (blatt.clientWidth || 1);
+    const x = r ? r.x * bx : 0, y = r ? r.y * bx : 0;
+    const b = r ? r.w * bx : blatt.naturalWidth;
+    const h = r ? r.h * bx : blatt.naturalHeight;
+
+    const lein = document.createElement('canvas');
+    lein.width = Math.max(1, Math.round(b));
+    lein.height = Math.max(1, Math.round(h));
+    lein.getContext('2d').drawImage(blatt, x, y, b, h, 0, 0, lein.width, lein.height);
+    return lein;
+  }
+
+  /**
+   * Aus der Leinwand eine Bildadresse.
+   *
+   * >>> Warum nicht einfach PNG <<<
+   * Ein abfotografiertes Blatt wird als PNG schnell zwei Megabyte, und
+   * die liegen danach im Heft und gehen bei jedem Abgleich mit. Als JPEG
+   * ist dasselbe ein Zehntel davon und für ein Foto nicht zu
+   * unterscheiden. Umgekehrt zerfranst JPEG feine Striche und Schrift.
+   *
+   * Statt zu raten, welche Sorte vorliegt: PNG rechnen und nur dann auf
+   * JPEG ausweichen, wenn es wirklich gross wird. Strichzeichnungen
+   * bleiben dabei von selbst PNG – sie werden gar nicht erst gross.
+   */
+  const SCHNITT_PNG_GRENZE = 600 * 1024;
+
+  function schnittAdresse(lein) {
+    const png = lein.toDataURL('image/png');
+    if (png.length <= SCHNITT_PNG_GRENZE) return png;
+    return lein.toDataURL('image/jpeg', 0.85);
+  }
+
+  /* ── Und ins Heft damit ──────────────────────────────────────────────
+     Derselbe Weg wie beim Einfügen eines Bildes über die Titelleiste
+     (ui/titlebar.js): ein Objekt in page.objects, dann placeObject.
+
+     Ein Ausschnitt wird IMMER ein Objekt. Nur bei der ganzen Seite gibt
+     es die Frage, ob sie als Objekt daneben oder als eigenes Blatt ins
+     Heft soll. */
+  /**
+   * Die Heftseite, auf die der Ausschnitt soll.
+   *
+   * Drei Anläufe, vom Genauen zum Verlässlichen:
+   *
+   *   1. die zuletzt angesehene Seite
+   *   2. die oberste, die gerade im Blick steht
+   *   3. die erste Seite des offenen Hefts
+   *
+   * >>> Warum nicht der erste allein <<<
+   * S.activePgId steht erst, wenn im Heft einmal gerollt oder getippt
+   * wurde (setActivePg, ui/sidebar.js). Wer die App aufmacht und als
+   * Erstes etwas aus der Unterlage holt, bekäme sonst „keine Seite
+   * offen", obwohl eine vor ihm liegt.
+   *
+   * >>> Warum auch der zweite nicht genügt <<<
+   * Was im Baum steht, muss es im Heft nicht mehr geben – nach einem
+   * Wiederherstellen oder einem Abgleich zeigt der Baum für einen
+   * Augenblick Seiten, die der Zustand nicht mehr kennt. Dann käme aus
+   * getPage nichts zurück, und der Ausschnitt wäre verloren, obwohl das
+   * Heft offen daliegt.
+   *
+   * >>> NICHT window.S <<<
+   * Der Zustand steht als const auf oberster Ebene (core/state.js) und
+   * landet damit gar nicht am Fenster. Hier stand einmal window.S, und
+   * das Einfügen brach jedes Mal still ab.
+   */
+  function heftSeite() {
+    if (typeof getPage !== 'function' || typeof S === 'undefined') return null;
+
+    const direkt = getPage(S.activePgId);
+    if (direkt && direkt.page) return direkt;
+
+    const roll = E('pg-scroll');
+    if (roll) {
+      const oben = roll.getBoundingClientRect().top;
+      const naheZuerst = [...roll.querySelectorAll('.j-page')].sort((a, b) =>
+        Math.abs(a.getBoundingClientRect().top - oben)
+        - Math.abs(b.getBoundingClientRect().top - oben));
+      for (const el of naheZuerst) {
+        const treffer = getPage(el.dataset.pgid);
+        if (treffer && treffer.page) return treffer;
+      }
+    }
+
+    const nb = (S.notebooks || []).find(n => n.id === S.activeNbId);
+    if (!nb) return null;
+    const seiten = (typeof visiblePages === 'function' ? visiblePages(nb) : nb.pages) || [];
+    return seiten.length ? { nb, page: seiten[0] } : null;
+  }
+
+  async function schnittEinfuegen(blatt, r, ganzeSeite) {
+    const info = heftSeite();
+    if (!info || !info.page) { toast(txt('griffSchnittKeineSeite', 'Keine Heftseite offen'), true); return; }
+
+    /* Ein Ausschnitt wird immer ein Objekt – ein Stück Tafelbild ist
+       etwas, das man neben seine Notiz legt, kein Blatt. Gefragt wird nur
+       bei der ganzen Seite. */
+    let art = 'img';
+    if (ganzeSeite && typeof showInsertChoice === 'function') {
+      art = await showInsertChoice();
+      if (!art) return;          // weggeklickt
+    }
+
+    let lein;
+    try {
+      lein = blatt.tagName === 'IMG' ? schneideAusBild(blatt, r) : await schneideAusPdf(blatt, r);
+    } catch (err) {
+      console.warn('[Griffbereit] Ausschnitt:', err && err.message);
+      toast(txt('griffSchnittFehler', 'Der Ausschnitt liess sich nicht rechnen'), true);
+      return;
+    }
+    const adresse = schnittAdresse(lein);
+    const name = (datei(_offen) || {}).name || '';
+
+    if (art === 'page') {
+      /* getPage kennt nur Heft und Seite. Welcher Ausschnitt gerade
+         gezeigt wird, steht am Heft (activeSection) – null heisst
+         ‚alle Seiten‘ und ist der Normalfall. */
+      const abschnitt = (typeof activeSection === 'function') ? activeSection(info.nb) : null;
+      const pg = makeImagePage(adresse, lein.width, lein.height);
+      insertPageInto(info.nb, abschnitt, pg, pageNumberOf(info.nb, info.page.id));
+      if (typeof renderSideTree === 'function') renderSideTree();
+      if (typeof openSection === 'function') openSection(abschnitt, pg.id);
+      if (window.markCurrentNotebookDirty) window.markCurrentNotebookDirty();
+      toast(txt('griffSchnittSeite', 'Als Seite eingefügt'));
+      return;
+    }
+
+    /* Objekte liegen in Seitenkoordinaten. Ein Ausschnitt kommt auf gut
+       die halbe Blattbreite – gross genug zum Lesen, klein genug, dass
+       daneben noch etwas hinpasst –, und wenn er dann zu hoch wäre,
+       bestimmt die Höhe das Mass. */
+    const seitenBreite = info.page.w || CFG.PAGE_W;
+    const seitenHoehe = info.page.h || CFG.PAGE_H;
+    let ow = Math.round(seitenBreite * 0.55);
+    let oh = Math.round(ow * (lein.height / (lein.width || 1)));
+    if (oh > seitenHoehe * 0.7) {
+      oh = Math.round(seitenHoehe * 0.7);
+      ow = Math.round(oh * (lein.width / (lein.height || 1)));
+    }
+
+    /* Mittig – aber jedes weitere ein Stück versetzt, sonst läge das
+       zweite genau auf dem ersten und sähe aus, als wäre nichts
+       geschehen. */
+    const wieviele = (info.page.objects || []).length;
+    const versatz = (wieviele % 5) * 18;
+
+    const obj = {
+      id: uid(), kind: 'image', src: adresse, name,
+      x: Math.max(8, Math.round((seitenBreite - ow) / 2) + versatz),
+      y: Math.max(8, Math.round((seitenHoehe - oh) / 2) + versatz),
+      w: ow, h: oh, rot: 0
+    };
+    if (typeof pushPageHistory === 'function') pushPageHistory(info.page);
+    if (!info.page.objects) info.page.objects = [];
+    info.page.objects.push(obj);
+
+    const ebene = E('pg-scroll')?.querySelector('[data-pgid="' + CSS.escape(String(info.page.id)) + '"]')
+      ?.querySelector('.j-objects');
+    if (ebene && typeof placeObject === 'function') placeObject(ebene, obj, info.page);
+    if (window.markCurrentNotebookDirty) window.markCurrentNotebookDirty();
+    toast(ganzeSeite ? txt('griffSchnittSeiteObjekt', 'Seite eingefügt')
+      : txt('griffSchnittFertig', 'Ausschnitt eingefügt'));
+  }
+
   /* Escape macht zu – aber nur, wenn nicht ohnehin ein Fenster darüber
      steht. Sonst hätte ein Abbrechen im Namensfeld zwei Wirkungen. */
   const fensterOffen = () => [...document.querySelectorAll('.overlay')]
@@ -1340,6 +1734,7 @@
 
   document.addEventListener('keydown', (e) => {
     if (e.key !== 'Escape' || fensterOffen()) return;
+    if (schneidetGerade()) { schnittAbbrechen(); return; }
     if (leisteOffen()) { setzeLeiste(false); return; }
     if (ansichtOffen()) schliesse();
   });

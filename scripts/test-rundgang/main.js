@@ -1569,6 +1569,107 @@ app.on('ready', async () => {
       await new Promise(r => setTimeout(r, 700));
       if (gezeigt() !== ersteB) throw new Error('die zweite wurde neu gebaut');`, 340);
 
+    /* >>> Ausschneiden <<<
+       Lange auf ein Blatt druecken, dann ein Rechteck aufziehen – das
+       Stueck landet als Objekt auf der Heftseite. Die Attrappe liefert
+       ein Bild als Unterlage, also laeuft hier der Weg ueber
+       schneideAusBild; das Rechnen aus einem PDF ist derselbe Ablauf mit
+       einer anderen Quelle.
+
+       Geprueft wird die ganze Kette: Schleier an, Rahmen da, Objekt im
+       Heft, Schleier wieder weg. */
+    await schritt('Lange druecken und ziehen schneidet ein Stueck aus', `
+      const v = E('griff-view');
+      if (!v.classList.contains('open')) {
+        const b = E('griff-reiter').querySelector('.griff-reiter-btn');
+        const z = (art, x) => b.dispatchEvent(new PointerEvent(art,
+          { pointerId: 31, clientX: x, clientY: 400, bubbles: true }));
+        z('pointerdown', 1400); z('pointerup', 1340);
+        await new Promise(r => setTimeout(r, 700));
+      }
+      const blatt = document.querySelector('.griff-satz:not([hidden]) .griff-blatt, '
+        + '.griff-satz:not([hidden]) .griff-seite');
+      if (!blatt) throw new Error('kein Blatt in der Unterlage');
+
+      /* Auf WELCHER Heftseite das Stueck landet, entscheidet die App
+         (heftSeite): die zuletzt angesehene, sonst die oberste im Blick.
+         Gezaehlt wird deshalb ueber alle Seiten des Hefts – sonst
+         suchte die Pruefung auf der falschen. */
+      const heft = () => S.notebooks.find(n => n.id === S.activeNbId) || { pages: [] };
+      const alleObjekte = () => heft().pages
+        .reduce((n, pg) => n + (pg.objects || []).length, 0);
+      const kennungen = new Set();
+      for (const pg of heft().pages) for (const o of (pg.objects || [])) kennungen.add(o.id);
+      const vorher = alleObjekte();
+
+      const r = blatt.getBoundingClientRect();
+      const zeig = (art, x, y) => blatt.dispatchEvent(new PointerEvent(art,
+        { pointerId: 33, pointerType: 'touch', clientX: x, clientY: y, bubbles: true }));
+
+      // Halten – erst danach ist es ein Ausschneiden
+      const x0 = Math.round(r.left + r.width * 0.15), y0 = Math.round(r.top + r.height * 0.15);
+      zeig('pointerdown', x0, y0);
+      await new Promise(res => setTimeout(res, 200));
+      if (v.classList.contains('schneidet'))
+        throw new Error('der Schleier kam zu frueh – ein Tippen ist kein Halten');
+      await new Promise(res => setTimeout(res, 500));
+      if (!v.classList.contains('schneidet')) throw new Error('kein Schleier nach dem Halten');
+      if (!blatt.classList.contains('griff-schnitt-blatt'))
+        throw new Error('das angefasste Blatt hebt sich nicht ab');
+
+      // Ziehen
+      const x1 = Math.round(r.left + r.width * 0.85), y1 = Math.round(r.top + r.height * 0.75);
+      zeig('pointermove', Math.round((x0 + x1) / 2), Math.round((y0 + y1) / 2));
+      zeig('pointermove', x1, y1);
+      const rahmen = document.querySelector('.griff-schnitt-rahmen');
+      if (!rahmen || rahmen.hidden) throw new Error('kein Rahmen beim Ziehen');
+      if (rahmen.getBoundingClientRect().width < 20)
+        throw new Error('der Rahmen waechst nicht mit');
+
+      zeig('pointerup', x1, y1);
+      for (let i = 0; i < 100; i++) {
+        await new Promise(res => setTimeout(res, 50));
+        if (alleObjekte() > vorher) break;
+      }
+
+      if (alleObjekte() !== vorher + 1)
+        throw new Error('nichts im Heft angekommen (' + vorher + ' -> ' + alleObjekte()
+          + '), Meldung: ' + [...document.querySelectorAll('.toast')].map(t => t.textContent).join(' / '));
+      let o = null;
+      for (const pg of heft().pages) {
+        for (const kandidat of (pg.objects || [])) if (!kennungen.has(kandidat.id)) o = kandidat;
+      }
+      if (!o) throw new Error('das neue Objekt ist nicht zu finden');
+      if (o.kind !== 'image') throw new Error('es ist kein Bild geworden');
+      if (String(o.src).slice(0, 11) !== 'data:image/') throw new Error('das Objekt traegt kein Bild');
+      if (!(o.w > 0 && o.h > 0)) throw new Error('das Objekt hat kein Mass');
+      if (v.classList.contains('schneidet'))
+        throw new Error('der Schleier blieb nach dem Loslassen stehen');
+      if (document.querySelector('.griff-schnitt-rahmen'))
+        throw new Error('der Rahmen blieb stehen');`, 340);
+
+    /* Ein blosses Tippen darf nichts ausloesen – sonst waere jedes
+       Antippen der Seite ein Einfuegen. */
+    await schritt('Kurz tippen schneidet nichts aus', `
+      const blatt = document.querySelector('.griff-satz:not([hidden]) .griff-blatt, '
+        + '.griff-satz:not([hidden]) .griff-seite');
+      const heft = () => S.notebooks.find(n => n.id === S.activeNbId) || { pages: [] };
+      const alleObjekte = () => heft().pages
+        .reduce((n, pg) => n + (pg.objects || []).length, 0);
+      const vorher = alleObjekte();
+      const r = blatt.getBoundingClientRect();
+      const x = Math.round(r.left + r.width / 2), y = Math.round(r.top + r.height / 2);
+      const zeig = (art) => blatt.dispatchEvent(new PointerEvent(art,
+        { pointerId: 35, pointerType: 'touch', clientX: x, clientY: y, bubbles: true }));
+      zeig('pointerdown');
+      await new Promise(res => setTimeout(res, 120));
+      zeig('pointerup');
+      await new Promise(res => setTimeout(res, 400));
+      if (E('griff-view').classList.contains('schneidet'))
+        throw new Error('ein kurzes Tippen hat das Ausschneiden ausgeloest');
+      if (alleObjekte() !== vorher)
+        throw new Error('ein kurzes Tippen hat etwas eingefuegt');`, 300);
+
     /* >>> Zwei Spalten an einer Kante sind genug <<<
        Die offene Unterlage sitzt dort, wo auch die Kommentarleiste
        aufginge. Beide nebeneinander liessen vom Blatt einen Streifen –

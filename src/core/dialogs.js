@@ -181,13 +181,36 @@ function showPageTransferDialog(fromNb, targets, preselected = []) {
    automatische Speichern abschalten liess (core/autoSave.js); ohne den
    Schalter ist auf dem Weg zur Uebersicht ohnehin alles gesichert. */
 
+/**
+ * Fragt, ob etwas als Objekt oder als eigene Seite ins Heft soll.
+ *
+ * @returns {Promise<'img'|'page'|null>} null heisst abgebrochen
+ *
+ * >>> Der Weg hinaus <<<
+ * Die beiden Knöpfe waren lange die einzigen Ausgänge. Die Aufrufer
+ * prüfen zwar seit je auf ein leeres Ergebnis, nur kam nie eines. Wer
+ * die Frage versehentlich ausgelöst hatte – beim Ausschneiden reicht
+ * dafür ein Fingerdruck, der zu lange geriet –, musste sie beantworten.
+ * Escape und ein Tippen auf die Fläche daneben führen jetzt hinaus.
+ */
 function showInsertChoice() {
-  E('ov-insert-choice').style.display = 'flex';
+  const ov = E('ov-insert-choice');
+  ov.style.display = 'flex';
   return new Promise(res => {
-    const asImg = () => { E('ov-insert-choice').style.display = 'none'; res('img'); off(); };
-    const asPage = () => { E('ov-insert-choice').style.display = 'none'; res('page'); off(); };
-    function off() { E('insert-as-img').onclick = null; E('insert-as-page').onclick = null; }
-    E('insert-as-img').onclick = asImg; E('insert-as-page').onclick = asPage;
+    const fertig = (wert) => { ov.style.display = 'none'; off(); res(wert); };
+    const aufTaste = (e) => { if (e.key === 'Escape') fertig(null); };
+    // Nur die Fläche selbst, nicht das Fenster darauf
+    const daneben = (e) => { if (e.target === ov) fertig(null); };
+    function off() {
+      E('insert-as-img').onclick = null;
+      E('insert-as-page').onclick = null;
+      ov.onclick = null;
+      document.removeEventListener('keydown', aufTaste, true);
+    }
+    E('insert-as-img').onclick = () => fertig('img');
+    E('insert-as-page').onclick = () => fertig('page');
+    ov.onclick = daneben;
+    document.addEventListener('keydown', aufTaste, true);
   });
 }
 
