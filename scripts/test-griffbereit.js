@@ -17,6 +17,10 @@
         (nichts darf dabei verschwinden).
      4. DASS DER ORT NIE HINAUSGEHT. griffAntwort ist das Einzige, was
         das Fenster je zu sehen bekommt — der Pfad gehört nicht dazu.
+     5. DIE BEREICHE. Seit ein PDF nicht mehr am Stück durch die Brücke
+        geht, sondern stückweise über den Oberflächen-Server, hängt
+        alles an dieser Rechnung: verrechnet sie sich um ein Byte, zeigt
+        pdf.js entweder Unsinn oder gar nichts.
 
    Was hier NICHT geprüft wird, weil es ohne echtes Chromium nicht geht:
    das Zeichnen der PDF-Seiten, das Wischen und das Ziehen an der Kante.
@@ -196,7 +200,42 @@ console.log('\n5. Der Ort geht nie ans Fenster\n');
   check('Ausgeblendet reist mit', nochmal.versteckt, true);
 }
 
-console.log('\n6. Die Vereinbarung zwischen den Prozessen\n');
+console.log('\n6. Die Bereiche der Auslieferung\n');
+{
+  /* >>> Warum das hier steht <<<
+     Ein PDF geht nicht mehr durch die Brücke, sondern über
+     griffAusliefern – und ein abfotografiertes Buch kommt damit
+     überhaupt erst auf, statt „zu groß" zu melden. Die ganze Ersparnis
+     hängt daran, dass die Bereiche stimmen: pdf.js fragt zuerst nach
+     den letzten Bytes (dort steht der Katalog) und holt sich danach
+     einzelne Stücke. Ein Fehler um eins ist hier kein Schönheitsfehler,
+     sondern eine Seite, die leer bleibt. */
+  const ctx = umgebung();
+  vm.runInContext(funktion(mainQuelle, 'griffBereich'), ctx);
+  const b = ctx.griffBereich;
+
+  check('Ohne Kopfzeile: alles', b(null, 1000), null);
+  check('Die ersten hundert', b('bytes=0-99', 1000), { von: 0, bis: 99 });
+  check('Offenes Ende', b('bytes=500-', 1000), { von: 500, bis: 999 });
+  check('Das ganze Stueck', b('bytes=0-999', 1000), { von: 0, bis: 999 });
+
+  // So sucht pdf.js den Katalog: die letzten Bytes, ohne die Länge zu kennen
+  check('Die letzten fuenfhundert', b('bytes=-500', 1000), { von: 500, bis: 999 });
+  check('Mehr Schwanz als Datei', b('bytes=-5000', 1000), { von: 0, bis: 999 });
+  check('Ende hinter der Datei', b('bytes=900-5000', 1000), { von: 900, bis: 999 });
+
+  /* 416 statt einer Antwort mit falschem Inhalt: einen Fehler merkt
+     pdf.js sofort, einen stillschweigend verschobenen Bereich nicht. */
+  check('Anfang hinter dem Ende', b('bytes=1000-', 1000), 'kaputt');
+  check('Gar keine Zahl', b('bytes=-', 1000), 'kaputt');
+  check('Verdreht', b('bytes=500-100', 1000), 'kaputt');
+
+  // Mehrere Bereiche darf ein Server mit der ganzen Datei beantworten
+  check('Mehrere Bereiche: alles', b('bytes=0-10,20-30', 1000), null);
+  check('Unsinn: alles', b('Zeug', 1000), null);
+}
+
+console.log('\n7. Die Vereinbarung zwischen den Prozessen\n');
 {
   /* Ein Kanal, den preload.js anbietet und main.js nicht bedient, faellt
      erst im Betrieb auf — und dann als Fenster, in dem nichts geschieht. */
@@ -210,6 +249,19 @@ console.log('\n6. Die Vereinbarung zwischen den Prozessen\n');
      keinen. Wer hier eine zweite Fassung baut, die einen annimmt, hebelt
      die Erlaubnisliste aus. */
   check('Gelesen wird ueber die Kennung', /invoke\('griff-lesen', id\)/.test(preload), true);
+
+  /* Die Adresse einer Unterlage trägt eine Zufallsfolge. Ohne sie käme
+     jedes Programm auf demselben Rechner an eine Datei, die irgendwo
+     auf der Platte liegt – der Oberflächen-Server hört auf localhost. */
+  check('Die Adresse traegt die Zufallsfolge',
+    /GRIFF_TOKEN = crypto\.randomBytes\(/.test(mainQuelle), true);
+  check('Und der Auslieferer prueft sie',
+    /teile\[2\] !== GRIFF_TOKEN/.test(mainQuelle), true);
+
+  /* Holt pdf.js im Hintergrund doch das ganze Buch, ist die ganze
+     Umstellung umsonst – die beiden Schalter gehören zusammen. */
+  check('Ein PDF wird stueckweise geholt',
+    /disableAutoFetch: true/.test(uiQuelle) && /disableStream: true/.test(uiQuelle), true);
 }
 
 console.log('');

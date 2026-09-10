@@ -4,6 +4,7 @@ const fs   = require('fs');
 const https = require('https');
 const http = require('http');
 const { spawn } = require('child_process');
+const crypto = require('crypto');
 
 let releaseInfo = null;
 let downloadedUpdatePath = null;
@@ -487,6 +488,11 @@ function startUiServer() {
         res.writeHead(400); res.end('Bad request'); return;
       }
       if (rel === '/') rel = '/index.html';
+
+      /* Unterlagen kommen NICHT aus src/, sondern von irgendwo auf der
+         Platte. Sie haben deshalb ihren eigenen Weg – siehe
+         griffAusliefern() weiter unten. */
+      if (rel.startsWith('/griff/')) { griffAusliefern(rel, req, res); return; }
 
       /* Nichts außerhalb von src/ herausgeben. path.resolve löst "..\" auf,
          der Vergleich danach fängt jeden Ausbruch ab. */
@@ -2122,11 +2128,37 @@ const GRIFF_ARTEN = {
   '.pdf': 'application/pdf'
 };
 
-/* Ein Skript kann ein paar hundert Seiten haben; irgendwo muss trotzdem
-   Schluss sein. Der Inhalt geht am Stück durch die Brücke zum Fenster,
-   und was dort nicht mehr in den Speicher passt, reisst die ganze
-   Anzeige mit statt nur diese eine Datei. */
-const GRIFF_MAX_BYTES = 120 * 1024 * 1024;
+/* >>> Die Grenze gilt nur noch für BILDER <<<
+   Sie stand einmal bei 120 MB für alles, weil der Inhalt am Stück durch
+   die Brücke ging: einmal gelesen, einmal für das Fenster kopiert,
+   einmal in pdf.js – ein abfotografiertes Buch sprengte das, und statt
+   des Buchs stand „zu groß" da.
+
+   Ein PDF geht jetzt gar nicht mehr durch die Brücke, sondern über den
+   Oberflächen-Server (griffAusliefern). pdf.js holt sich daraus nur die
+   Stücke, die es für die gerade sichtbaren Seiten braucht; wie dick das
+   Buch ist, spielt für den Speicher keine Rolle mehr. Deshalb hat es
+   auch keine Grenze mehr.
+
+   Ein Bild dagegen liegt beim Anzeigen immer ganz im Speicher – dort
+   bleibt eine Grenze sinnvoll. */
+const GRIFF_BILD_MAX_BYTES = 120 * 1024 * 1024;
+
+/* Die Zufallsfolge in der Adresse einer Unterlage. Sie entsteht mit
+   jedem Start neu und steht nirgends auf der Platte.
+
+   Der Oberflächen-Server hört auf localhost und gibt sonst nur das
+   heraus, was in src/ liegt. Ab hier gibt er auch Dateien heraus, die
+   irgendwo auf der Platte liegen – dann soll ein anderes Programm auf
+   demselben Rechner nicht durch Raten von /griff/g123 an sie kommen. */
+const GRIFF_TOKEN = crypto.randomBytes(24).toString('hex');
+
+/* Ohne Herkunft: die Oberfläche liegt auf demselben Server, und relativ
+   bleibt die Adresse auch dann richtig, wenn der bevorzugte Port belegt
+   war und ein anderer genommen wurde. */
+function griffAdresse(id) {
+  return '/griff/' + GRIFF_TOKEN + '/' + encodeURIComponent(String(id));
+}
 
 function griffArt(p) {
   const mime = GRIFF_ARTEN[path.extname(String(p || '')).toLowerCase()];
@@ -2179,6 +2211,98 @@ function griffAntwort(stand) {
       return { id: d.id, name: d.name, art: d.art, breite: d.breite, stelle: d.stelle, da };
     })
   };
+}
+
+/* ══ DER WEG INS FENSTER ═══════════════════════════════════════════════
+
+   Aufgerufen aus startUiServer für jede Adresse unter /griff/. Sie
+   lautet /griff/<Zufallsfolge>/<Kennung> – die Kennung ist dieselbe wie
+   in der Liste, ein Pfad steht nie darin. Was nicht in der Liste steht,
+   gibt es hier nicht.
+
+   Bereiche (Range) werden beantwortet, und daran hängt alles: erst
+   dadurch kann pdf.js sich Seite 400 holen, ohne die 399 davor gelesen
+   zu haben.
+   ══════════════════════════════════════════════════════════════════════ */
+
+/**
+ * Was aus einer Range-Kopfzeile wirklich geschickt werden soll.
+ *
+ * Rückgabe: null (alles), 'kaputt' (416) oder { von, bis } einschliesslich.
+ * Mehrere Bereiche in einer Anfrage beantwortet auch dieser Server mit
+ * der ganzen Datei – erlaubt ist das, und pdf.js fragt nie danach.
+ */
+function griffBereich(kopfzeile, groesse) {
+  if (!kopfzeile) return null;
+  const m = /^bytes=([0-9]*)-([0-9]*)$/.exec(String(kopfzeile).trim());
+  if (!m) return null;
+  const hatVon = m[1] !== '';
+  const hatBis = m[2] !== '';
+  if (!hatVon && !hatBis) return 'kaputt';
+
+  let von, bis;
+  if (!hatVon) {
+    // "bytes=-500" heisst: die letzten 500 Byte. So sucht pdf.js den Katalog.
+    const n = Number(m[2]);
+    if (!n) return 'kaputt';
+    von = Math.max(0, groesse - n);
+    bis = groesse - 1;
+  } else {
+    von = Number(m[1]);
+    bis = hatBis ? Math.min(Number(m[2]), groesse - 1) : groesse - 1;
+  }
+  if (!Number.isFinite(von) || !Number.isFinite(bis)) return 'kaputt';
+  if (von < 0 || von > bis || von >= groesse) return 'kaputt';
+  return { von, bis };
+}
+
+function griffAusliefern(rel, req, res) {
+  const teile = rel.split('/');            // '', 'griff', Zufallsfolge, Kennung
+  const weg = () => { res.writeHead(404, { 'Content-Type': 'text/plain' }); res.end('Nicht gefunden'); };
+  if (teile.length !== 4 || teile[2] !== GRIFF_TOKEN || !teile[3]) return weg();
+
+  const d = griffLies().dateien.find(x => x.id === teile[3]);
+  if (!d) return weg();
+
+  /* Die Endung entscheidet auch hier noch einmal: die Datei am gemerkten
+     Pfad kann seit dem Aufnehmen eine andere geworden sein. */
+  const art = griffArt(d.pfad);
+  if (!art) return weg();
+
+  let stat;
+  try { stat = fs.statSync(d.pfad); } catch (err) { return weg(); }
+  if (!stat.isFile()) return weg();
+
+  const kopf = {
+    'Content-Type': art.mime,
+    'Accept-Ranges': 'bytes',
+    'Cache-Control': 'no-store',
+    // Die Endung sagt, was es ist – der Inhalt soll nicht mitreden dürfen
+    'X-Content-Type-Options': 'nosniff'
+  };
+
+  const bereich = griffBereich(req.headers.range, stat.size);
+  if (bereich === 'kaputt') {
+    res.writeHead(416, Object.assign({}, kopf, { 'Content-Range': 'bytes */' + stat.size }));
+    res.end();
+    return;
+  }
+
+  const von = bereich ? bereich.von : 0;
+  const bis = bereich ? bereich.bis : stat.size - 1;
+  if (bereich) {
+    kopf['Content-Range'] = 'bytes ' + von + '-' + bis + '/' + stat.size;
+  }
+  kopf['Content-Length'] = bis - von + 1;
+  res.writeHead(bereich ? 206 : 200, kopf);
+  if (req.method === 'HEAD') { res.end(); return; }
+
+  /* Gestreamt und nicht am Stück gelesen: sonst läge das Buch beim
+     Ausliefern doch wieder ganz im Speicher. */
+  const strom = fs.createReadStream(d.pfad, { start: von, end: bis });
+  strom.on('error', () => res.destroy());
+  res.on('close', () => strom.destroy());
+  strom.pipe(res);
 }
 
 /* Ausgesuchte Dateien, die noch keinen Namen haben. Sie liegen hier, bis
@@ -2301,7 +2425,16 @@ ipcMain.handle('griff-lesen', (_, id) => {
   try {
     const stat = fs.statSync(d.pfad);
     if (!stat.isFile()) return { ok: false, grund: 'fehlt' };
-    if (stat.size > GRIFF_MAX_BYTES) return { ok: false, grund: 'gross' };
+
+    /* Ein PDF bekommt nur die Adresse: es wird stückweise geholt
+       (griffAusliefern), und wie dick es ist, ist damit gleichgültig.
+       Ein Bild kommt weiter am Stück – es liegt beim Anzeigen ohnehin
+       ganz im Speicher, und ein Bild von über 120 MB ist keins mehr,
+       das sich neben dem Heft anschauen liesse. */
+    if (d.art === 'pdf') {
+      return { ok: true, art: 'pdf', mime: art.mime, adresse: griffAdresse(d.id) };
+    }
+    if (stat.size > GRIFF_BILD_MAX_BYTES) return { ok: false, grund: 'gross' };
     return { ok: true, art: d.art, mime: art.mime, bytes: fs.readFileSync(d.pfad) };
   } catch (err) {
     return { ok: false, grund: 'fehlt' };

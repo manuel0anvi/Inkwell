@@ -1407,6 +1407,32 @@ app.on('ready', async () => {
       if (breit > window.innerWidth / 2 + 1)
         throw new Error('breiter als das halbe Fenster: ' + breit);`, 260);
 
+    /* >>> Zwei Spalten an einer Kante sind genug <<<
+       Die offene Unterlage sitzt dort, wo auch die Kommentarleiste
+       aufginge. Beide nebeneinander liessen vom Blatt einen Streifen –
+       gemeldet wurde genau das. */
+    await schritt('Bei offener Unterlage bleiben die Kommentare zu', `
+      if (typeof window.griffBlocksPanels !== 'function')
+        throw new Error('griffBlocksPanels fehlt');
+      if (!window.griffBlocksPanels())
+        throw new Error('die offene Unterlage sperrt nicht');
+      // Der Weg des Nutzers: der Griff am Rand
+      E('comment-tab')?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await new Promise(r => setTimeout(r, 200));
+      if (E('comment-panel')?.classList.contains('open'))
+        throw new Error('die Kommentarleiste ging trotzdem auf');
+
+      // Und zu ist der Weg wieder frei
+      E('griff-view-close').click();
+      await new Promise(r => setTimeout(r, 400));
+      if (window.griffBlocksPanels())
+        throw new Error('die zugemachte Unterlage sperrt weiter');
+      E('comment-tab')?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await new Promise(r => setTimeout(r, 200));
+      if (!E('comment-panel')?.classList.contains('open'))
+        throw new Error('die Kommentarleiste geht jetzt nicht mehr auf');
+      E('comment-panel-close').click();`, 260);
+
     await schritt('Ein Wisch nach rechts faehrt sie wieder ein', `
       const kopf = document.querySelector('.griff-view-head');
       const zeig = (art, x) => kopf.dispatchEvent(new PointerEvent(art,

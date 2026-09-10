@@ -6,10 +6,20 @@
      .griff-panel    die Leiste zum Hinzufügen und Ordnen
      .griff-reiter   die hochkant stehenden Namen an der Kante
 
-   Nichts davon liegt ÜBER dem Heft. Sie wachsen von 0 auf ihre Breite
-   wie die Navigation links und schieben das Blatt zur Seite – dieselbe
-   Bauweise wie Chat und Kommentare (css/pages.css), damit das Blatt
-   beim Wechsel zwischen den Leisten nicht springt.
+   Ansicht und Leiste wachsen von 0 auf ihre Breite wie die Navigation
+   links und schieben das Blatt zur Seite – dieselbe Bauweise wie Chat
+   und Kommentare (css/pages.css), damit das Blatt beim Wechsel zwischen
+   den Leisten nicht springt.
+
+   >>> Die Reiter sind die Ausnahme <<<
+   Sie waren einmal genauso gebaut: ein Streifen im Fluss, der von oben
+   bis unten reichte und dem Blatt seine 33 px wegnahm. Als Marke am
+   Rand war das zu viel Aufwand – ein hoher Balken für drei Namen.
+
+   Jetzt sind sie ein stehendes Rechteck ÜBER dem Blatt, mittig auf gut
+   drei Vierteln der Höhe. Über die volle Höhe wäre ein fester Streifen
+   eine Wand vor dem Heft; auf drei Vierteln ist es eine Marke wie der
+   Kommentar-Griff, nur grösser.
 
    >>> Warum die Kinder eine min-width tragen <<<
    Der Kasten, der die Breite anfährt, ist overflow:hidden und während
@@ -299,25 +309,46 @@
 }
 
 /* ══ DIE REITER AN DER KANTE ═════════════════════════════════════════
-   Sie teilen sich die Höhe zu gleichen Teilen. Anders als der
-   Kommentar-Griff sitzen sie IM Layout und nicht fest am Fenster: über
-   die volle Höhe läge ein fester Streifen sonst auf dem Blatt, sobald
-   jemand hineinzoomt.
+   Ein stehendes Rechteck an der rechten Kante, mittig auf gut drei
+   Vierteln der Höhe – darin teilen sich die Namen den Platz zu gleichen
+   Teilen.
+
+   >>> Fest am Fenster, wie der Kommentar-Griff <<<
+   Sie sassen einmal IM Layout und nahmen dem Blatt ihre 33 px weg, über
+   die ganze Höhe. Das war für drei Namen zu viel Aufwand: ein Balken von
+   oben bis unten liest sich als Bedienteil, nicht als Marke.
+
+   Über die VOLLE Höhe wäre ein fester Streifen aber eine Wand vor dem
+   Heft, sobald jemand hineinzoomt – genau deshalb sassen sie im Layout.
+   Auf drei Vierteln fällt der Einwand weg: oben und unten bleibt das
+   Blatt frei, und was darunterliegt, ist erreichbar.
+
+   Das Rechteck bleibt dabei IMMER an der Fensterkante. Die
+   aufgeschlagene Datei rückt statt dessen um seine Breite beiseite
+   (.griff-view.open) – genau so viel, wie der alte Streifen im Layout
+   belegte. Rückte umgekehrt das Rechteck nach innen, landete es auf dem
+   Knopf, mit dem die Breite gezogen wird.
    ════════════════════════════════════════════════════════════════════ */
 
 .griff-reiter {
+  position: fixed;
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 1235;
   display: none;          /* ui/griffbereit.js setzt flex, wenn nötig */
   flex-direction: column;
-  flex-shrink: 0;
-  gap: 3px;
-  padding: 6px 0 6px 3px;
-  background: #1a1a24
+  gap: 4px;
+  /* Gut drei Viertel – ein Rechteck, kein Streifen */
+  height: 76vh
 }
 
 .griff-reiter-btn {
   flex: 1 1 0;
   min-height: 0;
-  width: 30px;
+  /* Ein bisschen breiter als die 30 px von vorher: der Name steht darin
+     hochkant, und drei Punkte statt eines Wortes helfen niemandem. */
+  width: 38px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -325,10 +356,12 @@
   background: var(--sc);
   border: 1px solid var(--sb);
   border-right: none;
-  border-radius: 7px 0 0 7px;
+  border-radius: 9px 0 0 9px;
   color: var(--md);
   cursor: pointer;
   overflow: hidden;
+  /* Schwebend, nicht angeklebt – dieselbe Kante wie der Kommentar-Griff */
+  box-shadow: -3px 0 12px rgba(0, 0, 0, .35);
   /* Damit ein Wischen nach links hier ankommt und nicht zum Rollen wird */
   touch-action: none;
   transition: color .12s, background .12s, border-color .12s
@@ -358,7 +391,7 @@
   text-overflow: ellipsis;
   max-height: 100%;
   font-family: 'Crimson Pro', serif;
-  font-size: 13px;
+  font-size: 13.5px;
   letter-spacing: .05em
 }
 
@@ -369,11 +402,17 @@
   flex-shrink: 0;
   position: relative;
   background: var(--sp);
-  border-left: 1px solid transparent
+  border-left: 1px solid transparent;
+  transition: margin-right .2s ease
 }
 
+/* Rechts bleibt Platz für das Reiter-Rechteck, das dort fest am Fenster
+   hängt – dieselben Millimeter, die der alte Streifen im Layout belegte,
+   plus etwas Luft, damit die Seite nicht am Reiter klebt. Ohne das läge
+   das Rechteck auf dem rechten Rand der Datei. */
 .griff-view.open {
-  border-left-color: var(--sb)
+  border-left-color: var(--sb);
+  margin-right: 46px
 }
 
 .griff-view-inner {

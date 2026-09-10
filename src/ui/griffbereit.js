@@ -18,15 +18,23 @@
      auf. Darin wird hinzugefügt, umbenannt, umsortiert, weggenommen.
 
      Die REITER (griff-reiter) stehen an der Kante, sobald die Leiste zu
-     ist – hochkant, mit dem vergebenen Namen, zusammen über die ganze
-     Höhe. Sie sind ein Flex-Kind und liegen nicht über dem Blatt: eine
-     Marke von 20 px darf das (der Kommentar-Griff tut es), ein Streifen
-     über die volle Höhe nicht.
+     ist – hochkant, mit dem vergebenen Namen. Zusammen sind sie ein
+     stehendes Rechteck auf gut drei Vierteln der Höhe, das fest am
+     Fenster hängt und über dem Blatt liegt.
+
+     Sie waren einmal ein Flex-Kind über die ganze Höhe. Ein fester
+     Streifen von oben bis unten läge auf dem Blatt, sobald jemand
+     hineinzoomt – auf drei Vierteln ist er eine Marke wie der
+     Kommentar-Griff und lässt oben und unten frei.
 
      Die ANSICHT (griff-view) fährt aus einem Reiter heraus – nach links
      wischen oder antippen. Sie schiebt das Blatt zur Seite wie Chat und
      Kommentare und deckt es nie zu; breiter als das halbe Fenster wird
      sie nicht, sonst bliebe vom Heft zu wenig übrig.
+
+     Solange sie offen steht, gehen Kommentare und Chat nicht auf
+     (window.griffBlocksPanels): sie sitzen an derselben Kante, und drei
+     Leisten nebeneinander liessen vom Blatt nichts übrig.
 
    ── Was sich je Datei merkt ────────────────────────────────────────
    Breite und Rollstelle. Wer ein Skript auf Seite 40 zuklappt, will
@@ -51,10 +59,12 @@
   const VORGABE_BREITE = 420;
 
   /* Wie viele Seiten vorab vermessen werden. Darüber hinaus gilt das
-     Seitenverhältnis der ersten Seite für alle – bei einem Skript mit
-     durchweg gleichem Papier stimmt das, und bei 400 Seiten wäre das
-     Messen ein spürbares Warten vor dem ersten Blick. */
-  const HOECHSTENS_GEMESSEN = 120;
+     Seitenverhältnis der ersten Seite für alle – bei einem Buch mit
+     durchweg gleichem Papier stimmt das, und jede gemessene Seite ist
+     seit dem stückweisen Laden eine eigene Anfrage: 120 davon wären
+     ein spürbares Warten vor dem ersten Blick, wo zwei Dutzend reichen.
+     Was danach kommt, misst sich beim Zeichnen ohnehin selbst. */
+  const HOECHSTENS_GEMESSEN = 24;
 
   /** Der Spiegel dessen, was der Hauptprozess hält. */
   let _stand = { versteckt: false, dateien: [] };
@@ -110,8 +120,14 @@
     nachLayout();
   }
 
-  /* ui/comments.js und ui/chat.js fragen das, bevor sie aufmachen. */
-  window.griffBlocksPanels = leisteOffen;
+  /* ui/comments.js und ui/chat.js fragen das, bevor sie aufmachen.
+
+     >>> Auch die aufgeschlagene Datei zählt <<<
+     Hier stand nur die Leiste. Eine offene Unterlage ist aber genauso
+     eine Spalte an derselben Kante: käme die Kommentarleiste daneben,
+     bliebe vom Blatt ein Streifen. Wer die Kommentare braucht, macht die
+     Unterlage zu – dann ist der Weg wieder frei. */
+  window.griffBlocksPanels = () => leisteOffen() || ansichtOffen();
   window.closeGriffPanel = () => setzeLeiste(false);
 
   /** Die Blattspalte hat sich geändert: Zoom und Kommentarkarten nachziehen. */
@@ -441,6 +457,11 @@
        wieder stecken, das Netzlaufwerk wieder da sein. Wer sie antippt,
        will genau das wissen, und das Lesen beantwortet es verbindlich. */
 
+    /* Was an der rechten Kante offen steht, macht der Unterlage Platz –
+       dieselbe Überlegung wie in setzeLeiste(). */
+    if (typeof window.closeCommentPanel === 'function') window.closeCommentPanel();
+    if (typeof window.closeChatPanel === 'function') window.closeChatPanel();
+
     // Erst die Stelle der bisher offenen Datei sichern, dann wechseln
     merkeStelle();
     raeumeInhaltWeg();
@@ -487,7 +508,7 @@
        vorher seine Seiten aus – wer ihn hier schon wegnähme, sähe bei
        einem Skript zwei Sekunden lang eine leere Fläche. */
     try {
-      if (antwort.art === 'pdf') await zeigePdf(antwort.bytes, lauf);
+      if (antwort.art === 'pdf') await zeigePdf(antwort.adresse, lauf);
       else zeigeBild(antwort.bytes, antwort.mime);
     } catch (err) {
       console.warn('[Griffbereit] Anzeigen fehlgeschlagen:', err?.message || err);
@@ -561,15 +582,32 @@
     koerper.appendChild(img);
   }
 
-  async function zeigePdf(bytes, lauf) {
+  async function zeigePdf(adresse, lauf) {
     if (typeof pdfjsLib === 'undefined') throw new Error('pdf.js fehlt');
     const koerper = E('griff-view-body');
 
-    /* Eine eigene Kopie: pdf.js darf den Puffer übernehmen und leeren,
-       und der aus der Brücke gehört uns nicht allein. */
-    const daten = new Uint8Array(bytes);
+    /* >>> Nur die Adresse, nicht die Datei <<<
+       Hier lag einmal das ganze PDF als Puffer, durch die Brücke
+       gereicht. Bei einem abfotografierten Buch waren das ein paar
+       hundert Megabyte – dreimal im Speicher, und deshalb stand ab
+       einer Grenze nur „zu groß" da.
 
-    const doc = await pdfjsLib.getDocument({ data: daten }).promise;
+       Jetzt holt pdf.js die Datei selbst vom Oberflächen-Server
+       (main.js, griffAusliefern), und der beantwortet Bereiche. Damit
+       wandern nur die Stücke herüber, die für die gerade sichtbaren
+       Seiten gebraucht werden.
+
+       disableAutoFetch und disableStream gehören zusammen: ohne das
+       erste holt pdf.js im Hintergrund doch wieder das ganze Buch,
+       sobald es Zeit hat, ohne das zweite liest es die erste Anfrage
+       einfach bis zum Ende durch. Beides zusammen heisst: nur Bereiche,
+       nur bei Bedarf. */
+    const doc = await pdfjsLib.getDocument({
+      url: adresse,
+      rangeChunkSize: 256 * 1024,
+      disableAutoFetch: true,
+      disableStream: true
+    }).promise;
     if (lauf !== _lauf) { try { doc.destroy(); } catch (err) { /* egal */ } return; }
     _pdf = doc;
 

@@ -742,19 +742,26 @@
     </aside>
 
     <!-- ══ GRIFFBEREIT ═══════════════════════════════════════════════
-         Drei Stücke, alle am rechten Rand und alle Geschwister der
-         Blattspalte – nichts davon legt sich über das Heft:
+         Drei Stücke am rechten Rand:
 
            griff-view    die aufgeschlagene Datei
            griff-panel   die Leiste zum Hinzufügen und Ordnen
-           griff-reiter  die hochkant stehenden Namen an der Kante
+           griff-reiter  die hochkant stehenden Namen an der Kante – ein
+                         RECHTECK, fest am Fenster über dem Blatt
+                         (css/griffbereit.css)
 
-         Der Reiterstreifen ist bewusst ein Flex-Kind und nicht wie der
-         Kommentar-Griff fest am Fenster: er ist keine Marke von 20 px,
-         sondern reicht über die ganze Höhe. Fest am Fenster läge er auf
-         dem Blatt, sobald jemand hineinzoomt. Wer ihn nicht braucht,
-         blendet die Dateien in der Leiste aus – dann ist er ganz weg
-         (ui/griffbereit.js). -->
+         Ansicht und Leiste sind Geschwister der Blattspalte und schieben
+         sie zur Seite; keine von beiden legt sich über das Heft.
+
+         Die Reiter dagegen hängen fest am Fenster wie der Kommentar-Griff.
+         Über die ganze Höhe ginge das nicht – dann läge eine Wand vor dem
+         Blatt, sobald jemand hineinzoomt. Auf gut drei Vierteln bleibt
+         oben und unten frei. Wer sie nicht braucht, blendet die Dateien
+         in der Leiste aus – dann sind sie ganz weg (ui/griffbereit.js).
+
+         Sie stehen hier trotz position:fixed mit in der Reihe: sie
+         gehören der Sache nach zu den beiden anderen, und wer eines der
+         Stücke sucht, findet alle drei beieinander. -->
     <aside class="griff-view" id="griff-view">
       <!-- Der Knopf in der Grenzleiste. Zum Ziehen, nicht zum Drücken:
            er sitzt in der Mitte der Kante, weil die Hand dort ohnehin
