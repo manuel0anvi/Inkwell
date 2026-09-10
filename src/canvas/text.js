@@ -1595,6 +1595,52 @@ function _schubSenkrecht(steht, kommt) {
   return schub;
 }
 
+/* ══════════════════════════════════════════════════════════════════════
+   IM DOM IN LESERICHTUNG
+
+   Frei stehende Absätze kommen ins DOM in der Reihenfolge, in der sie
+   ANGELEGT wurden – auf dem Blatt stehen sie, wo man hingeklickt hat. Für
+   das Aussehen ist das gleich, für eine Markierung nicht: die reicht im
+   DOM von hier bis dort. Wer „unten" markierte und nach oben zog, bekam
+   deshalb Absätze mit, die zufällig dazwischen angelegt worden waren.
+
+   >>> Gemeldet: „die Markierung springt auf andere Wörter" <<<
+
+   Sortiert wird nach Zeile, dann von links nach rechts – so, wie man
+   liest. An der Lage ändert das nichts: sie steht in left/top und im
+   Ausweichen, nicht in der Reihenfolge. Die Plätze zwischen anderem
+   Inhalt bleiben, getauscht wird nur unter den freien Absätzen.
+
+   Aufgerufen, sobald markiert wird (canvas/input.js) – ein blosser Klick
+   verändert nichts am Dokument.
+   ══════════════════════════════════════════════════════════════════════ */
+/** @returns {boolean} ob etwas umgestellt wurde */
+function freieAbsaetzeInLeserichtung(textDiv) {
+  if (!textDiv) return false;
+  const alle = [...textDiv.children].filter(el => el.matches('p.j-frei'));
+  if (alle.length < 2) return false;
+
+  const lage = p => ({
+    p,
+    oben: (parseFloat(p.style.top) || 0) + (parseFloat(p.style.marginTop) || 0),
+    links: (parseFloat(p.style.left) || 0) + (parseFloat(p.style.marginLeft) || 0)
+  });
+  const sortiert = alle.map(lage)
+    .sort((a, b) => (a.oben - b.oben) || (a.links - b.links))
+    .map(k => k.p);
+  if (sortiert.every((p, i) => p === alle[i])) return false;
+
+  // Die Plätze merken, dann jeden Absatz an seinen neuen Platz
+  const plaetze = alle.map(p => {
+    const marke = document.createComment('');
+    textDiv.insertBefore(marke, p);
+    return marke;
+  });
+  sortiert.forEach((p, i) => plaetze[i].after(p));
+  plaetze.forEach(m => m.remove());
+  return true;
+}
+
 /**
  * Bringt die frei stehenden Absätze so auseinander, dass nichts
  * überlappt – auf die Art, die eingestellt ist.

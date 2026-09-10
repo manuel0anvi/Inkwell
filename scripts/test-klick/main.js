@@ -500,6 +500,91 @@ app.on('ready', async () => {
   pruefe('Knapp neben dem letzten Zeichen ebenso',
     knappRechts.auswahl === 'markier mich', JSON.stringify(knappRechts));
 
+  /* ══════════════════════════════════════════════════════════════════
+     4h  UEBER ABSAETZE AUF VERSCHIEDENEN HOEHEN
+
+     Gemeldet: „habe ich mehrere Woerter auf verschiedenen Hoehen und
+     markiere von unten nach oben, springt die Markierung auf andere
+     Woerter – sie sollte Wort fuer Wort dem Zeiger folgen." Und: „ein
+     Doppelklick waehlt alle Woerter statt des einen."
+
+     Gemessen vor der Behebung: die Markierung blieb ueber leerer Flaeche
+     stehen („unten rec") und sprang dann auf „htsoben ", weil freie
+     Absaetze im DOM in der Reihenfolge ihres Anlegens standen. Ein
+     Doppelklick auf „links" ergab „linksdie ".
+     ══════════════════════════════════════════════════════════════════ */
+  zeilen.push('\n  4h Markieren ueber Absaetze auf verschiedenen Hoehen');
+  await js(`(() => { document.querySelector('.j-text').innerHTML = ''; return true; })()`);
+  // Bewusst NICHT in Leserichtung angelegt – so, wie man kreuz und quer schreibt
+  for (const [x, z, t] of [[400, 8, 'unten rechts'], [60, 2, 'oben links'], [300, 5, 'die mitte'],
+                            [60, 8, 'unten links'], [450, 2, 'oben rechts']]) {
+    await klick(feld.l + x, zeileY(z));
+    await tippe(t);
+  }
+  const auswahl = () => js(`String(getSelection())`);
+
+  const ur = await wortKasten('unten rechts');
+  const ol = await wortKasten('oben links');
+  const mk = await wortKasten('die mitte');
+  const von = { x: ur.r - 2, y: (ur.t + ur.b) / 2 };
+  const bis = { x: ol.l + 2, y: (ol.t + ol.b) / 2 };
+  await dbg.sendCommand('Input.dispatchMouseEvent', { type: 'mousePressed',
+    x: Math.round(von.x), y: Math.round(von.y), button: 'left', clickCount: 1, buttons: 1 });
+  const spur = [];
+  for (let i = 1; i <= 12; i++) {
+    const p = { x: Math.round(von.x + (bis.x - von.x) * i / 12), y: Math.round(von.y + (bis.y - von.y) * i / 12) };
+    await dbg.sendCommand('Input.dispatchMouseEvent', { type: 'mouseMoved',
+      x: p.x, y: p.y, button: 'left', buttons: 1 });
+    await new Promise(r => setTimeout(r, 30));
+    spur.push({ y: p.y, text: await auswahl() });
+  }
+  await dbg.sendCommand('Input.dispatchMouseEvent', { type: 'mouseReleased',
+    x: Math.round(bis.x), y: Math.round(bis.y), button: 'left', clickCount: 1, buttons: 0 });
+  await new Promise(r => setTimeout(r, 250));
+
+  const spurText = spur.map(s => s.y + ':' + JSON.stringify(s.text)).join(' ');
+  pruefe('Unterhalb der Mitte kommt nichts von oben mit',
+    spur.filter(s => s.y > mk.b).every(s => !s.text.includes('oben')), spurText);
+  pruefe('Die Markierung waechst Schritt fuer Schritt, statt zu springen',
+    spur.every((s, i) => i === 0 || s.text.length >= spur[i - 1].text.length), spurText);
+  const zuletzt = spur[spur.length - 1].text;
+  pruefe('Oben angekommen, reicht sie von „oben links" bis „unten rechts"',
+    ['oben links', 'die mitte', 'unten links', 'unten rechts'].every(w => zuletzt.includes(w)),
+    JSON.stringify(zuletzt));
+
+  async function doppelklick(x, y) {
+    for (const n of [1, 2]) {
+      for (const type of ['mousePressed', 'mouseReleased']) {
+        await dbg.sendCommand('Input.dispatchMouseEvent', { type, x: Math.round(x), y: Math.round(y),
+          button: 'left', clickCount: n, buttons: type === 'mousePressed' ? 1 : 0 });
+      }
+      await new Promise(r => setTimeout(r, 40));
+    }
+    await new Promise(r => setTimeout(r, 250));
+  }
+  for (const wort of ['links', 'mitte', 'unten']) {
+    const k = await wortKasten(wort);
+    await doppelklick((k.l + k.r) / 2, (k.t + k.b) / 2);
+    const s = await auswahl();
+    pruefe('Doppelklick auf „' + wort + '" waehlt genau dieses Wort', s === wort, JSON.stringify(s));
+  }
+
+  // Die Marke im Wort setzt jetzt die App, nicht mehr der Browser
+  const zwischen = await js(`(() => { const td = document.querySelector('.j-text');
+    const lauf = document.createTreeWalker(td, NodeFilter.SHOW_TEXT);
+    for (let n = lauf.nextNode(); n; n = lauf.nextNode()) {
+      const i = n.nodeValue.indexOf('mitte'); if (i < 0) continue;
+      const rg = document.createRange(); rg.setStart(n, i + 2); rg.collapse(true);
+      const r = rg.getBoundingClientRect();
+      const w = document.createRange(); w.setStart(n, i); w.setEnd(n, i + 5);
+      const b = w.getBoundingClientRect();
+      return { x: r.left + 1, y: (b.top + b.bottom) / 2 };
+    } return null; })()`);
+  await klick(zwischen.x, zwischen.y);
+  await tippe('X');
+  pruefe('Ein Klick mitten ins Wort schreibt genau dort („miXtte")',
+    (await roherText()).includes('die miXtte'), JSON.stringify(await roherText()));
+
   // ── 5  Ein blosser Klick hinterlaesst nichts ──────────────────────
   zeilen.push('\n  5  Der blosse Klick');
   const vorher = await inhalt();

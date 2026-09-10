@@ -509,10 +509,13 @@ console.log('\nWo man hinklickt, kann man auch schreiben\n');
     /function _teileLuecke/.test(textQuelle)
     && /function _lueckeUnter/.test(textQuelle), true);
 
-  /* 4. Der Browser darf die Marke danach nicht noch einmal setzen. */
+  /* 4. Der Browser darf die Marke danach nicht noch einmal setzen.
+     Anfangs nur auf freier Flaeche abgebrochen, inzwischen bei jedem Druck
+     im Text – Marke, Ziehen und Doppelklick kommen dort alle aus
+     canvas/input.js. Ausgenommen bleibt nur, was seinen eigenen Griff hat. */
   check('Der Browser setzt die Marke nicht noch einmal',
     /addEventListener\('mousedown'/.test(eingabeQuelle)
-    && /if \(e\.target !== textDiv && !isFreeEditorAreaClick\(e\.clientX, e\.clientY\)\) return;\s*\n\s*e\.preventDefault\(\)/.test(eingabeQuelle), true);
+    && /if \(!textDiv\.contains\(e\.target\) \|\| eigenerGriff\(e\.target\)\) return;\s*\n\s*e\.preventDefault\(\)/.test(eingabeQuelle), true);
   /* Auch NEBEN dem Text, nicht nur weit weg davon. Dort liegt gar kein
      Inhalt: caretPositionFromPoint antwortete mit dem Feld selbst und
      der Stelle 0, und die Marke sass am Anfang der Seite. Gemeldet als

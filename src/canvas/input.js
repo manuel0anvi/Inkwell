@@ -909,10 +909,9 @@ function attachInput(canvas, textDiv, objLayer, page) {
      angefangen hat. Im Rand fing er also nie an, und es sah aus, als
      muesse man das erste Zeichen auf den Punkt treffen.
 
-     Das Ziehen wird deshalb selbst gefuehrt, aber nur von dort: der
-     Druck IM Text laeuft weiter durch den Browser (der Verteiler unten
-     steigt dafuer vorher aus), samt Doppelklick aufs Wort und allem,
-     was daran haengt.
+     Das Ziehen wird deshalb selbst gefuehrt. Anfangs nur von dort, im
+     Text blieb es beim Browser – inzwischen auch dort, siehe IN
+     LESERICHTUNG weiter unten.
 
      >>> Der Punkt wird in die Spalte hineingeschoben <<<
      Ein Punkt im Rand gehoert zu keinem Zeichen. Statt dort aufzugeben,
@@ -949,40 +948,116 @@ function attachInput(canvas, textDiv, objLayer, page) {
     return true;
   }
 
-  /** Die Stelle in der naechsten geschriebenen Zeile. */
-  function stelleInNaechsterZeile(x, y) {
-    if (typeof _naechsteTextZeile !== 'function') return null;
-    const zeile = _naechsteTextZeile(textDiv, x, y);
-    if (!zeile) return null;
-    const rc = zeile.rc;
+  /* ══════════════════════════════════════════════════════════════════
+     IN LESERICHTUNG, ZEILE FUER ZEILE
+
+     >>> Gemeldet: „markiere ich Woerter auf verschiedenen Hoehen von
+     unten nach oben, springt die Markierung auf andere Woerter" <<<
+     Gemessen waren es zwei Dinge:
+
+       · Der Treffertest des Browsers weiss ueber leerer Flaeche nichts.
+         Die Markierung blieb stehen, solange der Zeiger zwischen den
+         Absaetzen war – neun Schritte lang „unten rec" – und sprang dann.
+       · Eine Markierung reicht im DOM von hier bis dort, und freie
+         Absaetze stehen dort in der Reihenfolge ihres Anlegens. Nach
+         „unten rechts" angelegt, kam „oben links" sofort mit
+         („htsoben "), obwohl dazwischen die halbe Seite lag.
+
+     Gesucht wird die Stelle deshalb selbst: erst die REIHE, die dem
+     Zeiger senkrecht am naechsten liegt, in ihr die Zeile, die ihm
+     waagerecht am naechsten liegt, und darin die Stelle im Wort. Sobald
+     gezogen wird, stehen die freien Absaetze im DOM in Leserichtung
+     (canvas/text.js, freieAbsaetzeInLeserichtung).
+
+     Gilt fuer JEDES Ziehen mit der Maus, auch fuer das auf einem Zeichen
+     angefangene: der Browser liess sich mitten im Zug nicht mehr
+     ablösen, und zwei, die dieselbe Markierung setzen, zappeln.
+     ══════════════════════════════════════════════════════════════════ */
+
+  /** Alle geschriebenen Zeilen, bezogen auf das Textfeld. */
+  function messeZeilen() {
+    const r = textDiv.getBoundingClientRect();
+    const zeilen = [];
+    const bereich = document.createRange();
+    const lauf = document.createTreeWalker(textDiv, NodeFilter.SHOW_TEXT);
+    for (let n = lauf.nextNode(); n; n = lauf.nextNode()) {
+      if (!n.nodeValue || !n.nodeValue.trim() || !markierbareStelle(n)) continue;
+      bereich.selectNodeContents(n);
+      for (const rc of bereich.getClientRects()) {
+        if (rc.width <= 1) continue;
+        zeilen.push({ knoten: n, l: rc.left - r.left, r: rc.right - r.left,
+                      o: rc.top - r.top, u: rc.bottom - r.top });
+      }
+    }
+    return zeilen;
+  }
+
+  /**
+   * Die Stelle, die einem Punkt in Leserichtung entspricht.
+   * Die Zeilen stehen relativ zum Feld – gerollt werden darf dazwischen.
+   */
+  function stelleInLeserichtung(x, y, zeilen) {
+    if (typeof document.caretRangeFromPoint !== 'function') return null;
+    const r = textDiv.getBoundingClientRect();
+    const lx = x - r.left, ly = y - r.top;
+    let beste = null, besteDy = Infinity, besteDx = Infinity;
+    for (const z of zeilen) {
+      const dy = ly < z.o ? z.o - ly : (ly > z.u ? ly - z.u : 0);
+      const dx = lx < z.l ? z.l - lx : (lx > z.r ? lx - z.r : 0);
+      // Erst die Reihe, dann in ihr die naechste Zeile
+      if (dy < besteDy - 1 || (dy <= besteDy + 1 && dx < besteDx)) {
+        beste = z; besteDy = dy; besteDx = dx;
+      }
+    }
+    if (!beste || !beste.knoten.isConnected) return null;
+
+    const rc = { left: beste.l + r.left, right: beste.r + r.left,
+                 top: beste.o + r.top, bottom: beste.u + r.top };
     let rg = null;
     try {
       rg = document.caretRangeFromPoint(
-        Math.min(Math.max(x, rc.left + 1), rc.right - 1),
-        Math.min(Math.max(y, rc.top + 1), rc.bottom - 1));
+        Math.min(Math.max(x, rc.left + 1), rc.right - 1), (rc.top + rc.bottom) / 2);
     } catch (err) { rg = null; }
     if (rg && markierbareStelle(rg.startContainer)) return rg;
 
     // Der Treffertest kommt nicht durch (fremde Marken darueber) – messen
-    const stelle = _stelleInZeile(zeile.knoten, rc, x);
+    const stelle = _stelleInZeile(beste.knoten, rc, x);
     if (stelle === null) return null;
     rg = document.createRange();
-    rg.setStart(zeile.knoten, stelle);
+    rg.setStart(beste.knoten, stelle);
     rg.collapse(true);
     return rg;
   }
 
-  /** Die Textstelle an einem Punkt – notfalls die naechste in der Spalte. */
-  function stelleAnPunkt(x, y) {
-    if (typeof document.caretRangeFromPoint !== 'function') return null;
-    const r = textDiv.getBoundingClientRect();
-    if (!(r.width > 0 && r.height > 0)) return null;
-    const cx = Math.max(r.left + 1, Math.min(r.right - 1, x));
-    const cy = Math.max(r.top + 1, Math.min(r.bottom - 1, y));
-    let rg = null;
-    try { rg = document.caretRangeFromPoint(cx, cy); } catch (err) { return null; }
-    if (rg && markierbareStelle(rg.startContainer)) return rg;
-    return stelleInNaechsterZeile(cx, cy);
+  function markiereBis(m) {
+    const ziel = stelleInLeserichtung(m.x, m.y, m.zeilen);
+    const sel = window.getSelection();
+    if (!ziel || !sel || !m.node.isConnected) return;
+    try { sel.setBaseAndExtent(m.node, m.offset, ziel.startContainer, ziel.startOffset); }
+    catch (err) { randMarkierenAbbrechen(); }
+  }
+
+  /* Am Rand des Rahmens rollt es weiter. Das hat bisher der Browser
+     getan, solange das Ziehen im Text ihm gehoerte. */
+  function rolleBeimMarkieren(m) {
+    if (m.rollBild) return;
+    const schritt = () => {
+      m.rollBild = 0;
+      const sc = E('pg-scroll');
+      if (_markieren !== m || !sc) return;
+      const r = sc.getBoundingClientRect();
+      const RAND = 24;
+      let d = 0;
+      if (m.y < r.top + RAND) d = m.y - (r.top + RAND);
+      else if (m.y > r.bottom - RAND) d = m.y - (r.bottom - RAND);
+      if (!d) return;
+      const vorher = sc.scrollTop;
+      sc.scrollTop += Math.max(-30, Math.min(30, d / 2));
+      if (sc.scrollTop === vorher) return;
+      markiereBis(m);
+      m.rollBild = requestAnimationFrame(schritt);
+    };
+    m.rollBild = requestAnimationFrame(schritt);
   }
 
   function randMarkierenZieht(ev) {
@@ -1002,24 +1077,26 @@ function attachInput(canvas, textDiv, objLayer, page) {
        ist die Bedingung, unter der das hier ueberhaupt gilt. */
     if (!(ev.buttons & 1)) { randMarkierenEnde(ev); return; }
 
+    m.x = ev.clientX;
+    m.y = ev.clientY;
     if (!m.laeuft && Math.hypot(ev.clientX - m.sx, ev.clientY - m.sy) < MARKIER_WEG) return;
 
-    /* Der Druck auf freie Flaeche hat einen vorlaeufigen Absatz angelegt.
-       Wird gezogen, war es kein Klick zum Schreiben – er kommt weg, bevor
-       er in die Markierung geraet. */
-    if (!m.laeuft && typeof raeumeVorlaeufiges === 'function') raeumeVorlaeufiges(textDiv);
-
-    const ziel = stelleAnPunkt(ev.clientX, ev.clientY);
-    if (!ziel) return;
-    const sel = window.getSelection();
-    if (!sel) return;
-
-    m.laeuft = true;
     /* Erst jetzt abfangen, nicht schon beim Aufsetzen: ein blosser Klick
-       soll weiterhin ganz normal beim Browser landen. */
+       soll ein Klick bleiben. */
     ev.preventDefault();
-    try { sel.setBaseAndExtent(m.node, m.offset, ziel.startContainer, ziel.startOffset); }
-    catch (err) { randMarkierenEnde(ev); }
+
+    if (!m.laeuft) {
+      m.laeuft = true;
+      /* Der Druck auf freie Flaeche hat einen vorlaeufigen Absatz angelegt.
+         Wird gezogen, war es kein Klick zum Schreiben – er kommt weg, bevor
+         er in die Markierung geraet. */
+      if (typeof raeumeVorlaeufiges === 'function') raeumeVorlaeufiges(textDiv);
+      if (typeof freieAbsaetzeInLeserichtung === 'function') freieAbsaetzeInLeserichtung(textDiv);
+      // Das Aufraeumen kann Nachbarn verrueckt haben (Ausweichen) – neu messen
+      m.zeilen = messeZeilen();
+    }
+    markiereBis(m);
+    rolleBeimMarkieren(m);
   }
 
   function randMarkierenEnde(ev) {
@@ -1029,6 +1106,7 @@ function attachInput(canvas, textDiv, objLayer, page) {
 
   function randMarkierenAbbrechen() {
     if (!_markieren) return;
+    if (_markieren.rollBild) cancelAnimationFrame(_markieren.rollBild);
     _markieren = null;
     document.removeEventListener('pointermove', randMarkierenZieht, true);
     document.removeEventListener('pointerup', randMarkierenEnde, true);
@@ -1037,24 +1115,27 @@ function attachInput(canvas, textDiv, objLayer, page) {
   }
 
   /**
-   * Ein Druck NEBEN dem Text: von hier aus soll sich markieren lassen.
-   * Der Anker ist die Marke, die activateTextEditingAt eben gesetzt hat –
-   * genau die Stelle, die der Nutzer gemeint hat.
+   * Ein Druck mit der Maus: von hier aus soll sich markieren lassen.
+   *
+   * @param {{startContainer: Node, startOffset: number}} [festerAnker]
+   *   Mit gedrueckter Umschalttaste der Anfang der bestehenden Markierung.
    */
-  function starteRandMarkieren(e) {
+  function starteRandMarkieren(e, festerAnker) {
     /* ── Der Anker kommt vom PUNKT, nicht von der gesetzten Marke ──────
        activateTextEditingAt legt auf freier Flaeche einen Absatz an und
        setzt die Marke hinein (canvas/text.js, VORLAEUFIG). Als Anker
        waere das der falsche Ort: markiert werden soll ab der Stelle im
        Text, auf die gezeigt wurde, nicht ab dem eben Angelegten. */
     if (e.pointerType !== 'mouse') return;
-    const anker = stelleAnPunkt(e.clientX, e.clientY);
+    const zeilen = messeZeilen();
+    const anker = festerAnker || stelleInLeserichtung(e.clientX, e.clientY, zeilen);
     if (!anker) return;
 
     randMarkierenAbbrechen();   // ein etwaiger alter Lauf endet hier
     _markieren = {
-      id: e.pointerId, sx: e.clientX, sy: e.clientY,
-      node: anker.startContainer, offset: anker.startOffset, laeuft: false
+      id: e.pointerId, sx: e.clientX, sy: e.clientY, x: e.clientX, y: e.clientY,
+      node: anker.startContainer, offset: anker.startOffset, laeuft: false,
+      zeilen, rollBild: 0
     };
     /* In der Abfangphase und am Dokument: der Zeiger verlaesst beim
        Ziehen regelmaessig die Seite, und dann kaeme an ihr nichts mehr an. */
@@ -1118,8 +1199,11 @@ function attachInput(canvas, textDiv, objLayer, page) {
       // But we call activeTextEditingAt immediately so the cursor appears
       // where we want it before the browser has a chance to place its own.
       activateTextEditingAt(e.clientX, e.clientY, false);
-      // Nur die linke Taste markiert; die rechte gehoert dem Kontextmenue
-      if (e.button === 0) starteRandMarkieren(e);
+      /* Nur die linke Taste markiert; die rechte gehoert dem Kontextmenue.
+         Und nicht auf einem Bild: dessen Zug gehoert dem Bild. Der Lauf
+         rollt am Rahmenrand mit – ein Bild, das ueber den Seitenrand
+         gezogen wurde, landete damit ganz woanders. */
+      if (e.button === 0 && !target.closest('.obj-wrap')) starteRandMarkieren(e);
       return;
     }
 
@@ -1403,10 +1487,6 @@ function attachInput(canvas, textDiv, objLayer, page) {
      nächsten geschriebenen Wort. Getippt wurde dann dort – „ich klicke
      zwischen die Wörter und lande am Anfang des anderen".
 
-     Nur auf freier Fläche. Wer auf ein Zeichen klickt oder über Text
-     zieht, soll den Browser weiter machen lassen: Markieren, Doppelklick
-     aufs Wort, Ziehen über mehrere Zeilen kommen alle von dort.
-
      >>> Warum auch neben dem Text, nicht nur weit weg davon <<<
      Zwischen beidem liegt der Magnet: nah genug am Text, um an ihn zu
      gehören, aber über keinem Kasten. Dort setzt placeCaretAnywhere die
@@ -1415,15 +1495,141 @@ function attachInput(canvas, textDiv, objLayer, page) {
      an dieser Stelle selbst nichts findet. Gemeldet als „ich klicke
      neben den Doppelpunkt und lande am Anfang des Textes".
 
-     Erkennbar ist der Fall am Ziel des Klicks: liegt es auf .j-text
-     selbst, war unter dem Zeiger kein Inhalt – genau dann setzt die
-     Zeigerstellung unten die Marke auch selbst.
+     >>> Und inzwischen im ganzen Text <<<
+     Auf einem Zeichen durfte der Browser lange weitermachen. Sein
+     Ziehen folgte aber über leerer Fläche dem Zeiger nicht, und sein
+     Doppelklick lief über das Ende eines frei stehenden Absatzes hinaus
+     (siehe IN LESERICHTUNG und DOPPELKLICK). Marke, Ziehen, Doppel- und
+     Dreifachklick kommen deshalb alle von hier. Nur, was im Text seinen
+     eigenen Griff hat, bekommt den Druck unverändert.
      ══════════════════════════════════════════════════════════════════ */
+
+  /* Schalter, Formeln und die Griffe der Tabelle behandeln den Druck selbst. */
+  function eigenerGriff(el) {
+    return !!(el && el.closest && el.closest(
+      'input, button, select, textarea, [contenteditable="false"], .j-formula, [class*="griff"]'));
+  }
+
+  /* ══════════════════════════════════════════════════════════════════
+     DOPPELKLICK: DAS WORT, NICHT DER NACHBAR
+
+     >>> Gemeldet: „ein Doppelklick auf ein Wort waehlt alle Woerter" <<<
+     Gemessen: auf „links" in „oben links" markierte der Browser
+     „linksdie " – das erste Wort des Absatzes, der im DOM folgt. Frei
+     stehende Absaetze liegen ausserhalb des Textflusses, und zwischen
+     ihnen sieht er keine Wortgrenze: das Ende des einen und der Anfang
+     des naechsten laufen fuer ihn zu einem Wort zusammen.
+
+     Das Wort wird deshalb selbst bestimmt – nur innerhalb des Absatzes,
+     in dem geklickt wurde, und ohne das Leerzeichen dahinter.
+     ══════════════════════════════════════════════════════════════════ */
+  const WORTGRENZEN = (typeof Intl !== 'undefined' && typeof Intl.Segmenter === 'function')
+    ? new Intl.Segmenter(undefined, { granularity: 'word' }) : null;
+
+  /** Der Absatz um einen Textknoten – null, wenn der Text frei im Feld steht. */
+  function absatzUm(knoten) {
+    for (let el = knoten.parentElement; el && el !== textDiv; el = el.parentElement) {
+      if (/^(P|LI|TD|TH|H[1-6]|DIV|BLOCKQUOTE|PRE)$/.test(el.tagName)) return el;
+    }
+    return null;
+  }
+
+  /** Der Text des Absatzes am Stueck, dazu wo jeder Knoten darin anfaengt. */
+  function textStuecke(knoten) {
+    const absatz = absatzUm(knoten);
+    if (!absatz) return { text: knoten.nodeValue, stuecke: [{ n: knoten, ab: 0 }] };
+    const stuecke = [];
+    let text = '';
+    const lauf = document.createTreeWalker(absatz, NodeFilter.SHOW_TEXT);
+    for (let n = lauf.nextNode(); n; n = lauf.nextNode()) {
+      stuecke.push({ n, ab: text.length });
+      text += n.nodeValue;
+    }
+    return { text, stuecke };
+  }
+
+  /* Eine Stelle im zusammengesetzten Text zurueck in Knoten und Versatz.
+     An der Naht zweier Knoten gehoert der Anfang zum hinteren, das Ende
+     zum vorderen. */
+  function stelleImStueck(stuecke, pos, amEnde) {
+    for (const s of stuecke) {
+      const laenge = s.n.nodeValue.length;
+      if (pos < s.ab + laenge || (amEnde && pos === s.ab + laenge)) return { n: s.n, o: pos - s.ab };
+    }
+    const letzter = stuecke[stuecke.length - 1];
+    return { n: letzter.n, o: letzter.n.nodeValue.length };
+  }
+
+  function markiereWortAn(x, y) {
+    let rg = null;
+    try { rg = document.caretRangeFromPoint(x, y); } catch (err) { return; }
+    if (!rg || rg.startContainer.nodeType !== Node.TEXT_NODE || !markierbareStelle(rg.startContainer)) return;
+    const { text, stuecke } = textStuecke(rg.startContainer);
+    const eigen = stuecke.find(s => s.n === rg.startContainer);
+    if (!eigen) return;
+    const pos = eigen.ab + rg.startOffset;
+
+    let anfang, ende;
+    if (WORTGRENZEN) {
+      const teile = [...WORTGRENZEN.segment(text)];
+      let teil = teile.find(g => pos >= g.index && pos < g.index + g.segment.length);
+      /* In die rechte Haelfte des letzten Buchstabens geklickt: die Stelle
+         liegt dann schon HINTER dem Wort. Gemeint war trotzdem das Wort. */
+      const davor = teile.find(g => g.index + g.segment.length === pos);
+      if (!(teil && teil.isWordLike) && davor && davor.isWordLike) teil = davor;
+      if (!teil) return;
+      anfang = teil.index;
+      ende = teil.index + teil.segment.length;
+    } else {
+      const wortZeichen = /[\p{L}\p{N}_]/u;
+      anfang = ende = pos;
+      while (anfang > 0 && wortZeichen.test(text[anfang - 1])) anfang--;
+      while (ende < text.length && wortZeichen.test(text[ende])) ende++;
+      if (anfang === ende) return;
+    }
+    const a = stelleImStueck(stuecke, anfang, false);
+    const b = stelleImStueck(stuecke, ende, true);
+    const sel = window.getSelection();
+    if (sel) sel.setBaseAndExtent(a.n, a.o, b.n, b.o);
+  }
+
+  /** Dreifachklick: der ganze Absatz – oder frei im Feld die ganze Zeile. */
+  function markiereAbsatzAn(x, y) {
+    let rg = null;
+    try { rg = document.caretRangeFromPoint(x, y); } catch (err) { return; }
+    const sel = window.getSelection();
+    if (!rg || !sel || rg.startContainer.nodeType !== Node.TEXT_NODE
+        || !markierbareStelle(rg.startContainer)) return;
+    const knoten = rg.startContainer;
+    const absatz = absatzUm(knoten);
+    if (absatz) {
+      const ganz = document.createRange();
+      ganz.selectNodeContents(absatz);
+      sel.removeAllRanges();
+      sel.addRange(ganz);
+      return;
+    }
+    const text = knoten.nodeValue, pos = rg.startOffset;
+    const anfang = pos > 0 ? text.lastIndexOf('\n', pos - 1) + 1 : 0;
+    let ende = text.indexOf('\n', pos);
+    if (ende < 0) ende = text.length;
+    sel.setBaseAndExtent(knoten, anfang, knoten, ende);
+  }
+
+  /* Nur ein Druck der MAUS. Nach einem Fingertipp schickt der Browser
+     ein nachgereichtes mousedown hinterher – und genau dessen
+     Voreinstellung setzt fuer den Finger die Marke (siehe unten, MIT DEM
+     FINGER). Abgebrochen stand der Tipp ohne Schreibmarke da. */
+  let druckMitMaus = true;
+  textDiv.addEventListener('pointerdown', e => { druckMitMaus = e.pointerType === 'mouse'; }, true);
+
   textDiv.addEventListener('mousedown', e => {
-    if (S.mode !== 'cursor' || S.readOnly || e.button !== 0) return;
-    if (!textDiv.contains(e.target)) return;
-    if (e.target !== textDiv && !isFreeEditorAreaClick(e.clientX, e.clientY)) return;
+    if (!druckMitMaus || S.mode !== 'cursor' || S.readOnly || e.button !== 0) return;
+    if (!textDiv.contains(e.target) || eigenerGriff(e.target)) return;
     e.preventDefault();
+    if (e.shiftKey) return;   // erweitert schon im pointerdown
+    if (e.detail === 2) markiereWortAn(e.clientX, e.clientY);
+    else if (e.detail >= 3) markiereAbsatzAn(e.clientX, e.clientY);
   });
 
   /* ══════════════════════════════════════════════════════════════════
@@ -1475,18 +1681,24 @@ function attachInput(canvas, textDiv, objLayer, page) {
     if (e.pointerType !== 'mouse') return;
     if (e.button !== 0) return;
 
-    // Direct clicks on the editor container:
-    // normal text hits stay native, free-area hits use corrected manual caret.
-    if (textDiv.contains(e.target)) {
-      const forceManual = isFreeEditorAreaClick(e.clientX, e.clientY);
-      if (forceManual || e.target === textDiv) {
-        activateTextEditingAt(e.clientX, e.clientY, forceManual);
-        /* Genau hier bricht der mousedown-Hoerer oben den Browser ab – und
-           damit sein Markieren. Das Ziehen fuehrt deshalb der eigene Lauf
-           (MARKIEREN DARF NEBEN DEM TEXT ANFANGEN). */
-        starteRandMarkieren(e);
+    if (!textDiv.contains(e.target) || eigenerGriff(e.target)) return;
+
+    /* Der mousedown-Hoerer oben bricht den Browser ab – Marke und Ziehen
+       kommen deshalb von hier (DER BROWSER DARF DIE MARKE NICHT NOCH
+       EINMAL SETZEN). */
+    const sel = window.getSelection();
+    if (e.shiftKey && sel && sel.anchorNode && textDiv.contains(sel.anchorNode)) {
+      // Mit Umschalttaste: die bestehende Markierung bis hierher verlaengern
+      starteRandMarkieren(e, { startContainer: sel.anchorNode, startOffset: sel.anchorOffset });
+      if (_markieren) {
+        freieAbsaetzeInLeserichtung(textDiv);
+        markiereBis(_markieren);
       }
+      return;
     }
+    const forceManual = isFreeEditorAreaClick(e.clientX, e.clientY);
+    activateTextEditingAt(e.clientX, e.clientY, forceManual);
+    starteRandMarkieren(e);
   });
 }
 
