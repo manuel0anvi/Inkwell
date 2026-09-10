@@ -83,10 +83,6 @@
   let _stand = { versteckt: false, dateien: [] };
 
   let _offen = null;      // Kennung der aufgeschlagenen Datei
-  let _pdf = null;        // das offene PDF-Dokument (pdf.js)
-  let _bildUrl = '';      // objectURL des offenen Bildes
-  let _beobachter = null; // welche Seiten gerade im Ausschnitt liegen
-  let _sichtbar = new Set();
   let _rollTimer = null;
   let _breiteTimer = null;
   /* Jedes Aufschlagen bekommt eine Nummer. Eine Datei, die während des
@@ -125,13 +121,98 @@
      Speicher, obwohl höchstens eine angesehen wird.
      ══════════════════════════════════════════════════════════════════ */
 
-  /* Welche Datei im Kasten liegt – ob sie gerade zu sehen ist oder
-     nicht. _offen dagegen ist die, die AUFGESCHLAGEN ist. Nach dem
-     Zumachen ist _offen null und _imKasten steht weiter. */
-  let _imKasten = null;
   /* Erst wenn der Inhalt vollständig steht, darf er stehen bleiben –
-     eine halb geladene Datei wieder aufzuschlagen zeigte halbe Arbeit. */
+     eine halb geladene Datei wieder aufzuschlagen zeigte halbe Arbeit.
+     Gilt für den gerade GEZEIGTEN Satz; jeder Satz führt daneben sein
+     eigenes _fertig, weil mehrere zugleich bereitstehen. */
   let _fertig = false;
+
+  /* ══════════════════════════════════════════════════════════════════
+     JEDE UNTERLAGE HAT IHREN EIGENEN SATZ
+
+     Im Kasten liegt nicht mehr EINE Datei, sondern für jede
+     aufgeschlagene ein eigener Stapel Seiten (.griff-satz). Zu sehen ist
+     immer genau einer, die übrigen stehen ausgeblendet daneben.
+
+     >>> Warum <<<
+     Vorher blieb nur die zuletzt angesehene Datei liegen. Wer zwischen
+     Skript und Tafelbild hin und her wechselte, lud damit jedes Mal neu –
+     genau das, was das Stehenlassen verhindern sollte. Gemeldet wurde es
+     als „eines auf, das andere auf, wieder das erste: lädt wieder".
+
+     >>> Was an einem Satz hängt <<<
+     Sein PDF (pdf.js), sein Beobachter, seine gezeichneten Seiten und
+     seine Rollstelle. Das MUSS am Satz hängen und nicht in einer
+     Variablen für alle: ein Beobachter meldet sich auch für einen Satz,
+     der gerade nicht zu sehen ist, und zeichnete dann eine Seite aus dem
+     falschen Dokument.
+
+     >>> Wie viele <<<
+     Höchstens so viele, wie es Unterlagen geben darf (drei). Mehr kann
+     es gar nicht geben – wer eine wegnimmt, nimmt auch ihren Satz mit
+     (zeichne). Ein Buch hängt an Arbeitern, Puffern und Leinwänden;
+     drei davon sind der Preis dafür, dass Umschalten nichts kostet.
+     ══════════════════════════════════════════════════════════════════ */
+  const kasten = () => E('griff-view-body');
+
+  function satzVon(id) {
+    const k = kasten();
+    return (k && k.querySelector('.griff-satz[data-id="' + CSS.escape(String(id)) + '"]')) || null;
+  }
+
+  /** Ein leerer Satz für eine Datei – der vorige für dieselbe weicht. */
+  function satzAnlegen(id) {
+    const k = kasten();
+    if (!k) return null;
+    const alt = satzVon(id);
+    if (alt) raeumeSatz(alt);
+    const satz = document.createElement('div');
+    satz.className = 'griff-satz';
+    satz.dataset.id = String(id);
+    satz._sichtbar = new Set();
+    k.appendChild(satz);
+    return satz;
+  }
+
+  /** Alles weg, was an einem Satz hängt – Beobachter, Arbeiter, Puffer. */
+  function raeumeSatz(satz) {
+    if (!satz) return;
+    if (satz._beobachter) { try { satz._beobachter.disconnect(); } catch (err) { /* egal */ } }
+    if (satz._pdf) { try { satz._pdf.destroy(); } catch (err) { /* egal */ } }
+    if (satz._bildUrl) { try { URL.revokeObjectURL(satz._bildUrl); } catch (err) { /* egal */ } }
+    satz.remove();
+  }
+
+  /**
+   * Den gezeigten Satz aus dem Blick nehmen.
+   *
+   * Seine Rollstelle wird dabei in Pixeln gemerkt – der Kasten ist für
+   * alle Sätze derselbe, und wer zurückkommt, will genau dort stehen,
+   * nicht ungefähr. Der Anteil in der Datei (merkeStelle) ist etwas
+   * anderes: der überlebt das Beenden der App.
+   */
+  function satzWegblenden() {
+    const k = kasten();
+    if (!k) return;
+    for (const satz of k.querySelectorAll('.griff-satz:not([hidden])')) {
+      satz._rollte = k.scrollTop;
+      satz._quer = k.scrollLeft;
+      satz.hidden = true;
+    }
+  }
+
+  /** Einen Satz zeigen und an seine gemerkte Stelle rollen. */
+  function satzZeigen(satz) {
+    const k = kasten();
+    if (!k || !satz) return;
+    satz.hidden = false;
+    /* Erst nach dem Einblenden steht die Höhe wieder – vorher zeigte
+       scrollTop ins Leere. */
+    requestAnimationFrame(() => {
+      k.scrollTop = satz._rollte || 0;
+      k.scrollLeft = satz._quer || 0;
+    });
+  }
 
   const txt = (schluessel, ersatz) =>
     (typeof t === 'function' ? t(schluessel) : ersatz) || ersatz;
@@ -346,7 +427,12 @@
        nichts mehr zu suchen. Sonst hinge ein Buch im Speicher, das es
        nicht mehr gibt – oder eines, das gerade ausdrücklich aus dem Weg
        geräumt wurde. */
-    if (_imKasten && (_stand.versteckt || !datei(_imKasten))) raeumeKastenWeg();
+    const k = kasten();
+    if (k) {
+      for (const satz of k.querySelectorAll('.griff-satz')) {
+        if (_stand.versteckt || !datei(satz.dataset.id)) raeumeSatz(satz);
+      }
+    }
   }
 
   /* ══════════════════════════════════════════════════════════════════
@@ -534,19 +620,17 @@
     // Erst die Stelle der bisher offenen Datei sichern, dann wechseln
     merkeStelle();
 
-    /* Liegt sie schon im Kasten und ist vollständig, wird gar nichts
-       angefasst – aufschlagen heisst dann nur noch: sichtbar machen.
+    /* Steht ihr Satz schon bereit, wird gar nichts geladen – aufschlagen
+       heisst dann nur noch: einblenden. Ein halb gebauter Satz zählt
+       nicht (satz._fertig), der taugt nur zum Wegwerfen. */
+    let satz = satzVon(id);
+    const stehtSchon = !!(satz && satz._fertig);
 
-       Nachgesehen wird auch, ob wirklich noch etwas drinliegt. Würde die
-       Oberfläche den Kasten irgendwann neu aufbauen, stimmte _imKasten
-       zwar weiter, der Inhalt wäre aber weg – und der kurze Weg zeigte
-       eine leere Fläche statt der Datei. Ein Blick auf das erste Kind
-       beantwortet das ohne eigene Buchhaltung. */
-    const koerper = E('griff-view-body');
-    const stehtSchon = _fertig && String(_imKasten) === String(id)
-      && !!(koerper && koerper.firstChild);
-    if (!stehtSchon) raeumeKastenWeg();
+    // Die bisher gezeigte tritt zur Seite und merkt sich dabei ihre Stelle
+    satzWegblenden();
+
     _offen = String(id);
+    _fertig = stehtSchon;
     const lauf = ++_lauf;
 
     const v = ansicht();
@@ -562,19 +646,22 @@
     zeichneReiter();
     nachLayout();
 
-    /* Der kurze Weg: der Inhalt steht schon da. Nichts zu laden, nichts
-       zu leeren, keine Rollstelle wiederherzustellen – nur die Breite
-       kann sich seither geändert haben. Der Zoom steht schon: ihn hat
+    /* Der kurze Weg: der Satz steht schon da, er muss nur wieder in den
+       Blick. Nichts zu laden, nichts zu zeichnen – nur die Breite kann
+       sich seither geändert haben. Der Zoom steht bereits: ihn hat
        zoomAnwenden oben gesetzt, und zeigeZoomWert lief dabei mit. */
     if (stehtSchon) {
+      satzZeigen(satz);
       setTimeout(zeichneSichtbareNeu, 300);
       return;
     }
 
+    satz = satzAnlegen(id);
+    if (!satz) return;
     const laedt = document.createElement('div');
     laedt.className = 'griff-hinweis';
     laedt.textContent = txt('griffLaedt', 'wird geöffnet …');
-    koerper.appendChild(laedt);
+    satz.appendChild(laedt);
 
     let antwort;
     try {
@@ -600,8 +687,8 @@
        vorher seine Seiten aus – wer ihn hier schon wegnähme, sähe bei
        einem Skript zwei Sekunden lang eine leere Fläche. */
     try {
-      if (antwort.art === 'pdf') await zeigePdf(antwort.adresse, lauf);
-      else zeigeBild(antwort.bytes, antwort.mime);
+      if (antwort.art === 'pdf') await zeigePdf(antwort.adresse, lauf, satz);
+      else zeigeBild(antwort.bytes, antwort.mime, satz);
     } catch (err) {
       console.warn('[Griffbereit] Anzeigen fehlgeschlagen:', err?.message || err);
       if (lauf === _lauf) {
@@ -611,7 +698,7 @@
     }
     if (lauf !== _lauf) return;
 
-    _imKasten = String(id);
+    satz._fertig = true;
     _fertig = true;
     zeigeZoomWert();
 
@@ -633,14 +720,20 @@
     v.classList.add('open');
     const anzeige = E('griff-view-name');
     if (anzeige) anzeige.textContent = name || '';
-    const koerper = E('griff-view-body');
-    leere(koerper);
-    _imKasten = null;
+    /* Die Meldung steht in einem eigenen Satz. Als unfertiger fliegt er
+       beim Zumachen von selbst weg – aufzuheben ist an ihm nichts. */
+    const satz = _offen ? (satzVon(_offen) || satzAnlegen(_offen)) : null;
+    if (satz) {
+      leere(satz);
+      satz._fertig = false;
+      satz.hidden = false;
+      const p = document.createElement('div');
+      p.className = 'griff-fehlt-text';
+      p.textContent = text;
+      satz.appendChild(p);
+    }
     _fertig = false;
-    const p = document.createElement('div');
-    p.className = 'griff-fehlt-text';
-    p.textContent = text;
-    koerper.appendChild(p);
+    zeigeZoomWert();
     nachLayout();
   }
 
@@ -659,9 +752,16 @@
    */
   function schliesse() {
     merkeStelle();
+    /* Der Satz bleibt stehen, wo er steht – auch eingeblendet. Der Kasten
+       ist zugemacht 0 px breit, also ist nichts zu sehen, und seine
+       Rollstelle hält sich damit von selbst. Nur ein halb gebauter Satz
+       oder eine Meldung fliegt weg: aufzuheben ist daran nichts. */
+    const satz = _offen ? satzVon(_offen) : null;
+    if (satz && !satz._fertig) raeumeSatz(satz);
     _offen = null;
     _lauf++;
-    if (!_fertig) raeumeKastenWeg();
+    _fertig = false;
+    zeigeZoomWert();
 
     const v = ansicht();
     if (v) v.classList.remove('open');
@@ -669,45 +769,22 @@
     nachLayout();
   }
 
-  /** Alles weg, was im Kasten liegt – Inhalt, Arbeiter, Puffer. */
-  function raeumeKastenWeg() {
-    raeumeInhaltWeg();
-    leere(E('griff-view-body'));
-    _imKasten = null;
-    _fertig = false;
-    // Ohne Inhalt gibt es nichts zu vergrössern – die Knöpfe gehen weg
-    zeigeZoomWert();
-  }
-
-  /* Ein PDF hängt an Arbeitern und Puffern, ein Bild an einer URL. Beides
-     muss weg, sobald eine ANDERE Datei in den Kasten kommt – sonst
-     sammelt sich mit jedem Aufschlagen ein weiterer Satz an, und nach dem
-     zehnten Mal steht die App. */
-  function raeumeInhaltWeg() {
-    if (_beobachter) { _beobachter.disconnect(); _beobachter = null; }
-    _sichtbar = new Set();
-    if (_pdf) { try { _pdf.destroy(); } catch (err) { /* egal */ } _pdf = null; }
-    if (_bildUrl) { try { URL.revokeObjectURL(_bildUrl); } catch (err) { /* egal */ } _bildUrl = ''; }
-  }
-
   /* ══════════════════════════════════════════════════════════════════
      DER INHALT
      ══════════════════════════════════════════════════════════════════ */
 
-  function zeigeBild(bytes, mime) {
-    const koerper = E('griff-view-body');
-    leere(koerper);
-    _bildUrl = URL.createObjectURL(new Blob([bytes], { type: mime || 'image/png' }));
+  function zeigeBild(bytes, mime, satz) {
+    leere(satz);
+    satz._bildUrl = URL.createObjectURL(new Blob([bytes], { type: mime || 'image/png' }));
     const img = document.createElement('img');
     img.className = 'griff-blatt';
     img.alt = '';
-    img.src = _bildUrl;
-    koerper.appendChild(img);
+    img.src = satz._bildUrl;
+    satz.appendChild(img);
   }
 
-  async function zeigePdf(adresse, lauf) {
+  async function zeigePdf(adresse, lauf, satz) {
     if (typeof pdfjsLib === 'undefined') throw new Error('pdf.js fehlt');
-    const koerper = E('griff-view-body');
 
     /* >>> Nur die Adresse, nicht die Datei <<<
        Hier lag einmal das ganze PDF als Puffer, durch die Brücke
@@ -732,7 +809,7 @@
       disableStream: true
     }).promise;
     if (lauf !== _lauf) { try { doc.destroy(); } catch (err) { /* egal */ } return; }
-    _pdf = doc;
+    satz._pdf = doc;
 
     // Die Verhältnisse vorab – daran hängt die Höhe der leeren Kästen
     const verhaeltnisse = [];
@@ -745,25 +822,25 @@
     }
     const ersatz = ueblicheForm(verhaeltnisse);
 
-    leere(koerper);
+    leere(satz);
     for (let n = 1; n <= doc.numPages; n++) {
-      const kasten = document.createElement('div');
-      kasten.className = 'griff-seite';
-      kasten.dataset.nr = String(n);
-      kasten.style.aspectRatio = String(verhaeltnisse[n - 1] || ersatz);
-      koerper.appendChild(kasten);
+      const seitenkasten = document.createElement('div');
+      seitenkasten.className = 'griff-seite';
+      seitenkasten.dataset.nr = String(n);
+      seitenkasten.style.aspectRatio = String(verhaeltnisse[n - 1] || ersatz);
+      satz.appendChild(seitenkasten);
     }
 
     /* Was in die Nähe kommt, wird gezeichnet. 600 px Vorlauf: beim
        Rollen soll die Seite schon dastehen, nicht erst entstehen. */
-    _beobachter = new IntersectionObserver((eintraege) => {
+    satz._beobachter = new IntersectionObserver((eintraege) => {
       for (const e of eintraege) {
-        if (e.isIntersecting) { _sichtbar.add(e.target); zeichneSeite(e.target); }
-        else _sichtbar.delete(e.target);
+        if (e.isIntersecting) { satz._sichtbar.add(e.target); zeichneSeite(e.target); }
+        else satz._sichtbar.delete(e.target);
       }
-    }, { root: koerper, rootMargin: '600px 0px' });
+    }, { root: kasten(), rootMargin: '600px 0px' });
 
-    for (const k of koerper.querySelectorAll('.griff-seite')) _beobachter.observe(k);
+    for (const k of satz.querySelectorAll('.griff-seite')) satz._beobachter.observe(k);
   }
 
   /**
@@ -792,8 +869,16 @@
     return beste.wert;
   }
 
-  async function zeichneSeite(kasten) {
-    if (!_pdf || kasten._zeichnet) return;
+  async function zeichneSeite(seitenkasten) {
+    /* >>> Das Dokument kommt vom eigenen Satz <<<
+       Hier stand eine Variable für alle. Seit mehrere Sätze zugleich
+       bereitstehen, meldet sich auch der Beobachter eines Satzes, der
+       gerade nicht zu sehen ist – und der zeichnete dann eine Seite aus
+       dem falschen Buch. */
+    const satz = seitenkasten.parentElement;
+    const pdf = satz && satz._pdf;
+    if (!pdf || seitenkasten._zeichnet) return;
+    const kasten = seitenkasten;
     const breite = kasten.clientWidth;
     if (breite < 10) return;
 
@@ -808,7 +893,7 @@
     kasten._zeichnet = true;
     const lauf = _lauf;
     try {
-      const seite = await _pdf.getPage(Number(kasten.dataset.nr));
+      const seite = await pdf.getPage(Number(kasten.dataset.nr));
       if (lauf !== _lauf) return;
 
       const roh = seite.getViewport({ scale: 1 });
@@ -835,7 +920,9 @@
 
   /** Nach dem Ziehen an der Kante: was im Ausschnitt liegt, neu und scharf. */
   function zeichneSichtbareNeu() {
-    for (const k of _sichtbar) zeichneSeite(k);
+    const satz = _offen ? satzVon(_offen) : null;
+    if (!satz || !satz._sichtbar) return;
+    for (const k of satz._sichtbar) zeichneSeite(k);
   }
 
   /* ══════════════════════════════════════════════════════════════════

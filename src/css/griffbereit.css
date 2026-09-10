@@ -505,6 +505,31 @@ body.griff-reiter-da .pg-scroll {
   border-radius: 3px
 }
 
+/* ══ EIN STAPEL JE UNTERLAGE ═════════════════════════════════════════
+   Im Kasten liegt für jede aufgeschlagene Datei ein eigener Stapel; zu
+   sehen ist immer genau einer, die übrigen stehen ausgeblendet daneben
+   (ui/griffbereit.js). So kostet das Umschalten zwischen zwei Unterlagen
+   nichts – vorher wurde die andere jedes Mal neu geladen.
+   ════════════════════════════════════════════════════════════════════ */
+
+.griff-satz {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  /* Dieselbe Überlegung wie beim Kasten: eine zugezoomte Seite ist
+     breiter als die Spalte, und mittig ausgerichtet käme man an ihr
+     linkes Ende nie heran. */
+  align-items: safe center
+}
+
+/* >>> Muss sein <<<
+   display auf einem Element schlägt das eingebaute display:none von
+   [hidden]. Ohne diese Zeile stünden alle Stapel übereinander. */
+.griff-satz[hidden] {
+  display: none
+}
+
 /* Die Breite trägt den Zoom. Nicht transform: scale() – vergrössert
    würde damit das fertige Bild, und die Schrift eines PDF wäre unscharf.
    So wird der Kasten breiter und die Seite darin neu gezeichnet

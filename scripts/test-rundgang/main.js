@@ -68,7 +68,11 @@ const EIN_PIXEL = Buffer.from(
   'base64');
 
 ipcMain.handle('griff-liste', () => griffAbbild());
-ipcMain.handle('griff-waehlen', () => ({ id: 'g1', art: 'bild', vorschlag: 'Tafelbild' }));
+let griffNaechste = 0;
+ipcMain.handle('griff-waehlen', () => {
+  griffNaechste++;
+  return { id: 'g' + griffNaechste, art: 'bild', vorschlag: 'Unterlage ' + griffNaechste };
+});
 ipcMain.handle('griff-abgelegt', () => [{ id: 'g2', art: 'pdf', vorschlag: 'Skript' }]);
 ipcMain.handle('griff-uebernehmen', (_, id, name) => {
   griffStand.dateien.push({
@@ -1377,6 +1381,15 @@ app.on('ready', async () => {
       if (zeile.querySelector('.griff-zeile-name').textContent !== 'Tafelbild')
         throw new Error('der Name kam nicht an');`, 340);
 
+    await schritt('Eine zweite Unterlage kommt dazu', `
+      E('griff-waehlen').click();
+      await new Promise(r => setTimeout(r, 250));
+      E('txt-modal-in').value = 'Skript';
+      E('txt-modal-ok').click();
+      await new Promise(r => setTimeout(r, 300));
+      if (document.querySelectorAll('.griff-zeile').length !== 2)
+        throw new Error('es sind nicht zwei Zeilen');`, 340);
+
     await schritt('Zugeklappt steht der Reiter an der Kante', `
       E('griff-panel-close').click();
       await new Promise(r => setTimeout(r, 350));
@@ -1496,6 +1509,65 @@ app.on('ready', async () => {
       if (Math.abs(E('griff-view-body').scrollTop - stelle) > 2)
         throw new Error('die Rollstelle ging verloren: '
           + E('griff-view-body').scrollTop + ' statt ' + stelle);`, 320);
+
+    /* >>> Der gemeldete Fall <<<
+       Eines auf, das andere auf, wieder das erste – und das erste lud
+       jedes Mal neu, weil nur EINE Datei bereitgehalten wurde. Jetzt hat
+       jede ihren eigenen Stapel. Der Beweis ist wieder die Identitaet der
+       Knoten: derselbe Stapel, dasselbe Bild darin. */
+    await schritt('Zwischen zwei Unterlagen umschalten laedt nichts neu', `
+      const v = E('griff-view');
+      const reiter = () => [...E('griff-reiter').querySelectorAll('.griff-reiter-btn')];
+      const tippe = (i) => {
+        const b = reiter()[i];
+        if (!b) throw new Error('kein Reiter ' + i);
+        const zeig = (art, x) => b.dispatchEvent(new PointerEvent(art,
+          { pointerId: 20 + i, clientX: x, clientY: 400, bubbles: true }));
+        zeig('pointerdown', 1400); zeig('pointerup', 1340);
+      };
+      const gezeigt = () => document.querySelector('.griff-satz:not([hidden])');
+
+      /* Erst zumachen: bei offener Datei nimmt zeichneReiter die
+         Rechtecke ganz aus dem Baum, nicht nur aus dem Blick. */
+      if (E('griff-view').classList.contains('open')) {
+        E('griff-view-close').click();
+        await new Promise(r => setTimeout(r, 500));
+      }
+
+      // Die erste
+      tippe(0);
+      await new Promise(r => setTimeout(r, 700));
+      const ersteA = gezeigt();
+      if (!ersteA) throw new Error('die erste kam nicht');
+      const kennungA = ersteA.dataset.id;
+      E('griff-view-close').click();
+      await new Promise(r => setTimeout(r, 500));
+
+      // Die zweite
+      tippe(1);
+      await new Promise(r => setTimeout(r, 700));
+      const ersteB = gezeigt();
+      if (!ersteB) throw new Error('die zweite kam nicht');
+      if (ersteB.dataset.id === kennungA) throw new Error('es kam wieder dieselbe');
+      if (document.querySelectorAll('.griff-satz').length !== 2)
+        throw new Error('es stehen nicht zwei Stapel bereit');
+      if (document.querySelectorAll('.griff-satz:not([hidden])').length !== 1)
+        throw new Error('es ist mehr als einer zu sehen');
+      E('griff-view-close').click();
+      await new Promise(r => setTimeout(r, 500));
+
+      // Und wieder die erste – ohne einen einzigen Ladevorgang
+      tippe(0);
+      await new Promise(r => setTimeout(r, 700));
+      if (gezeigt() !== ersteA) throw new Error('die erste wurde neu gebaut');
+      if (!v.classList.contains('open')) throw new Error('sie ging nicht auf');
+
+      // Und noch einmal zurueck zur zweiten
+      E('griff-view-close').click();
+      await new Promise(r => setTimeout(r, 500));
+      tippe(1);
+      await new Promise(r => setTimeout(r, 700));
+      if (gezeigt() !== ersteB) throw new Error('die zweite wurde neu gebaut');`, 340);
 
     /* >>> Zwei Spalten an einer Kante sind genug <<<
        Die offene Unterlage sitzt dort, wo auch die Kommentarleiste
