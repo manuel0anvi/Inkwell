@@ -15,6 +15,8 @@
        website/icon.ico    dasselbe als Symboldatei für den Browser
        icon.ico            dasselbe für den Anwendungsbau (electron-builder)
        build/appx/         die Kacheln für das Store-Paket
+       build/store/        das Bild für den Store-Eintrag, von Hand
+                           hochzuladen (siehe unten)
 
    Aufruf:  npm run make-icons
 
@@ -142,6 +144,30 @@ function aufFlaeche(square, breite, hoehe, anteil) {
   return { width: breite, height: hoehe, data };
 }
 
+/* ── Bild für den Store-Eintrag ──────────────────────────────────────
+   Das ist NICHT dasselbe wie die Kacheln oben. Die Kacheln stecken im
+   Paket und zeigen sich auf dem Rechner des Nutzers; dieses Bild steht
+   auf der Store-Seite und wird im Partner Center von Hand hochgeladen,
+   unter "Store listings" → "Store logos" → "1:1 App tile icon".
+
+   Ohne dieses Bild nimmt der Store die Kachel aus dem Paket. Mit ihm hat
+   es Vorrang - deshalb muss es mitgeaendert werden, sonst steht im Store
+   noch monatelang das alte Zeichen.
+
+   300x300 ist die vom Store verlangte Groesse. Der Rand ringsum bleibt
+   durchsichtig, damit die runden Ecken auf hellem wie dunklem Grund der
+   Store-Seite rund bleiben.
+   ─────────────────────────────────────────────────────────────────── */
+
+const STORE_DIR = path.join(ROOT, 'build', 'store');
+
+function writeStoreListing(square) {
+  fs.mkdirSync(STORE_DIR, { recursive: true });
+  const bild = aufFlaeche(square, 300, 300, 0.90);
+  fs.writeFileSync(path.join(STORE_DIR, 'AppTileIcon-300x300.png'), png.encode(bild));
+  console.log('geschrieben: build/store/AppTileIcon-300x300.png (fuer das Partner Center)');
+}
+
 function writeAppxAssets(square) {
   fs.mkdirSync(APPX_DIR, { recursive: true });
 
@@ -189,6 +215,7 @@ function main() {
   console.log('geschrieben: website/icon.ico und icon.ico (' + ICO_SIZES.join(', ') + ')');
 
   writeAppxAssets(square);
+  writeStoreListing(square);
 }
 
 main();
