@@ -1052,6 +1052,78 @@ app.on('ready', async () => {
       schwebend.striche === 0 && Math.abs(schwebend.oben - vorHand.oben) < 3,
       JSON.stringify(schwebend));
 
+    /* ══════════════════════════════════════════════════════════════════
+       UND DANACH GEHOEREN DIE FINGER GLEICH WIEDER DEM BLATT
+
+       Gemeldet: „bin ich fertig mit Schreiben und will mit den Fingern
+       scrollen oder herauszoomen, dauert es ein bis zwei Sekunden."
+       Verlaesst der Stift den Bereich ueber dem Bildschirm, meldet er das
+       mit pointerout ohne Ziel – danach bleibt nur ein kurzer Nachlauf.
+       ══════════════════════════════════════════════════════════════════ */
+    abschnitt('Nach dem Schreiben zählen die Finger gleich wieder');
+    await dbg.sendCommand('Input.dispatchMouseEvent', {
+      type: 'mouseMoved', button: 'none', buttons: 0, pointerType: 'pen',
+      x: handPunkt.x - 150, y: handPunkt.y - 40 });
+    await warte(30);
+    const nochDa = await js('stiftInDerNaehe()');
+    await js(`document.dispatchEvent(new PointerEvent('pointerout',
+      { bubbles: true, pointerType: 'pen', pointerId: 9 })); true`);
+    await warte(350);
+    const stiftWeg = await js('stiftInDerNaehe()');
+    pruefe('Schwebt der Stift, gilt er als nah', nochDa === true, String(nochDa));
+    pruefe('Hat er den Bildschirm verlassen, ist er nach einer Drittelsekunde weg',
+      stiftWeg === false, 'stiftInDerNaehe() ist noch ' + stiftWeg);
+
+    /* ══════════════════════════════════════════════════════════════════
+       ZOOMEN UM DIE FINGER
+
+       Gemeldet: „wenn ich normal zoome, springt es auf einen anderen
+       Punkt." setZoom hielt die Mitte des Rahmens fest, die Stelle unter
+       den Fingern lief davon.
+       ══════════════════════════════════════════════════════════════════ */
+    abschnitt('Zoomen hält die Stelle unter den Fingern');
+    await bisStiftWeg();
+    const unterFingern = (p) => js(`(() => {
+      const r = document.getElementById('pages-wrap').getBoundingClientRect();
+      const z = getZoom();
+      return { x: (${p.x} - r.left) / z, y: (${p.y} - r.top) / z, z }; })()`);
+
+    async function kneife(mitte, von, bis, schritte) {
+      const finger = a => ([
+        { x: Math.round(mitte.x - a), y: Math.round(mitte.y), id: 1, force: 1 },
+        { x: Math.round(mitte.x + a), y: Math.round(mitte.y), id: 2, force: 1 }]);
+      await dbg.sendCommand('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: finger(von) });
+      await warte(40);
+      for (let i = 1; i <= schritte; i++) {
+        await dbg.sendCommand('Input.dispatchTouchEvent',
+          { type: 'touchMove', touchPoints: finger(von + (bis - von) * i / schritte) });
+        await warte(40);
+      }
+      const unter = await unterFingern(mitte);    // gemessen, solange sie liegen
+      await dbg.sendCommand('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+      await warte(300);
+      return unter;
+    }
+
+    for (const [name, anfang, von, bis, auchWaagerecht] of [
+      ['bis 120 %, dort wird gerollt', 1, 60, 76, false],
+      ['darueber, dort wird geschoben', 1.5, 60, 110, true]]) {
+      await js(`(() => { deselectStroke(); switchMode('cursor'); setZoom(${anfang});
+        document.getElementById('pg-scroll').scrollTop = 150; return true; })()`);
+      await warte(500);
+      const seite = await stelle(350);
+      const mitte = { x: seite.x - 140, y: seite.y };
+      const vorZoom = await unterFingern(mitte);
+      const nachZoom = await kneife(mitte, von, bis, 8);
+      const fehlY = Math.round((nachZoom.y - vorZoom.y) * nachZoom.z);
+      const fehlX = Math.round((nachZoom.x - vorZoom.x) * nachZoom.z);
+      pruefe('Zoom ' + name + ': er aendert sich (' + vorZoom.z.toFixed(2) + ' → ' + nachZoom.z.toFixed(2) + ')',
+        nachZoom.z > vorZoom.z * 1.05, JSON.stringify(nachZoom));
+      pruefe('Und die Stelle unter den Fingern bleibt stehen (' + fehlX + ' / ' + fehlY + ' px daneben)',
+        Math.abs(fehlY) <= 6 && (!auchWaagerecht || Math.abs(fehlX) <= 6),
+        JSON.stringify({ vorZoom, nachZoom }));
+    }
+
     fertig(0);
   } catch (err) {
     zeilen.push('ABBRUCH ' + ((err && err.stack) || err));

@@ -64,18 +64,44 @@ document.addEventListener('pointercancel', e => {
    die Hand bleibt liegen oder setzt neu auf.
 
    Gilt in jeder Stellung, nicht nur beim Zeichnen: der Stift greift aus
-   der Zeigerstellung heraus ohnehin zum Stift (canvas/input.js). */
-let _stiftGesehen = 0;
-const STIFT_NAEHE_MS = 1000;
+   der Zeigerstellung heraus ohnehin zum Stift (canvas/input.js).
 
-document.addEventListener('pointermove', e => {
-  if (e.pointerType === 'pen') _stiftGesehen = Date.now();
+   >>> Aber nur, solange er WIRKLICH schwebt <<<
+   Zuerst galt eine feste Sekunde nach der letzten Meldung. Wer fertig
+   geschrieben hatte und mit zwei Fingern scrollen oder herauszoomen
+   wollte, wartete damit ein bis zwei Sekunden – gemeldet genau so. Der
+   Stift sagt aber selbst, wann er den Bereich ueber dem Bildschirm
+   verlaesst: pointerout ohne ein Ziel, in das er hinuebergeht. Danach
+   bleibt nur ein kurzer Nachlauf. Die Frist nach der letzten Bewegung
+   bleibt als Notbremse, falls diese Meldung einmal ausbleibt. */
+let _stiftGesehen = 0;
+let _stiftWeg = 0;
+let _stiftSchwebt = false;
+const STIFT_NACHLAUF_MS = 250;   // nach dem Verlassen des Schwebebereichs
+const STIFT_STILL_MS = 800;      // ein schwebender Stift, der nichts mehr meldet
+
+function stiftIstDa(e) {
+  if (e.pointerType !== 'pen') return;
+  _stiftSchwebt = true;
+  _stiftGesehen = Date.now();
+}
+document.addEventListener('pointermove', stiftIstDa, { capture: true, passive: true });
+document.addEventListener('pointerover', stiftIstDa, { capture: true, passive: true });
+document.addEventListener('pointerdown', stiftIstDa, { capture: true, passive: true });
+
+document.addEventListener('pointerout', e => {
+  // Mit einem Ziel wechselt er nur das Element darunter
+  if (e.pointerType !== 'pen' || e.relatedTarget) return;
+  _stiftSchwebt = false;
+  _stiftWeg = Date.now();
 }, { capture: true, passive: true });
 
 /** Ist ein Stift auf oder knapp ueber dem Bildschirm – oder war es gerade? */
 function stiftInDerNaehe() {
   if (_penPointers.size > 0) return true;
-  return Date.now() - Math.max(_stiftGesehen, _penLiftTime) < STIFT_NAEHE_MS;
+  const jetzt = Date.now();
+  if (_stiftSchwebt && jetzt - _stiftGesehen < STIFT_STILL_MS) return true;
+  return jetzt - Math.max(_stiftWeg, _penLiftTime) < STIFT_NACHLAUF_MS;
 }
 
 /* ══════════════════════════════════════════════════════════════════════

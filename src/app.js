@@ -1696,24 +1696,44 @@ E('btn-zoom-reset')?.addEventListener('click', zoomReset);
       if (!s || !_pinchDist) return;
 
       if (isVerticalMode()) _verticalAutoFit = false;
-      // Vor setZoom lesen: _applyZoom schreibt transform neu und wirft die
-      // Verschiebung dabei weg
-      const vorher = getPanOffset();
-      setZoom(_pinchZoom * (s.d / _pinchDist));
 
-      /* ── Zwei Finger bewegen die Seite auch ───────────────────────
-         Hier wurde nur gezoomt. Solange der Finger noch scrollen durfte,
-         fiel das nicht auf; seit er zeichnet, ist das Schieben mit zwei
-         Fingern der einzige Weg, ueber der Seite weiterzukommen – und
-         genau das verspricht der Hinweis beim Einschalten. */
-      const dx = s.mx - _pinchMidX, dy = s.my - _pinchMidY;
+      /* ══ DER PUNKT UNTER DEN FINGERN BLEIBT UNTER DEN FINGERN ══════
+         >>> Gemeldet: „wenn ich normal zoome, springt es auf einen
+         anderen Punkt" <<<
+         setZoom haelt die MITTE DES RAHMENS fest, nicht die Stelle
+         zwischen den Fingern. Wer oben links hineinzoomte, sah das Blatt
+         unter den Fingern davonlaufen. Dazu wurde die Fingerbewegung
+         getrennt davon addiert – beides zusammen ergab keinen Punkt, der
+         stillsteht.
+
+         Gemerkt wird deshalb, welche Stelle des Blattes unter der
+         vorigen Fingermitte lag (in ungezoomten Pixeln). Nach dem Zoom
+         wird das Blatt so geschoben, dass genau diese Stelle unter der
+         JETZIGEN Fingermitte liegt. Das Schieben mit zwei Fingern ist
+         darin gleich mit enthalten. */
+      const pw = E('pages-wrap');
+      const vorZ = getZoom();
+      const vor = pw.getBoundingClientRect();
+      const ux = (_pinchMidX - vor.left) / vorZ;
+      const uy = (_pinchMidY - vor.top) / vorZ;
+
+      setZoom(_pinchZoom * (s.d / _pinchDist));
+      const z = getZoom();
       _pinchMidX = s.mx; _pinchMidY = s.my;
+
       if (_zoom > panThreshold()) {
-        setPan(vorher.x + dx / _zoom, vorher.y + dy / _zoom);
+        /* _applyZoom hat die Verschiebung eben weggeworfen – gemessen wird
+           also ohne sie, und sie wird ganz neu gesetzt. Sie liegt IM
+           Massstab, zaehlt auf dem Schirm also z-fach. */
+        const nach = pw.getBoundingClientRect();
+        setPan((s.mx - nach.left) / z - ux, (s.my - nach.top) / z - uy);
       } else {
-        resetPan();
-        sc.scrollTop -= dy;
-        sc.scrollLeft -= dx;
+        /* Die Rollhoehe waechst sonst erst beim Loslassen mit, und die
+           Stelle liesse sich beim Hineinzoomen nicht erreichen. */
+        passeRollhoeheAn();
+        const nach = pw.getBoundingClientRect();
+        sc.scrollTop += (nach.top + uy * z) - s.my;
+        sc.scrollLeft += (nach.left + ux * z) - s.mx;
       }
       pruefeLetzteLeer();
     });
@@ -1743,7 +1763,10 @@ E('btn-zoom-reset')?.addEventListener('click', zoomReset);
          war, und der Rest dieser Beruehrung zaehlt nicht mehr.
      ══════════════════════════════════════════════════════════════════ */
   const PINCH_TOTZONE = 14;         // Pixel, bis zwei Beruehrungen ziehen
-  const HAND_VOR_STIFT_MS = 1500;   // so spaet darf der Stift nachkommen
+  /* Knapp: eine Hand liegt vielleicht eine halbe Sekunde vor dem Stift.
+     Wer mit zwei Fingern zoomt und danach zum Stift greift, soll seinen
+     Zoom behalten. */
+  const HAND_VOR_STIFT_MS = 700;
   let _pinchGezogen = false;
   let _hand = null;                 // { anfang, ansicht, verworfen }
 
