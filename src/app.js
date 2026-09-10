@@ -1743,7 +1743,21 @@ E('btn-zoom-reset')?.addEventListener('click', zoomReset);
   function pinchBeenden() {
     if (_pinchBild) { cancelAnimationFrame(_pinchBild); _pinchBild = 0; }
     _pinchZuletzt = null;
+
+    /* ══ DIE VERSCHIEBUNG UEBERLEBT DAS LOSLASSEN ═══════════════════
+       >>> Gemeldet: „ich schreibe, zoome woanders hin – und sobald ich
+       die Finger loslasse, springt es dorthin zurueck, wo ich
+       geschrieben habe" <<<
+       Ueber panThreshold() wird nicht gerollt, sondern verschoben: die
+       Lage steht im transform, die Rollposition bleibt, wo sie war. Die
+       Nacharbeit beim Loslassen (_applyZoom) schreibt das transform aber
+       neu – nur mit dem Massstab. Die Verschiebung war weg, und zu sehen
+       war wieder die alte Rollposition: die Stelle, an der geschrieben
+       worden war. Seit der Zoom um die Finger rechnet, steckt fast die
+       ganze Bewegung in dieser Verschiebung. */
+    const pan = getPanOffset();
     if (typeof beendeZoomGeste === 'function') beendeZoomGeste();
+    if (_zoom > panThreshold()) setPan(pan.x, pan.y);
   }
 
   /* ══════════════════════════════════════════════════════════════════

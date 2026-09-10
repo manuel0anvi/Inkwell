@@ -1127,6 +1127,17 @@ app.on('ready', async () => {
       pruefe('Und die Stelle unter den Fingern bleibt stehen (' + fehlX + ' / ' + fehlY + ' px daneben)',
         Math.abs(fehlY) <= 6 && (!auchWaagerecht || Math.abs(fehlX) <= 6),
         JSON.stringify({ vorZoom, nachZoom }));
+
+      /* Und NACH dem Loslassen. Gemeldet: „sobald ich die Finger loslasse,
+         springt es dorthin zurueck, wo ich geschrieben habe" – die
+         Nacharbeit beim Loslassen warf die Verschiebung weg. Gemessen
+         wurde vorher nur, solange die Finger lagen. */
+      const losgelassen = await unterFingern(mitte);
+      const sprungY = Math.round((losgelassen.y - vorZoom.y) * losgelassen.z);
+      const sprungX = Math.round((losgelassen.x - vorZoom.x) * losgelassen.z);
+      pruefe('Auch nach dem Loslassen bleibt sie dort (' + sprungX + ' / ' + sprungY + ' px daneben)',
+        Math.abs(sprungY) <= 6 && (!auchWaagerecht || Math.abs(sprungX) <= 6),
+        JSON.stringify({ vorZoom, losgelassen }));
     }
 
     /* ══════════════════════════════════════════════════════════════════
