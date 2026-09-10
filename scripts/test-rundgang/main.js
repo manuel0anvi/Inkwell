@@ -1499,8 +1499,27 @@ app.on('ready', async () => {
       E('txt-modal-in').value = 'Skript';
       E('txt-modal-ok').click();
       await new Promise(r => setTimeout(r, 300));
-      if (document.querySelectorAll('.griff-zeile').length !== 2)
-        throw new Error('es sind nicht zwei Zeilen');`, 340);
+      const zeilen = [...document.querySelectorAll('.griff-zeile')];
+      if (zeilen.length !== 2) throw new Error('es sind nicht zwei Zeilen');
+
+      /* >>> Und man muss sie SEHEN <<<
+         Gemeldet wurde einmal, die neue Unterlage stehe „hinter der
+         ersten in der Liste". Gezaehlt wird schnell etwas, das gar nicht
+         zu sehen ist – deshalb hier: jede Zeile hat eine Hoehe, liegt im
+         Kasten der Liste und nicht auf der anderen. */
+      const kasten = E('griff-liste').getBoundingClientRect();
+      let vorigeUnterkante = -Infinity;
+      for (const z of zeilen) {
+        const r = z.getBoundingClientRect();
+        const name = (z.querySelector('.griff-zeile-name') || {}).textContent;
+        if (r.height < 10) throw new Error('die Zeile "' + name + '" ist flach: ' + r.height);
+        if (r.width < 40) throw new Error('die Zeile "' + name + '" ist schmal: ' + r.width);
+        if (r.top < kasten.top - 1 || r.bottom > kasten.bottom + 1)
+          throw new Error('die Zeile "' + name + '" liegt ausserhalb der Liste');
+        if (r.top < vorigeUnterkante - 1)
+          throw new Error('die Zeile "' + name + '" liegt auf der vorigen');
+        vorigeUnterkante = r.bottom;
+      }`, 340);
 
     await schritt('Zugeklappt steht der Reiter an der Kante', `
       E('griff-panel-close').click();

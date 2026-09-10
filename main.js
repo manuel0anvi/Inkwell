@@ -2261,11 +2261,26 @@ function griffLies() {
     griffStandZeit = stat.mtimeMs;
     return griffStand;
   } catch (err) {
-    /* Gibt es die Datei gar nicht, ist der leere Stand die Wahrheit –
-       und zwar nur dann. Jeder andere Fehler lässt stehen, was zuletzt
-       wirklich dastand. */
+    /* >>> Keine Datei heisst NICHT: nichts da <<<
+       Hier wurde bei ENOENT ein frischer, leerer Stand angelegt – und
+       damit alles weggeworfen, was schon im Speicher stand und nur noch
+       nicht geschrieben war. Genau das passierte beim allerersten
+       Hinzufügen auf einem Rechner ohne diese Datei:
+
+         griffHeft()   legt das Fach des Hefts an – im Speicher
+         push          die Unterlage kommt hinein
+         griffSchreib  ruft griffLies() … und bekommt einen LEEREN Stand
+                       zurück, der dann gespeichert wird
+
+       Die Antwort ans Fenster trug die Datei noch, die Platte nicht. Beim
+       nächsten Blick war sie weg. Gemeldet als „ich kann nichts mehr
+       hinzufügen, es taucht in der Liste nicht auf".
+
+       Fehlt die Datei, gilt deshalb weiter, was im Speicher steht; leer
+       wird es nur, wenn dort auch nichts ist. Die Zeit auf -1, damit der
+       nächste erfolgreiche Blick wirklich neu liest. */
     if (err && err.code === 'ENOENT') {
-      griffStand = griffLeer();
+      if (!griffStand) griffStand = griffLeer();
       griffStandZeit = -1;
       return griffStand;
     }

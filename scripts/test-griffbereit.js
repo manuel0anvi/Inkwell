@@ -354,9 +354,71 @@ console.log('\n8. Ein Fach je Heft\n');
     check('Ein Zugriffsfehler wirft die Liste nicht weg',
       ctx.griffHeft('heftA').dateien.length, 1);
 
-    // Ist die Datei wirklich weg, ist die leere Liste die Wahrheit
+    /* Auch eine FEHLENDE Datei wirft nichts weg. Hier stand einmal die
+       leere Liste als „Wahrheit" – und genau daran ging die erste
+       Unterlage auf einem frischen Rechner verloren: die Datei gibt es
+       noch nicht, weil sie noch nie geschrieben wurde, und was im
+       Speicher steht, wartet gerade darauf. Siehe den Abschnitt weiter
+       unten, der genau diesen Ablauf durchgeht. */
     ctx.__fehler(Object.assign(new Error('ENOENT'), { code: 'ENOENT' }));
-    check('Gar keine Datei heisst leer', ctx.griffHeft('heftA').dateien.length, 0);
+    check('Eine fehlende Datei wirft nichts weg', ctx.griffHeft('heftA').dateien.length, 1);
+  }
+
+  {
+    /* >>> Die erste Unterlage auf einem frischen Rechner <<<
+       Gibt es die Ablagedatei noch gar nicht, legt griffHeft das Fach
+       im Speicher an. griffSchreib ruft dann griffLies – und das gab
+       bei ENOENT einen FRISCHEN leeren Stand zurueck, der prompt
+       gespeichert wurde. Die Antwort ans Fenster trug die Unterlage
+       noch, die Platte nicht; beim naechsten Blick war sie weg.
+
+       Gemeldet als „ich kann nichts mehr hinzufuegen, es taucht in der
+       Liste nicht auf". */
+    let daten = null;   // null heisst: die Datei gibt es nicht
+    let zeit = 100;
+    const ctx = umgebung();
+    ctx.console = { error: () => {}, log: () => {} };
+    ctx.fs = {
+      statSync: () => {
+        if (daten === null) throw Object.assign(new Error('weg'), { code: 'ENOENT' });
+        return { mtimeMs: zeit };
+      },
+      readFileSync: () => daten,
+      writeFileSync: (ziel, text) => { daten = text; zeit++; },
+      existsSync: () => daten !== null
+    };
+    vm.runInContext("const griffPath = 'stand.json'; const GRIFF_MAX = 3;", ctx);
+    vm.runInContext('let griffStand = null; let griffStandZeit = -1;', ctx);
+    for (const name of ['griffLeer', 'griffFach', 'griffForm', 'griffLies',
+                        'griffHeft', 'griffSichere', 'griffSchreib', 'griffAntwort']) {
+      vm.runInContext(funktion(mainQuelle, name), ctx);
+    }
+
+    // Genau der Ablauf von ipcMain.handle('griff-uebernehmen')
+    const fach = ctx.griffHeft('heftA');
+    check('Ohne Datei faengt das Fach leer an', fach.dateien.length, 0);
+    fach.dateien.push({ id: 'g1', name: 'Das Erste', pfad: 'C:/x/eins.pdf', art: 'pdf' });
+    const antwort = ctx.griffSchreib(fach);
+    check('Die Antwort traegt die neue Unterlage', antwort.dateien.length, 1);
+
+    /* >>> Der Kern der Sache <<<
+       Nicht nur die Antwort muss stimmen, sondern das, was auf der
+       Platte landet – daraus liest das Fenster beim naechsten Mal. */
+    check('Und sie steht wirklich in der Datei',
+      JSON.parse(daten).hefte.heftA.dateien.length, 1);
+
+    // Wie nach einem Neustart
+    vm.runInContext('griffStand = null; griffStandZeit = -1;', ctx);
+    check('Nach dem Neulesen ist sie noch da',
+      ctx.griffHeft('heftA').dateien[0].name, 'Das Erste');
+
+    // Und die zweite kommt dazu, statt die erste zu ersetzen
+    const fach2 = ctx.griffHeft('heftA');
+    fach2.dateien.push({ id: 'g2', name: 'Das Zweite', pfad: 'C:/x/zwei.pdf', art: 'pdf' });
+    ctx.griffSchreib(fach2);
+    vm.runInContext('griffStand = null; griffStandZeit = -1;', ctx);
+    check('Die zweite kommt dazu',
+      ctx.griffHeft('heftA').dateien.map(d => d.name), ['Das Erste', 'Das Zweite']);
   }
 
   {
