@@ -2156,8 +2156,10 @@ const GRIFF_TOKEN = crypto.randomBytes(24).toString('hex');
 /* Ohne Herkunft: die Oberfläche liegt auf demselben Server, und relativ
    bleibt die Adresse auch dann richtig, wenn der bevorzugte Port belegt
    war und ein anderer genommen wurde. */
-function griffAdresse(id) {
-  return '/griff/' + GRIFF_TOKEN + '/' + encodeURIComponent(String(id));
+function griffAdresse(nbId, id) {
+  return '/griff/' + GRIFF_TOKEN
+    + '/' + encodeURIComponent(String(nbId || ''))
+    + '/' + encodeURIComponent(String(id));
 }
 
 function griffArt(p) {
@@ -2198,8 +2200,56 @@ function griffMass(wert, klein, gross, vorgabe) {
    Jetzt wird nur gelesen, wenn sich die Datei wirklich geändert hat, und
    ein Fehlschlag lässt den letzten guten Stand stehen, statt ihn durch
    eine Unwahrheit zu ersetzen. */
+/* ══ EIN FACH JE HEFT ══════════════════════════════════════════════════
+
+   >>> Warum die Unterlagen nicht mehr für alle gelten <<<
+   Die Liste stand einmal für die ganze App. Wer in einem Heft ein Skript
+   danebenlegte, hatte es damit in JEDEM Heft am Rand stehen – auch in
+   dem, in dem es nichts zu suchen hat. Unterlagen gehören aber zu dem,
+   woran man gerade arbeitet.
+
+   Die Datei trägt deshalb jetzt:
+
+     { hefte: { "<Heft-Kennung>": { versteckt, dateien: [...] } } }
+
+   >>> Warum trotzdem hier und nicht im Heft <<<
+   Weil darin PFADE stehen. Ein Pfad gilt auf diesem Rechner und sonst
+   nirgends: im Heft läge er in der Freigabe, im Abgleich und beim
+   Kollegen, wo er nichts bedeutet und nichts öffnet. Örtlich bleibt
+   örtlich – verbunden wird über die Kennung des Hefts.
+   ══════════════════════════════════════════════════════════════════════ */
+
 let griffStand = null;      // der Stand, wie er zuletzt richtig gelesen wurde
 let griffStandZeit = -1;    // Änderungszeit der Datei dazu
+
+function griffLeer() { return { hefte: {}, erbe: null }; }
+
+/** Ein Heftfach in Form bringen – aus beliebigem Inhalt der Datei. */
+function griffFach(roh) {
+  const dateien = Array.isArray(roh && roh.dateien) ? roh.dateien : [];
+  return {
+    versteckt: !!(roh && roh.versteckt),
+    dateien: dateien.filter(d => d && d.id && d.pfad).slice(0, GRIFF_MAX)
+  };
+}
+
+/**
+ * Den ganzen Stand in Form bringen.
+ *
+ * Eine Datei aus der Zeit vor den Fächern trägt die Liste unmittelbar.
+ * Weggeworfen wird sie nicht – sie wandert als „Erbe" zur Seite und geht
+ * an das erste Heft, das danach fragt (griffHeft). Welches das ist, kann
+ * hier niemand wissen; das offene Heft ist die einzige sinnvolle Antwort.
+ */
+function griffForm(roh) {
+  if (roh && roh.hefte && typeof roh.hefte === 'object') {
+    const hefte = {};
+    for (const [id, fach] of Object.entries(roh.hefte)) hefte[String(id)] = griffFach(fach);
+    return { hefte, erbe: (roh.erbe && Array.isArray(roh.erbe.dateien)) ? griffFach(roh.erbe) : null };
+  }
+  if (roh && Array.isArray(roh.dateien)) return { hefte: {}, erbe: griffFach(roh) };
+  return griffLeer();
+}
 
 function griffLies() {
   try {
@@ -2207,29 +2257,43 @@ function griffLies() {
     // Unverändert: der gemerkte Stand ist derselbe, den die Datei enthält
     if (griffStand && stat.mtimeMs === griffStandZeit) return griffStand;
 
-    const stand = JSON.parse(fs.readFileSync(griffPath, 'utf-8'));
-    const dateien = Array.isArray(stand && stand.dateien) ? stand.dateien : [];
-    griffStand = {
-      versteckt: !!(stand && stand.versteckt),
-      dateien: dateien.filter(d => d && d.id && d.pfad).slice(0, GRIFF_MAX)
-    };
+    griffStand = griffForm(JSON.parse(fs.readFileSync(griffPath, 'utf-8')));
     griffStandZeit = stat.mtimeMs;
     return griffStand;
   } catch (err) {
-    /* Gibt es die Datei gar nicht, ist die leere Liste die Wahrheit –
+    /* Gibt es die Datei gar nicht, ist der leere Stand die Wahrheit –
        und zwar nur dann. Jeder andere Fehler lässt stehen, was zuletzt
        wirklich dastand. */
     if (err && err.code === 'ENOENT') {
-      griffStand = { versteckt: false, dateien: [] };
+      griffStand = griffLeer();
       griffStandZeit = -1;
       return griffStand;
     }
     console.error('[Griffbereit] Laden fehlgeschlagen:', err.message);
   }
-  return griffStand || { versteckt: false, dateien: [] };
+  return griffStand || griffLeer();
 }
 
-function griffSchreib(stand) {
+/**
+ * Das Fach eines Hefts – und legt es an, wenn es noch keines gibt.
+ *
+ * Ohne Heft gibt es nichts: auf der Übersicht liegt keine Unterlage
+ * daneben, und ein Fach unter leerer Kennung wäre wieder eine Liste für
+ * alle.
+ */
+function griffHeft(nbId) {
+  const schluessel = String(nbId || '').trim();
+  if (!schluessel) return griffFach(null);
+
+  const stand = griffLies();
+  if (!stand.hefte[schluessel]) {
+    stand.hefte[schluessel] = stand.erbe || griffFach(null);
+    if (stand.erbe) { stand.erbe = null; griffSichere(stand); }
+  }
+  return stand.hefte[schluessel];
+}
+
+function griffSichere(stand) {
   try {
     fs.writeFileSync(griffPath, JSON.stringify(stand, null, 2), 'utf-8');
     /* Den eigenen Schreibvorgang gleich übernehmen, statt ihn im nächsten
@@ -2241,7 +2305,12 @@ function griffSchreib(stand) {
   } catch (err) {
     console.error('[Griffbereit] Sichern fehlgeschlagen:', err.message);
   }
-  return griffAntwort(stand);
+}
+
+/** Sichern und dem Fenster den Stand DIESES Hefts zurückgeben. */
+function griffSchreib(fach) {
+  griffSichere(griffLies());
+  return griffAntwort(fach);
 }
 
 /* Ob die Datei noch da ist, wird bei JEDER Antwort nachgesehen und nie
@@ -2256,7 +2325,8 @@ function griffAntwort(stand) {
       try { da = fs.existsSync(d.pfad); } catch (err) { da = false; }
       return {
         id: d.id, name: d.name, art: d.art,
-        breite: d.breite, stelle: d.stelle, zoom: d.zoom, quer: d.quer, da
+        breite: d.breite, stelle: d.stelle, zoom: d.zoom, quer: d.quer,
+        zuletzt: d.zuletzt || 0, da
       };
     })
   };
@@ -2306,11 +2376,15 @@ function griffBereich(kopfzeile, groesse) {
 }
 
 function griffAusliefern(rel, req, res) {
-  const teile = rel.split('/');            // '', 'griff', Zufallsfolge, Kennung
+  // '', 'griff', Zufallsfolge, Heft, Kennung
+  const teile = rel.split('/');
   const weg = () => { res.writeHead(404, { 'Content-Type': 'text/plain' }); res.end('Nicht gefunden'); };
-  if (teile.length !== 4 || teile[2] !== GRIFF_TOKEN || !teile[3]) return weg();
+  if (teile.length !== 5 || teile[2] !== GRIFF_TOKEN || !teile[3] || !teile[4]) return weg();
 
-  const d = griffLies().dateien.find(x => x.id === teile[3]);
+  /* Gesucht wird im Fach DIESES Hefts. Eine Kennung aus einem anderen
+     Heft gibt es hier nicht – das ist dieselbe Schranke wie bisher, nur
+     eine Ebene enger. */
+  const d = griffHeft(decodeURIComponent(teile[3])).dateien.find(x => x.id === teile[4]);
   if (!d) return weg();
 
   /* Die Endung entscheidet auch hier noch einmal: die Datei am gemerkten
@@ -2369,7 +2443,7 @@ function griffBiete(pfad) {
   return { id, art: art.art, vorschlag: path.basename(pfad, path.extname(pfad)) };
 }
 
-ipcMain.handle('griff-liste', () => griffAntwort(griffLies()));
+ipcMain.handle('griff-liste', (_, nbId) => griffAntwort(griffHeft(nbId)));
 
 ipcMain.handle('griff-waehlen', async () => {
   const r = await dialog.showOpenDialog(win, {
@@ -2400,15 +2474,16 @@ ipcMain.handle('griff-abgelegt', (_, pfade) => {
   return raus;
 });
 
-ipcMain.handle('griff-uebernehmen', (_, id, name) => {
+ipcMain.handle('griff-uebernehmen', (_, nbId, id, name) => {
+  if (!String(nbId || '').trim()) return { fehler: 'kein Heft' };
   const angebot = griffAngebote.get(String(id));
   if (!angebot) return { fehler: 'unbekannt' };
   griffAngebote.delete(String(id));
 
-  const stand = griffLies();
-  if (stand.dateien.length >= GRIFF_MAX) return { fehler: 'voll' };
+  const fach = griffHeft(nbId);
+  if (fach.dateien.length >= GRIFF_MAX) return { fehler: 'voll' };
 
-  stand.dateien.push({
+  fach.dateien.push({
     id: String(id),
     name: String(name || '').trim().slice(0, 40) || path.basename(angebot.pfad),
     pfad: angebot.pfad,
@@ -2421,10 +2496,10 @@ ipcMain.handle('griff-uebernehmen', (_, id, name) => {
   return griffSchreib(stand);
 });
 
-ipcMain.handle('griff-aendern', (_, id, patch) => {
-  const stand = griffLies();
-  const d = stand.dateien.find(x => x.id === String(id));
-  if (!d) return griffAntwort(stand);
+ipcMain.handle('griff-aendern', (_, nbId, id, patch) => {
+  const fach = griffHeft(nbId);
+  const d = fach.dateien.find(x => x.id === String(id));
+  if (!d) return griffAntwort(fach);
 
   if (patch && typeof patch.name === 'string') {
     const n = patch.name.trim().slice(0, 40);
@@ -2438,13 +2513,17 @@ ipcMain.handle('griff-aendern', (_, id, patch) => {
      eine Leinwand in dieser Größe legt die Anzeige lahm. */
   if (patch && 'zoom' in patch) d.zoom = griffMass(patch.zoom, 0.5, 4, d.zoom);
   if (patch && 'quer' in patch) d.quer = griffMass(patch.quer, 0, 1, d.quer);
-  return griffSchreib(stand);
+  /* Wann sie zuletzt offen stand. Daran hängt, welche Unterlage beim
+     Aufschlagen des Hefts als Erste im Hintergrund geladen wird – die
+     zuletzt benutzte ist die, die man gleich wieder braucht. */
+  if (patch && patch.zuletzt) d.zuletzt = Date.now();
+  return griffSchreib(fach);
 });
 
-ipcMain.handle('griff-entfernen', (_, id) => {
-  const stand = griffLies();
-  stand.dateien = stand.dateien.filter(d => d.id !== String(id));
-  return griffSchreib(stand);
+ipcMain.handle('griff-entfernen', (_, nbId, id) => {
+  const fach = griffHeft(nbId);
+  fach.dateien = fach.dateien.filter(d => d.id !== String(id));
+  return griffSchreib(fach);
 });
 
 /* Umsortieren. Das Fenster schickt die Kennungen in der neuen Folge; was
@@ -2457,20 +2536,20 @@ function griffOrdne(dateien, ids) {
   return dateien.slice().sort((a, b) => platz(a) - platz(b));
 }
 
-ipcMain.handle('griff-ordnen', (_, ids) => {
-  const stand = griffLies();
-  stand.dateien = griffOrdne(stand.dateien, ids);
-  return griffSchreib(stand);
+ipcMain.handle('griff-ordnen', (_, nbId, ids) => {
+  const fach = griffHeft(nbId);
+  fach.dateien = griffOrdne(fach.dateien, ids);
+  return griffSchreib(fach);
 });
 
-ipcMain.handle('griff-verstecken', (_, an) => {
-  const stand = griffLies();
-  stand.versteckt = !!an;
-  return griffSchreib(stand);
+ipcMain.handle('griff-verstecken', (_, nbId, an) => {
+  const fach = griffHeft(nbId);
+  fach.versteckt = !!an;
+  return griffSchreib(fach);
 });
 
-ipcMain.handle('griff-lesen', (_, id) => {
-  const d = griffLies().dateien.find(x => x.id === String(id));
+ipcMain.handle('griff-lesen', (_, nbId, id) => {
+  const d = griffHeft(nbId).dateien.find(x => x.id === String(id));
   if (!d) return { ok: false, grund: 'unbekannt' };
 
   /* Die Endung entscheidet auch beim Lesen noch einmal: die Datei am
@@ -2489,7 +2568,7 @@ ipcMain.handle('griff-lesen', (_, id) => {
        ganz im Speicher, und ein Bild von über 120 MB ist keins mehr,
        das sich neben dem Heft anschauen liesse. */
     if (d.art === 'pdf') {
-      return { ok: true, art: 'pdf', mime: art.mime, adresse: griffAdresse(d.id) };
+      return { ok: true, art: 'pdf', mime: art.mime, adresse: griffAdresse(nbId, d.id) };
     }
     if (stat.size > GRIFF_BILD_MAX_BYTES) return { ok: false, grund: 'gross' };
     return { ok: true, art: d.art, mime: art.mime, bytes: fs.readFileSync(d.pfad) };

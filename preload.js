@@ -103,15 +103,18 @@ contextBridge.exposeInMainWorld('api', {
      wiederum nur hier im Vorlauf. Ohne diese Zeile gäbe es kein
      Hineinziehen, sondern nur das Auswahlfenster. */
   griffbereit: {
-    liste:       ()             => ipcRenderer.invoke('griff-liste'),
+    /* Jede Auskunft gilt EINEM Heft: die Unterlagen gehoeren zu dem,
+       woran gerade gearbeitet wird (main.js, griffHeft). Das Fenster
+       nennt die Kennung, weil nur es weiss, welches Heft offen ist. */
+    liste:       (nb)           => ipcRenderer.invoke('griff-liste', nb),
     waehlen:     ()             => ipcRenderer.invoke('griff-waehlen'),
     abgelegt:    (pfade)        => ipcRenderer.invoke('griff-abgelegt', pfade),
-    uebernehmen: (id, name)     => ipcRenderer.invoke('griff-uebernehmen', id, name),
-    aendern:     (id, patch)    => ipcRenderer.invoke('griff-aendern', id, patch),
-    entfernen:   (id)           => ipcRenderer.invoke('griff-entfernen', id),
-    ordnen:      (ids)          => ipcRenderer.invoke('griff-ordnen', ids),
-    verstecken:  (an)           => ipcRenderer.invoke('griff-verstecken', an),
-    lesen:       (id)           => ipcRenderer.invoke('griff-lesen', id),
+    uebernehmen: (nb, id, name) => ipcRenderer.invoke('griff-uebernehmen', nb, id, name),
+    aendern:     (nb, id, patch)=> ipcRenderer.invoke('griff-aendern', nb, id, patch),
+    entfernen:   (nb, id)       => ipcRenderer.invoke('griff-entfernen', nb, id),
+    ordnen:      (nb, ids)      => ipcRenderer.invoke('griff-ordnen', nb, ids),
+    verstecken:  (nb, an)       => ipcRenderer.invoke('griff-verstecken', nb, an),
+    lesen:       (nb, id)       => ipcRenderer.invoke('griff-lesen', nb, id),
     pfadVon:     (datei)        => { try { return webUtils.getPathForFile(datei); } catch (e) { return ''; } }
   }
 });

@@ -60,45 +60,58 @@ for (const [kanal, wert] of Object.entries(ATTRAPPEN)) {
    an und will sie danach in der Liste, am Reiter und in der Ansicht
    wiederfinden. Ein leeres Ergebnis liesse jeden dieser Schritte
    „bestehen", ohne dass etwas geprüft wäre. */
-const griffStand = { versteckt: false, dateien: [] };
-const griffAbbild = () => JSON.parse(JSON.stringify(griffStand));
+/* Ein Fach je Heft – wie im Hauptprozess (main.js, griffHeft). Die
+   Attrappe fuehrt es genauso, sonst pruefte der Rundgang eine
+   Vereinbarung, die es nicht mehr gibt. */
+const griffHefte = new Map();
+const griffFach = (nbId) => {
+  const schluessel = String(nbId || '');
+  if (!schluessel) return { versteckt: false, dateien: [] };
+  if (!griffHefte.has(schluessel)) griffHefte.set(schluessel, { versteckt: false, dateien: [] });
+  return griffHefte.get(schluessel);
+};
+const griffAbbild = (nbId) => JSON.parse(JSON.stringify(griffFach(nbId)));
 // Ein weisses Bild von 1x1 – genug, um den Weg bis zum <img> zu gehen
 const EIN_PIXEL = Buffer.from(
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
   'base64');
 
-ipcMain.handle('griff-liste', () => griffAbbild());
+ipcMain.handle('griff-liste', (_, nbId) => griffAbbild(nbId));
 let griffNaechste = 0;
 ipcMain.handle('griff-waehlen', () => {
   griffNaechste++;
   return { id: 'g' + griffNaechste, art: 'bild', vorschlag: 'Unterlage ' + griffNaechste };
 });
 ipcMain.handle('griff-abgelegt', () => [{ id: 'g2', art: 'pdf', vorschlag: 'Skript' }]);
-ipcMain.handle('griff-uebernehmen', (_, id, name) => {
-  griffStand.dateien.push({
+ipcMain.handle('griff-uebernehmen', (_, nbId, id, name) => {
+  griffFach(nbId).dateien.push({
     id: String(id), name: String(name), art: 'bild',
-    breite: 0, stelle: 0, zoom: 1, quer: 0, da: true
+    breite: 0, stelle: 0, zoom: 1, quer: 0, zuletzt: 0, da: true
   });
-  return griffAbbild();
+  return griffAbbild(nbId);
 });
-ipcMain.handle('griff-aendern', (_, id, patch) => {
-  const d = griffStand.dateien.find(x => x.id === String(id));
-  if (d) Object.assign(d, patch);
-  return griffAbbild();
+ipcMain.handle('griff-aendern', (_, nbId, id, patch) => {
+  const d = griffFach(nbId).dateien.find(x => x.id === String(id));
+  if (d) {
+    Object.assign(d, patch);
+    if (patch && patch.zuletzt) d.zuletzt = Date.now();
+  }
+  return griffAbbild(nbId);
 });
-ipcMain.handle('griff-entfernen', (_, id) => {
-  griffStand.dateien = griffStand.dateien.filter(d => d.id !== String(id));
-  return griffAbbild();
+ipcMain.handle('griff-entfernen', (_, nbId, id) => {
+  const fach = griffFach(nbId);
+  fach.dateien = fach.dateien.filter(d => d.id !== String(id));
+  return griffAbbild(nbId);
 });
-ipcMain.handle('griff-ordnen', (_, ids) => {
+ipcMain.handle('griff-ordnen', (_, nbId, ids) => {
   const f = (Array.isArray(ids) ? ids : []).map(String);
   const platz = (d) => { const i = f.indexOf(d.id); return i === -1 ? 99 : i; };
-  griffStand.dateien.sort((a, b) => platz(a) - platz(b));
-  return griffAbbild();
+  griffFach(nbId).dateien.sort((a, b) => platz(a) - platz(b));
+  return griffAbbild(nbId);
 });
-ipcMain.handle('griff-verstecken', (_, an) => {
-  griffStand.versteckt = !!an;
-  return griffAbbild();
+ipcMain.handle('griff-verstecken', (_, nbId, an) => {
+  griffFach(nbId).versteckt = !!an;
+  return griffAbbild(nbId);
 });
 ipcMain.handle('griff-lesen', () => ({ ok: true, art: 'bild', mime: 'image/png', bytes: EIN_PIXEL }));
 
@@ -1569,6 +1582,40 @@ app.on('ready', async () => {
       await new Promise(r => setTimeout(r, 700));
       if (gezeigt() !== ersteB) throw new Error('die zweite wurde neu gebaut');`, 340);
 
+    /* >>> Eine Unterlage gehoert zu EINEM Heft <<<
+       Die Liste galt einmal fuer die ganze App: wer in einem Heft ein
+       Skript danebenlegte, hatte es in JEDEM Heft am Rand stehen. Und
+       der Stapel des vorigen Hefts darf beim Wechsel nicht stehen
+       bleiben – das waere ein Buch im Speicher, das hier niemand
+       aufschlagen kann. */
+    await schritt('Unterlagen bleiben bei ihrem Heft', `
+      if (E('griff-view').classList.contains('open')) {
+        E('griff-view-close').click();
+        await new Promise(r => setTimeout(r, 500));
+      }
+      const reiter = () => document.querySelectorAll('.griff-reiter-btn').length;
+      const eigenes = S.activeNbId;
+      if (!reiter()) throw new Error('im eigenen Heft steht kein Reiter');
+
+      // Ein zweites Heft, nur fuer diesen Schritt
+      const zweites = { id: 'probe-zweitheft', name: 'Zweitheft', color: '#c8a96e',
+        defaultBg: 'ruled', pages: [makePage('ruled')], sections: [], created: Date.now() };
+      S.notebooks.push(zweites);
+      openNotebook(zweites.id); openSection(null);
+      await new Promise(r => setTimeout(r, 900));
+
+      if (reiter()) throw new Error('die Unterlage des anderen Hefts steht hier am Rand');
+      if (document.querySelectorAll('.griff-satz').length)
+        throw new Error('der Stapel des anderen Hefts blieb stehen');
+
+      openNotebook(eigenes); openSection(null);
+      await new Promise(r => setTimeout(r, 900));
+      if (!reiter()) throw new Error('zurueck im eigenen Heft fehlt der Reiter');
+
+      // Das Probeheft wieder weg, der Rundgang geht mit dem eigenen weiter
+      S.notebooks = S.notebooks.filter(n => n.id !== zweites.id);
+      if (typeof renderSideTree === 'function') renderSideTree();`, 340);
+
     /* >>> Ausschneiden <<<
        Lange auf ein Blatt druecken, dann ein Rechteck aufziehen – das
        Stueck landet als Objekt auf der Heftseite. Die Attrappe liefert
@@ -1708,13 +1755,16 @@ app.on('ready', async () => {
       zeig('pointerdown', 300); zeig('pointerup', 240);
       await new Promise(r => setTimeout(r, 700));
       const k = E('griff-view-body');
-      if (!k.querySelector('.griff-seite, .griff-blatt')) throw new Error('kein Inhalt da');
+      /* Nur im SICHTBAREN Stapel: seit die Unterlagen eines Hefts im
+         Voraus geladen werden, liegen ausgeblendete daneben – und die
+         messen sich als 0 breit. */
+      if (!k.querySelector('.griff-satz:not([hidden]) .griff-seite, .griff-satz:not([hidden]) .griff-blatt')) throw new Error('kein Inhalt da');
       if (E('griff-zoom').hidden) throw new Error('die Zoom-Knoepfe bleiben weg');
-      const vorher = k.querySelector('.griff-seite, .griff-blatt').getBoundingClientRect().width;
+      const vorher = k.querySelector('.griff-satz:not([hidden]) .griff-seite, .griff-satz:not([hidden]) .griff-blatt').getBoundingClientRect().width;
       E('griff-zoom-rein').click();
       E('griff-zoom-rein').click();
       await new Promise(r => setTimeout(r, 400));
-      const nachher = k.querySelector('.griff-seite, .griff-blatt').getBoundingClientRect().width;
+      const nachher = k.querySelector('.griff-satz:not([hidden]) .griff-seite, .griff-satz:not([hidden]) .griff-blatt').getBoundingClientRect().width;
       if (!(nachher > vorher * 1.4)) throw new Error('kaum breiter: ' + vorher + ' -> ' + nachher);
       if (E('griff-zoom-wert').textContent !== '156%')
         throw new Error('falscher Wert: ' + E('griff-zoom-wert').textContent);
@@ -1725,7 +1775,7 @@ app.on('ready', async () => {
       k.scrollLeft = 9999;
       if (!(k.scrollLeft > 0)) throw new Error('nach rechts geht nichts');
       k.scrollLeft = 0;
-      const seite = k.querySelector('.griff-seite, .griff-blatt').getBoundingClientRect();
+      const seite = k.querySelector('.griff-satz:not([hidden]) .griff-seite, .griff-satz:not([hidden]) .griff-blatt').getBoundingClientRect();
       if (seite.left < k.getBoundingClientRect().left - 1)
         throw new Error('die linke Kante liegt ausserhalb: ' + Math.round(seite.left));`, 260);
 

@@ -2990,3 +2990,26 @@ body.hat-konflikt .view {
 .hinweis-text .hilfe-p:last-child {
   margin-bottom: 0
 }
+
+/* Das Kreuz in der Frage nach Objekt oder Seite.
+
+   Die Frage hatte lange nur zwei Ausgänge, und beide fügten etwas ein.
+   Beim Ausschneiden aus einer Unterlage reicht ein Fingerdruck, der zu
+   lange geriet, um sie auszulösen – dann will man heraus, ohne dass
+   etwas im Heft landet. Das Kreuz sitzt in der Ecke des Fensters, nicht
+   in der Knopfzeile: dort wäre es ein dritter gleichwertiger Weg, und
+   das ist es nicht. */
+.insert-choice-modal {
+  position: relative;
+  padding-top: 26px
+}
+
+.insert-choice-x {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  /* Mit dem Finger getroffen werden muss es auch */
+  min-width: 34px;
+  min-height: 34px;
+  line-height: 1
+}

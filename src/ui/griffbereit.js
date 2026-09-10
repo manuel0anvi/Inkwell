@@ -55,6 +55,21 @@
 (function () {
   const api = () => (window.api && window.api.griffbereit) || null;
 
+  /* ══════════════════════════════════════════════════════════════════
+     UNTERLAGEN GEHÖREN ZU EINEM HEFT
+
+     Die Liste galt einmal für die ganze App: wer in einem Heft ein
+     Skript danebenlegte, hatte es in JEDEM Heft am Rand stehen. Jetzt
+     hat jedes Heft sein eigenes Fach (main.js, griffHeft), und das
+     Fenster nennt bei jeder Auskunft, um welches es geht – nur hier ist
+     bekannt, welches offen ist.
+
+     Auf der Übersicht ist keines offen. Dann ist die Kennung leer, die
+     Liste bleibt leer, und an der Kante steht nichts – was richtig ist:
+     eine Unterlage liegt neben einem Heft, nicht neben der Übersicht.
+     ══════════════════════════════════════════════════════════════════ */
+  const heftId = () => (typeof S !== 'undefined' && S.activeNbId) ? String(S.activeNbId) : '';
+
   /* Schmaler als das hier wird die Ansicht nicht – darunter passt keine
      PDF-Seite mehr, auf der man etwas lesen könnte. */
   const MIN_BREITE = 220;
@@ -83,6 +98,11 @@
   let _stand = { versteckt: false, dateien: [] };
 
   let _offen = null;      // Kennung der aufgeschlagenen Datei
+  /* Zu welchem Heft sie gehört. Beim Heftwechsel zeigt heftId() schon
+     auf das neue (app.js setzt S.activeNbId vor dem Neuladen), und die
+     Rollstelle der eben noch offenen Unterlage wäre ins Leere
+     geschrieben worden. */
+  let _offenHeft = '';
   let _rollTimer = null;
   let _breiteTimer = null;
   /* Jedes Aufschlagen bekommt eine Nummer. Eine Datei, die während des
@@ -452,7 +472,7 @@
       angebot.vorschlag || '');
     if (!name) return;
 
-    const antwort = await api().uebernehmen(angebot.id, name);
+    const antwort = await api().uebernehmen(heftId(), angebot.id, name);
     if (antwort && antwort.fehler) {
       toast(txt('griffVoll', 'Drei Unterlagen sind das Höchste. Nimm zuerst eine weg.'), true);
       return;
@@ -461,7 +481,7 @@
     /* Frisch Hinzugefügtes soll man sehen – auch wenn gerade alles
        ausgeblendet ist. Sonst legt jemand eine Datei ab und nichts
        geschieht. */
-    if (_stand.versteckt) _stand = await api().verstecken(false);
+    if (_stand.versteckt) _stand = await api().verstecken(heftId(), false);
     zeichne();
   }
 
@@ -476,7 +496,7 @@
     if (!d) return;
     const name = await txtModal(txt('griffNameFrage', 'Wie soll die Unterlage heißen?'), d.name);
     if (!name || name === d.name) return;
-    _stand = await api().aendern(id, { name });
+    _stand = await api().aendern(heftId(), id, { name });
     zeichne();
     if (String(_offen) === String(id)) {
       const anzeige = E('griff-view-name');
@@ -491,7 +511,7 @@
       txt('griffWegFrage', 'Nur der Verweis wird entfernt – die Datei selbst bleibt liegen, wo sie ist.'));
     if (!ok) return;
     if (String(_offen) === String(id)) schliesse();
-    _stand = await api().entfernen(id);
+    _stand = await api().entfernen(heftId(), id);
     zeichne();
   }
 
@@ -573,7 +593,7 @@
       try { liste.releasePointerCapture(e.pointerId); } catch (err) { /* egal */ }
       if (ziel === null) return;
 
-      _stand = await api().ordnen(neueFolge(_stand.dateien.map(d => d.id), gezogen, ziel));
+      _stand = await api().ordnen(heftId(), neueFolge(_stand.dateien.map(d => d.id), gezogen, ziel));
       zeichne();
     };
 
@@ -630,6 +650,7 @@
     satzWegblenden();
 
     _offen = String(id);
+    _offenHeft = heftId();
     _fertig = stehtSchon;
     const lauf = ++_lauf;
 
@@ -645,6 +666,10 @@
     if (anzeige) anzeige.textContent = d.name;
     zeichneReiter();
     nachLayout();
+
+    /* Fuer die Reihenfolge beim Vorladen: die zuletzt benutzte Unterlage
+       kommt beim naechsten Aufschlagen des Hefts zuerst dran. */
+    api().aendern(heftId(), id, { zuletzt: true }).catch(() => { /* egal */ });
 
     /* Der kurze Weg: der Satz steht schon da, er muss nur wieder in den
        Blick. Nichts zu laden, nichts zu zeichnen – nur die Breite kann
@@ -665,7 +690,7 @@
 
     let antwort;
     try {
-      antwort = await api().lesen(id);
+      antwort = await api().lesen(heftId(), id);
     } catch (err) {
       antwort = { ok: false, grund: 'fehlt' };
     }
@@ -678,7 +703,7 @@
         : grund === 'art' ? txt('griffKeineAnzeige', 'Diese Datei lässt sich hier nicht anzeigen.')
         : txt('griffFehlt', 'Datei konnte nicht gefunden werden'));
       // Der Reiter soll das ebenfalls zeigen
-      _stand = await api().liste();
+      _stand = await api().liste(heftId());
       zeichne();
       return;
     }
@@ -687,7 +712,7 @@
        vorher seine Seiten aus – wer ihn hier schon wegnähme, sähe bei
        einem Skript zwei Sekunden lang eine leere Fläche. */
     try {
-      if (antwort.art === 'pdf') await zeigePdf(antwort.adresse, lauf, satz);
+      if (antwort.art === 'pdf') await zeigePdf(antwort.adresse, () => lauf === _lauf, satz);
       else zeigeBild(antwort.bytes, antwort.mime, satz);
     } catch (err) {
       console.warn('[Griffbereit] Anzeigen fehlgeschlagen:', err?.message || err);
@@ -783,7 +808,7 @@
     satz.appendChild(img);
   }
 
-  async function zeigePdf(adresse, lauf, satz) {
+  async function zeigePdf(adresse, gueltig, satz) {
     if (typeof pdfjsLib === 'undefined') throw new Error('pdf.js fehlt');
 
     /* >>> Nur die Adresse, nicht die Datei <<<
@@ -808,7 +833,7 @@
       disableAutoFetch: true,
       disableStream: true
     }).promise;
-    if (lauf !== _lauf) { try { doc.destroy(); } catch (err) { /* egal */ } return; }
+    if (!gueltig()) { try { doc.destroy(); } catch (err) { /* egal */ } return; }
     satz._pdf = doc;
 
     // Die Verhältnisse vorab – daran hängt die Höhe der leeren Kästen
@@ -818,7 +843,7 @@
       const seite = await doc.getPage(n);
       const v = seite.getViewport({ scale: 1 });
       verhaeltnisse.push(v.width / v.height);
-      if (lauf !== _lauf) return;
+      if (!gueltig()) return;
     }
     const ersatz = ueblicheForm(verhaeltnisse);
 
@@ -869,7 +894,13 @@
     return beste.wert;
   }
 
-  async function zeichneSeite(seitenkasten) {
+  /**
+   * @param {Element} seitenkasten
+   * @param {number} [breiteVorgabe]  für Stapel, die noch nicht zu sehen
+   *   sind: ein ausgeblendeter Kasten misst 0, und ohne diese Angabe
+   *   liesse sich im Voraus gar nichts zeichnen (vorladen).
+   */
+  async function zeichneSeite(seitenkasten, breiteVorgabe) {
     /* >>> Das Dokument kommt vom eigenen Satz <<<
        Hier stand eine Variable für alle. Seit mehrere Sätze zugleich
        bereitstehen, meldet sich auch der Beobachter eines Satzes, der
@@ -879,7 +910,7 @@
     const pdf = satz && satz._pdf;
     if (!pdf || seitenkasten._zeichnet) return;
     const kasten = seitenkasten;
-    const breite = kasten.clientWidth;
+    const breite = kasten.clientWidth || Math.round(breiteVorgabe || 0);
     if (breite < 10) return;
 
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
@@ -891,10 +922,17 @@
     if (kasten._beiLeinwand && Math.abs(kasten._beiLeinwand - leinwandBreite) < 8) return;
 
     kasten._zeichnet = true;
-    const lauf = _lauf;
+    /* >>> Wann eine begonnene Zeichnung nichts mehr taugt <<<
+       Hier stand die Nummer des Aufschlagens – gedacht gegen ein Bild,
+       das nach dem Zumachen noch hereinfällt. Seit jede Unterlage ihren
+       eigenen Stapel behält, ist das kein Fehler mehr, sondern genau
+       das, was das Vorladen will: fertig werden, ohne gezeigt zu sein.
+       Falsch wäre nur ein Bild für einen Kasten, den es nicht mehr gibt,
+       oder aus einem Dokument, das inzwischen ein anderes ist. */
+    const gilt = () => kasten.isConnected && satz._pdf === pdf;
     try {
       const seite = await pdf.getPage(Number(kasten.dataset.nr));
-      if (lauf !== _lauf) return;
+      if (!gilt()) return;
 
       const roh = seite.getViewport({ scale: 1 });
       const viewport = seite.getViewport({ scale: leinwandBreite / roh.width });
@@ -904,7 +942,7 @@
       leinwand.height = Math.round(viewport.height);
       leinwand.className = 'griff-seite-bild';
       await seite.render({ canvasContext: leinwand.getContext('2d'), viewport }).promise;
-      if (lauf !== _lauf) return;
+      if (!gilt()) return;
 
       // Das gemessene Verhältnis ist genauer als die Schätzung von vorhin
       kasten.style.aspectRatio = String(roh.width / roh.height);
@@ -1120,7 +1158,7 @@
        Aufschlagen stünde die alte Vergrößerung an der neuen Stelle. */
     const stand = { stelle: anteilJetzt(), quer: querJetzt(), zoom: _zoom };
     Object.assign(d, stand);                 // im Spiegel gleich mitziehen
-    api().aendern(_offen, stand).catch(() => { /* egal */ });
+    api().aendern(_offenHeft || heftId(), _offen, stand).catch(() => { /* egal */ });
   }
 
   /* ══════════════════════════════════════════════════════════════════
@@ -1257,7 +1295,7 @@
       if (_offen && api()) {
         const d = datei(_offen);
         if (d) d.breite = breite;
-        try { await api().aendern(_offen, { breite }); } catch (err) { /* egal */ }
+        try { await api().aendern(_offenHeft || heftId(), _offen, { breite }); } catch (err) { /* egal */ }
       }
     };
 
@@ -1326,7 +1364,7 @@
 
   E('griff-verstecken')?.addEventListener('click', async () => {
     if (!api()) return;
-    _stand = await api().verstecken(!_stand.versteckt);
+    _stand = await api().verstecken(heftId(), !_stand.versteckt);
     if (_stand.versteckt) schliesse();
     zeichne();
     nachLayout();
@@ -1601,6 +1639,75 @@
      Ein Ausschnitt wird IMMER ein Objekt. Nur bei der ganzen Seite gibt
      es die Frage, ob sie als Objekt daneben oder als eigenes Blatt ins
      Heft soll. */
+  /* So viele Seiten werden im Voraus gezeichnet. Zwei genügen: mehr
+     sieht man beim Aufschlagen ohnehin nicht, und jede weitere ist eine
+     Leinwand im Speicher für einen Blick, der vielleicht nie kommt. */
+  const VORAUS_SEITEN = 2;
+
+  /**
+   * Den Stapel einer Unterlage bauen, ohne ihn zu zeigen.
+   *
+   * Das ist derselbe Weg wie beim Aufschlagen, nur ohne alles, was mit
+   * dem Blick zu tun hat: keine Ansicht auf, kein Name in der Kopfzeile,
+   * kein Reiter, der sich färbt. Am Ende steht ein fertiger Stapel
+   * ausgeblendet neben den anderen – und das nächste Antippen seines
+   * Reiters ist ein Einblenden statt eines Ladevorgangs.
+   */
+  async function ladeStapel(id, laufNr) {
+    const d = datei(id);
+    if (!d || !api()) return null;
+
+    const satz = satzAnlegen(id);
+    if (!satz) return null;
+    satz.hidden = true;
+
+    /* Gültig heisst hier: es läuft noch dasselbe Vorladen, und der
+       Stapel hängt noch im Kasten. Wer inzwischen das Heft gewechselt
+       oder die Datei selbst aufgeschlagen hat, hat beides erledigt. */
+    const gueltig = () => laufNr === _vorladeLauf && satz.isConnected;
+
+    let antwort = null;
+    try { antwort = await api().lesen(heftId(), id); } catch (err) { antwort = null; }
+    if (!gueltig()) return null;
+    if (!antwort || !antwort.ok) { raeumeSatz(satz); return null; }
+
+    if (antwort.art === 'pdf') await zeigePdf(antwort.adresse, gueltig, satz);
+    else zeigeBild(antwort.bytes, antwort.mime, satz);
+    if (!gueltig()) { raeumeSatz(satz); return null; }
+
+    satz._fertig = true;
+    await zeichneVoraus(satz, d, gueltig);
+    return satz;
+  }
+
+  /**
+   * Die Seiten zeichnen, die beim Aufschlagen zuerst zu sehen wären.
+   *
+   * >>> Warum die Breite von Hand ausgerechnet wird <<<
+   * Ein ausgeblendeter Stapel hat keine Ausdehnung – clientWidth ist 0,
+   * und zeichneSeite käme gar nicht erst zum Zeichnen. Die Breite steht
+   * aber fest: es ist die, in der die Unterlage zuletzt dastand.
+   *
+   * >>> Warum an der gemerkten Stelle <<<
+   * Aufgeschlagen wird dort, wo zuletzt aufgehört wurde. Die erste Seite
+   * vorzuzeichnen hülfe bei einem Buch, in dem jemand auf Seite 300
+   * steht, überhaupt nicht.
+   */
+  async function zeichneVoraus(satz, d, gueltig) {
+    const kaesten = [...satz.querySelectorAll('.griff-seite')];
+    if (!kaesten.length) return;
+
+    const spalte = Math.min(grenze(), Math.max(MIN_BREITE, d.breite || VORGABE_BREITE));
+    const breite = Math.max(80, Math.round((spalte - 22) * (d.zoom || 1)));
+
+    const erste = Math.max(0, Math.min(kaesten.length - 1,
+      Math.round((d.stelle || 0) * (kaesten.length - 1))));
+    for (const k of kaesten.slice(erste, erste + VORAUS_SEITEN)) {
+      if (!gueltig()) return;
+      await zeichneSeite(k, breite);
+    }
+  }
+
   /**
    * Die Heftseite, auf die der Ausschnitt soll.
    *
@@ -1753,16 +1860,96 @@
      hat – sonst steht man beim nächsten Start wieder auf Seite 1. */
   window.addEventListener('beforeunload', () => { clearTimeout(_rollTimer); merkeStelle(); });
 
-  /** Beim Start: die gemerkten Unterlagen wieder an die Kante holen. */
+  /* Welches Heft zuletzt geholt wurde. Daran erkennt starte(), dass ein
+     anderes offen ist und alles Bisherige weg muss. */
+  let _heft = null;
+
+  /**
+   * Die Unterlagen des offenen Hefts holen und an die Kante stellen.
+   *
+   * Wird auch bei jedem Heftwechsel gerufen (app.js, openNotebook). Dann
+   * fliegt weg, was vom vorigen Heft noch dasteht – die Stapel gehören
+   * dorthin, nicht hierher, und ein Buch aus dem anderen Heft im
+   * Speicher zu behalten hätte niemandem genützt.
+   */
   async function starte() {
     if (!api()) return;
+    const heft = heftId();
+    const gewechselt = _heft !== null && _heft !== heft;
+    _heft = heft;
+
+    if (gewechselt) {
+      schliesse();
+      const k = kasten();
+      if (k) for (const satz of k.querySelectorAll('.griff-satz')) raeumeSatz(satz);
+      _fertig = false;
+    }
+
     try {
-      _stand = await api().liste();
+      _stand = await api().liste(heft);
     } catch (err) {
       console.warn('[Griffbereit] Liste nicht lesbar:', err?.message || err);
       return;
     }
     zeichne();
+    vorladen();
+  }
+
+  /* ══════════════════════════════════════════════════════════════════
+     IM VORAUS LADEN
+
+     >>> Warum <<<
+     Das erste Aufschlagen eines Buchs dauert Sekunden: Katalog holen,
+     Seiten vermessen, das Sichtbare zeichnen. Diese Sekunden fallen
+     genau dann an, wenn jemand etwas nachschlagen will – also im
+     denkbar ungünstigsten Moment. Sie lassen sich vorziehen: das Heft
+     ist offen, die Unterlagen dazu stehen fest, und die Zeit danach
+     verbringt der Rechner ohnehin mit Warten.
+
+     >>> Wann <<<
+     Nicht sofort. Beim Aufschlagen eines Hefts zeichnet die App ihre
+     eigenen Seiten, und ein Buch daneben nähme ihr dabei die Luft. Also
+     erst, wenn es still geworden ist – und dann eine nach der anderen,
+     nicht alle zugleich.
+
+     >>> In welcher Reihenfolge <<<
+     Die zuletzt benutzte zuerst. Wer drei Unterlagen hat, greift
+     meistens wieder zu der, die er gerade zugemacht hat.
+
+     >>> Was dabei NICHT geschieht <<<
+     Aufgeschlagen wird nichts. Der Stapel entsteht ausgeblendet neben
+     den anderen; zu sehen ist er erst, wenn jemand seinen Reiter
+     antippt – und dann sofort.
+     ══════════════════════════════════════════════════════════════════ */
+
+  // So lange bleibt es nach dem Heftwechsel in Ruhe
+  const VORLAUF_MS = 1200;
+  let _vorladeUhr = null;
+  let _vorladeLauf = 0;
+
+  function vorladen() {
+    if (_vorladeUhr) { clearTimeout(_vorladeUhr); _vorladeUhr = null; }
+    const lauf = ++_vorladeLauf;
+    if (_stand.versteckt || !_stand.dateien.length) return;
+
+    _vorladeUhr = setTimeout(async () => {
+      _vorladeUhr = null;
+      /* Die zuletzt benutzte zuerst; wer noch nie offen war, kommt
+         danach in der Reihenfolge der Liste. */
+      const reihe = _stand.dateien.slice()
+        .sort((a, b) => (b.zuletzt || 0) - (a.zuletzt || 0));
+
+      for (const d of reihe) {
+        // Heft gewechselt, Datei weg oder gerade selbst aufgeschlagen
+        if (lauf !== _vorladeLauf) return;
+        if (!d.da || satzVon(d.id)) continue;
+        try {
+          await ladeStapel(d.id, lauf);
+        } catch (err) {
+          console.warn('[Griffbereit] Vorladen:', err?.message || err);
+        }
+      }
+    }, VORLAUF_MS);
   }
 
   window.addEventListener('language-changed', zeichne);

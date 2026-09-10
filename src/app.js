@@ -658,6 +658,11 @@ function openNotebook(id, opts = {}) {
   /* Die PDFs des vorigen Hefts freigeben – sonst hängen die Dokumente
      samt Puffern am Speicher, bis die App zugemacht wird. */
   if (window.PdfSeiten) PdfSeiten.reset(id);
+  /* Unterlagen gehoeren zu EINEM Heft (ui/griffbereit.js). Der Wechsel
+     holt die des neuen und raeumt die des vorigen weg – und stoesst
+     zugleich das Vorladen an, damit die erste Unterlage schon
+     bereitsteht, wenn jemand sie braucht. */
+  if (window.Griffbereit) Griffbereit.neuLaden();
   // Eine offene Suche gehoert zum vorigen Heft. Ohne Neuzeichnen – das
   // uebernimmt openSection weiter unten ohnehin.
   if (typeof closeNbSearch === 'function') closeNbSearch(false);

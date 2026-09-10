@@ -276,74 +276,100 @@ console.log('\n7. Die Form der Kaesten\n');
   check('Gleichstand: die erste', f([A4, QUER]), A4);
 }
 
-console.log('\n8. Der gemerkte Stand\n');
+console.log('\n8. Ein Fach je Heft\n');
 {
-  /* >>> Der Fehler, der wie „es laedt schon wieder" aussah <<<
+  /* >>> Warum die Unterlagen nicht mehr fuer alle gelten <<<
+     Die Liste stand einmal fuer die ganze App: wer in einem Heft ein
+     Skript danebenlegte, hatte es in JEDEM Heft am Rand stehen. Jetzt
+     traegt die Datei ein Fach je Heft.
+
+     >>> Und der gemerkte Stand <<<
      Seit ein PDF stueckweise geholt wird, geht JEDE Bereichsanfrage
-     durch griffAusliefern und damit durch griffLies. Beim Rollen in
-     einem Buch sind das Dutzende Lesevorgaenge derselben unveraenderten
-     Datei in der Sekunde.
+     durch griffLies. Unter Windows schlaegt so ein Zugriff hin und
+     wieder fehl (Virenscanner, Ordnersynchronisierung). Zurueck kam
+     dann eine LEERE LISTE - fuer das Fenster heisst das: die Unterlage
+     gibt es nicht mehr. Reiter weg, Datei zu, Inhalt weggeraeumt. */
 
-     Unter Windows schlaegt so ein Zugriff hin und wieder fehl, weil der
-     Virenscanner oder die Ordnersynchronisierung die Datei offen hat.
-     Der Fehler wurde gefangen, und zurueck kam eine LEERE LISTE - fuer
-     das Fenster heisst das: die Unterlage gibt es nicht mehr. Reiter
-     weg, Datei zu, Inhalt weggeraeumt, naechstes Aufschlagen laedt das
-     ganze Buch neu.
-
-     Geprueft wird deshalb beides: dass nicht unnoetig gelesen wird, und
-     dass ein Fehlschlag den letzten guten Stand stehen laesst. */
-  const gut = JSON.stringify({ versteckt: false, dateien: [
-    { id: 'a', name: 'Skript', pfad: 'C:/Uni/Skript.pdf', art: 'pdf' }] });
-
-  let zeit = 100, gelesen = 0, fehler = null;
-  const ctx = umgebung();
-  // Der Fehlschlag unten ist gewollt – seine Meldung waere hier nur Laerm
-  ctx.console = { error: () => {}, log: () => {} };
-  ctx.fs = {
-    statSync: () => { if (fehler) throw fehler; return { mtimeMs: zeit }; },
-    readFileSync: () => { gelesen++; if (fehler) throw fehler; return gut; },
-    writeFileSync: (ziel, inhalt) => { ctx.geschrieben = inhalt; },
-    existsSync: () => true
+  const bauStand = (inhalt) => {
+    let zeit = 100, gelesen = 0, fehler = null;
+    const ctx = umgebung();
+    ctx.console = { error: () => {}, log: () => {} };
+    ctx.fs = {
+      statSync: () => { if (fehler) throw fehler; return { mtimeMs: zeit }; },
+      readFileSync: () => { gelesen++; if (fehler) throw fehler; return ctx.__inhalt; },
+      writeFileSync: (ziel, text) => { ctx.__inhalt = text; zeit++; },
+      existsSync: () => true
+    };
+    ctx.__inhalt = inhalt;
+    vm.runInContext("const griffPath = 'stand.json'; const GRIFF_MAX = 3;", ctx);
+    vm.runInContext('let griffStand = null; let griffStandZeit = -1;', ctx);
+    for (const name of ['griffLeer', 'griffFach', 'griffForm', 'griffLies',
+                        'griffHeft', 'griffSichere', 'griffSchreib', 'griffAntwort']) {
+      vm.runInContext(funktion(mainQuelle, name), ctx);
+    }
+    ctx.__zaehler = () => gelesen;
+    ctx.__fehler = (e) => { fehler = e; };
+    return ctx;
   };
-  vm.runInContext("const griffPath = 'stand.json'; const GRIFF_MAX = 3;", ctx);
-  vm.runInContext('let griffStand = null; let griffStandZeit = -1;', ctx);
-  vm.runInContext(funktion(mainQuelle, 'griffAntwort'), ctx);
-  vm.runInContext(funktion(mainQuelle, 'griffLies'), ctx);
-  vm.runInContext(funktion(mainQuelle, 'griffSchreib'), ctx);
 
-  check('Beim ersten Mal wird gelesen', ctx.griffLies().dateien.length, 1);
-  check('Dafuer genau einmal', gelesen, 1);
+  const datei = (id, name) => ({ id, name, pfad: 'C:/x/' + id + '.pdf', art: 'pdf' });
+  const zweiHefte = JSON.stringify({ hefte: {
+    heftA: { versteckt: false, dateien: [datei('a', 'Skript')] },
+    heftB: { versteckt: true, dateien: [datei('b', 'Tafelbild'), datei('c', 'Buch')] }
+  } });
 
-  // Unveraenderte Datei: der gemerkte Stand genuegt
-  ctx.griffLies(); ctx.griffLies(); ctx.griffLies();
-  check('Unveraendert wird nicht noch einmal gelesen', gelesen, 1);
+  {
+    const ctx = bauStand(zweiHefte);
+    check('Heft A sieht seine eine Datei', ctx.griffHeft('heftA').dateien.length, 1);
+    check('Und zwar die richtige', ctx.griffHeft('heftA').dateien[0].id, 'a');
+    check('Heft B sieht seine zwei', ctx.griffHeft('heftB').dateien.length, 2);
+    check('Ausblenden gilt auch nur je Heft', ctx.griffHeft('heftA').versteckt, false);
+    check('... und im anderen Heft getrennt davon', ctx.griffHeft('heftB').versteckt, true);
+    check('Ein neues Heft faengt leer an', ctx.griffHeft('heftC').dateien.length, 0);
+    // Ohne offenes Heft gibt es nichts - auf der Uebersicht liegt keine Unterlage
+    check('Ohne Heft bleibt es leer', ctx.griffHeft('').dateien.length, 0);
+  }
 
-  // Geaenderte Datei: dann natuerlich schon
-  zeit = 200;
-  check('Geaendert schon', ctx.griffLies().dateien.length, 1);
-  check('Und zwar einmal mehr', gelesen, 2);
+  {
+    /* Ein Stand aus der Zeit vor den Faechern. Weggeworfen wird er
+       nicht: er geht an das erste Heft, das danach fragt - welches das
+       sein soll, kann der Hauptprozess nicht wissen, und das offene
+       Heft ist die einzige sinnvolle Antwort. */
+    const ctx = bauStand(JSON.stringify({ versteckt: false, dateien: [datei('alt', 'Von frueher')] }));
+    check('Das Erbe geht an das erste Heft', ctx.griffHeft('heftA').dateien[0].id, 'alt');
+    check('Und nur an dieses', ctx.griffHeft('heftB').dateien.length, 0);
+    check('Auch nach dem Neulesen bleibt es dort',
+      ctx.griffForm(JSON.parse(ctx.__inhalt)).hefte.heftA.dateien[0].id, 'alt');
+  }
 
-  /* >>> Der Kern der Sache <<<
-     Ein Zugriffsfehler darf die Liste nicht wegwerfen. */
-  fehler = Object.assign(new Error('EPERM'), { code: 'EPERM' });
-  const trotzdem = ctx.griffLies();
-  check('Ein Zugriffsfehler wirft die Liste nicht weg', trotzdem.dateien.length, 1);
-  check('Und es ist dieselbe Datei', trotzdem.dateien[0].id, 'a');
+  {
+    const ctx = bauStand(zweiHefte);
+    check('Beim ersten Mal wird gelesen', ctx.griffHeft('heftA').dateien.length, 1);
+    check('Dafuer genau einmal', ctx.__zaehler(), 1);
+    ctx.griffHeft('heftA'); ctx.griffHeft('heftB'); ctx.griffHeft('heftA');
+    check('Unveraendert wird nicht noch einmal gelesen', ctx.__zaehler(), 1);
 
-  // Ist die Datei wirklich weg, ist die leere Liste die Wahrheit
-  fehler = Object.assign(new Error('ENOENT'), { code: 'ENOENT' });
-  check('Gar keine Datei heisst leer', ctx.griffLies().dateien.length, 0);
+    /* >>> Der Kern der Sache <<< */
+    ctx.__fehler(Object.assign(new Error('EPERM'), { code: 'EPERM' }));
+    check('Ein Zugriffsfehler wirft die Liste nicht weg',
+      ctx.griffHeft('heftA').dateien.length, 1);
 
-  /* Nach dem Schreiben gilt das Geschriebene, ohne es erst wieder
-     einzulesen - sonst waere jeder Zug ein Lesen mehr. */
-  fehler = null; zeit = 300;
-  const vorher = gelesen;
-  ctx.griffSchreib({ versteckt: true, dateien: [
-    { id: 'b', name: 'Buch', pfad: 'C:/Buecher/b.pdf', art: 'pdf' }] });
-  check('Schreiben liest nicht nach', gelesen, vorher);
-  check('Der geschriebene Stand gilt sofort', ctx.griffLies().dateien[0].id, 'b');
-  check('Auch das Ausblenden', ctx.griffLies().versteckt, true);
+    // Ist die Datei wirklich weg, ist die leere Liste die Wahrheit
+    ctx.__fehler(Object.assign(new Error('ENOENT'), { code: 'ENOENT' }));
+    check('Gar keine Datei heisst leer', ctx.griffHeft('heftA').dateien.length, 0);
+  }
+
+  {
+    // Geschrieben wird der GANZE Stand, zurueck kommt nur das eine Fach
+    const ctx = bauStand(zweiHefte);
+    const fach = ctx.griffHeft('heftA');
+    fach.dateien.push(datei('neu', 'Dazu'));
+    const antwort = ctx.griffSchreib(fach);
+    check('Die Antwort traegt nur das eigene Fach', antwort.dateien.length, 2);
+    const gespeichert = JSON.parse(ctx.__inhalt);
+    check('Gespeichert wird unter dem Heft', gespeichert.hefte.heftA.dateien.length, 2);
+    check('Das andere Heft bleibt unberuehrt', gespeichert.hefte.heftB.dateien.length, 2);
+  }
 }
 
 console.log('\n9. Die Vereinbarung zwischen den Prozessen\n');
@@ -358,8 +384,20 @@ console.log('\n9. Die Vereinbarung zwischen den Prozessen\n');
 
   /* Die Oberflaeche darf keinen Pfad ins Lesen geben – sie kennt gar
      keinen. Wer hier eine zweite Fassung baut, die einen annimmt, hebelt
-     die Erlaubnisliste aus. */
-  check('Gelesen wird ueber die Kennung', /invoke\('griff-lesen', id\)/.test(preload), true);
+     die Erlaubnisliste aus. Das Heft steht davor: gesucht wird in dessen
+     Fach, nicht in einer Liste fuer alle (main.js, griffHeft). */
+  check('Gelesen wird ueber Heft und Kennung',
+    /invoke\('griff-lesen', nb, id\)/.test(preload), true);
+
+  /* Und JEDE Auskunft nennt das Heft. Ein Kanal, der es vergisst, sieht
+     wieder alle Unterlagen auf einmal – der Fehler, der behoben werden
+     sollte. Ausgenommen sind die drei, die noch gar kein Heft betreffen:
+     das Auswahlfenster, eine abgelegte Datei und der Pfad daraus. */
+  const ohneHeft = [...preload.matchAll(/(\w+):\s+\(([^)]*)\)\s*=>\s*ipcRenderer\.invoke\('(griff-[a-z]+)'/g)]
+    .filter(m => !/^nb\b/.test(m[2].trim()))
+    .map(m => m[3]);
+  check('Jede heftbezogene Auskunft nennt das Heft',
+    ohneHeft, ['griff-waehlen', 'griff-abgelegt']);
 
   /* Die Adresse einer Unterlage trägt eine Zufallsfolge. Ohne sie käme
      jedes Programm auf demselben Rechner an eine Datei, die irgendwo
