@@ -323,11 +323,15 @@
    Auf drei Vierteln fällt der Einwand weg: oben und unten bleibt das
    Blatt frei, und was darunterliegt, ist erreichbar.
 
-   Das Rechteck bleibt dabei IMMER an der Fensterkante. Die
-   aufgeschlagene Datei rückt statt dessen um seine Breite beiseite
-   (.griff-view.open) – genau so viel, wie der alte Streifen im Layout
-   belegte. Rückte umgekehrt das Rechteck nach innen, landete es auf dem
-   Knopf, mit dem die Breite gezogen wird.
+   Steht eine Datei offen, ist das Rechteck ganz weg (ui/griffbereit.js):
+   sie liegt dann daneben und trägt ihren Namen in der Kopfzeile.
+
+   >>> Der Rollbalken des Hefts weicht aus <<<
+   Als Streifen im Fluss nahm das Ding seinen Platz selbst; als Rechteck
+   darüber lag es auf dem Rollbalken der Blattspalte, und der liess sich
+   in der Mitte nicht mehr fassen. Solange es dasteht, rückt der
+   Rollbereich deshalb um seine Breite nach innen – die Klasse dafür
+   setzt ui/griffbereit.js an <body>.
    ════════════════════════════════════════════════════════════════════ */
 
 .griff-reiter {
@@ -341,6 +345,13 @@
   gap: 4px;
   /* Gut drei Viertel – ein Rechteck, kein Streifen */
   height: 76vh
+}
+
+/* Sichtbar heisst: die Blattspalte rückt so weit nach innen, wie das
+   Rechteck breit ist (38 px) plus etwas Luft. Damit liegt der Rollbalken
+   links davon und ist wieder zu fassen. */
+body.griff-reiter-da .pg-scroll {
+  margin-right: 46px
 }
 
 .griff-reiter-btn {
@@ -402,17 +413,11 @@
   flex-shrink: 0;
   position: relative;
   background: var(--sp);
-  border-left: 1px solid transparent;
-  transition: margin-right .2s ease
+  border-left: 1px solid transparent
 }
 
-/* Rechts bleibt Platz für das Reiter-Rechteck, das dort fest am Fenster
-   hängt – dieselben Millimeter, die der alte Streifen im Layout belegte,
-   plus etwas Luft, damit die Seite nicht am Reiter klebt. Ohne das läge
-   das Rechteck auf dem rechten Rand der Datei. */
 .griff-view.open {
-  border-left-color: var(--sb);
-  margin-right: 46px
+  border-left-color: var(--sb)
 }
 
 .griff-view-inner {

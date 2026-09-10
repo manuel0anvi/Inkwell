@@ -58,13 +58,16 @@
   const MIN_BREITE = 220;
   const VORGABE_BREITE = 420;
 
-  /* Wie viele Seiten vorab vermessen werden. Darüber hinaus gilt das
-     Seitenverhältnis der ersten Seite für alle – bei einem Buch mit
-     durchweg gleichem Papier stimmt das, und jede gemessene Seite ist
-     seit dem stückweisen Laden eine eigene Anfrage: 120 davon wären
-     ein spürbares Warten vor dem ersten Blick, wo zwei Dutzend reichen.
-     Was danach kommt, misst sich beim Zeichnen ohnehin selbst. */
-  const HOECHSTENS_GEMESSEN = 24;
+  /* Wie viele Seiten vorab vermessen werden. Hier standen 120, und jede
+     davon ist seit dem stückweisen Laden eine eigene Anfrage: bei einem
+     Buch war das rund eine Sekunde Warten vor dem ersten Blick, für
+     Kästen, die sich beim Zeichnen ohnehin selbst nachmessen.
+
+     Acht genügen, weil daraus nicht die ERSTE, sondern die HÄUFIGSTE
+     Form gewählt wird (siehe ueblicheForm). Ein andersförmiges Deckblatt
+     verzieht damit nicht mehr die Höhe aller übrigen Kästen – genau das
+     tat es vorher, und zwar umso schlimmer, je weniger gemessen wurde. */
+  const HOECHSTENS_GEMESSEN = 8;
 
   /** Der Spiegel dessen, was der Hauptprozess hält. */
   let _stand = { versteckt: false, dateien: [] };
@@ -80,6 +83,29 @@
      Ladens wieder zugemacht wurde, darf ihren Inhalt nicht mehr
      einhängen – sonst steht im Fenster das PDF von vorhin. */
   let _lauf = 0;
+  /* Steht der Inhalt vollständig? Nur dann lohnt es, ihn aufzuheben –
+     eine halb geladene Datei wieder hervorzuholen zeigte halbe Arbeit. */
+  let _fertig = false;
+
+  /* ══════════════════════════════════════════════════════════════════
+     DAS LAGER — EINE DATEI BLEIBT LIEGEN
+
+     >>> Warum es das gibt <<<
+     Zugemacht hiess: pdf.js beenden, alles wegwerfen. Beim nächsten
+     Aufschlagen fing die Datei von vorn an – Katalog holen, zwei Dutzend
+     Seiten vermessen, sichtbare Seiten neu zeichnen. Bei einem Buch ist
+     das jedes Mal dieselbe Wartezeit für dasselbe Ergebnis, und
+     zugemacht wird oft: die Kommentare gehen daneben nicht auf.
+
+     Aufgehoben wird deshalb GENAU EINE Datei – die zuletzt angesehene,
+     mit ihren gezeichneten Seiten und der Rollstelle. Wer sie gleich
+     wieder aufschlägt, sieht sie ohne Warten und an derselben Stelle.
+
+     Genau eine, nicht mehr: ein Buch hängt an Arbeitern, Puffern und
+     Leinwänden. Zwei davon wären schon spürbar, und drei stünden
+     dauerhaft im Speicher, obwohl höchstens eines angesehen wird. Wer
+     eine andere Datei aufschlägt, räumt die vorige damit weg. */
+  let _lager = null;   // { id, knoten, pdf, bildUrl, beobachter, sichtbar, rollte }
 
   const txt = (schluessel, ersatz) =>
     (typeof t === 'function' ? t(schluessel) : ersatz) || ersatz;
@@ -248,8 +274,20 @@
     if (!streifen) return;
     leere(streifen);
 
-    const zeigen = !_stand.versteckt && _stand.dateien.length && !leisteOffen();
+    /* >>> Weg, sobald eine Datei offen ist <<<
+       Sie liegt dann rechts daneben und trägt ihren Namen in der
+       Kopfzeile. Ein Rechteck davor wäre derselbe Name ein zweites Mal –
+       und es läge auf ihrem Rand. Zumachen bringt sie zurück. */
+    const zeigen = !!(!_stand.versteckt && _stand.dateien.length
+      && !leisteOffen() && !ansichtOffen());
     streifen.style.display = zeigen ? 'flex' : 'none';
+
+    /* Der Rollbalken des Hefts weicht dem Rechteck aus – es liegt sonst
+       genau darauf (css/griffbereit.css). */
+    if (document.body.classList.contains('griff-reiter-da') !== zeigen) {
+      document.body.classList.toggle('griff-reiter-da', zeigen);
+      nachLayout();
+    }
     if (!zeigen) return;
 
     for (const d of _stand.dateien) {
@@ -278,6 +316,11 @@
     zeichneReiter();
     // Eine ausgeblendete oder weggenommene Datei bleibt nicht offen stehen
     if (_offen && (_stand.versteckt || !datei(_offen))) schliesse();
+    /* Und was weggenommen oder ausgeblendet wurde, hat auch im Lager
+       nichts mehr zu suchen. Sonst hinge ein Buch im Speicher, das es
+       nicht mehr gibt – oder eines, das der Nutzer gerade ausdrücklich
+       aus dem Weg geräumt hat. */
+    if (_lager && (_stand.versteckt || !datei(_lager.id))) raeumeLagerWeg();
   }
 
   /* ══════════════════════════════════════════════════════════════════
@@ -464,7 +507,16 @@
 
     // Erst die Stelle der bisher offenen Datei sichern, dann wechseln
     merkeStelle();
-    raeumeInhaltWeg();
+
+    /* >>> Liegt die gewünschte Datei noch im Lager? <<<
+       Dann wird sie DORT HERAUSGENOMMEN, bevor die bisherige
+       hineinkommt – sonst räumte das Einlagern genau das weg, was gleich
+       gebraucht wird (beim Hin- und Herwechseln zwischen zwei Dateien). */
+    const bereit = (_lager && _lager.id === String(id)) ? _lager : null;
+    if (bereit) _lager = null;
+
+    if (!legeInsLager()) raeumeInhaltWeg();
+    _fertig = false;
     _offen = String(id);
     const lauf = ++_lauf;
 
@@ -478,6 +530,17 @@
     nachLayout();
 
     const koerper = E('griff-view-body');
+
+    /* Der kurze Weg: alles steht noch, es muss nur wieder eingehängt
+       werden. Kein Lesen, kein Vermessen, kein Zeichnen – und die Datei
+       steht an der Stelle, an der sie zugemacht wurde. */
+    if (bereit && holeAusLager(bereit)) {
+      _fertig = true;
+      // Die Breite kann sich seither geändert haben
+      setTimeout(zeichneSichtbareNeu, 300);
+      return;
+    }
+
     leere(koerper);
     const laedt = document.createElement('div');
     laedt.className = 'griff-hinweis';
@@ -519,6 +582,8 @@
     }
     if (lauf !== _lauf) return;
 
+    _fertig = true;
+
     // Dort weitermachen, wo zuletzt aufgehört wurde
     requestAnimationFrame(() => rolleZuAnteil(d.stelle || 0));
 
@@ -545,9 +610,14 @@
 
   function schliesse() {
     merkeStelle();
+    /* Aufgehoben, nicht weggeworfen: zugemacht wird oft, und dieselbe
+       Datei noch einmal zu laden dauert bei einem Buch spürbar lange
+       (siehe DAS LAGER). Einlagern MUSS vor dem Nullsetzen von _offen
+       stehen – daran hängt die Kennung. */
+    if (!legeInsLager()) raeumeInhaltWeg();
+    _fertig = false;
     _offen = null;
     _lauf++;
-    raeumeInhaltWeg();
     const v = ansicht();
     if (v) v.classList.remove('open');
     const anzeige = E('griff-view-name');
@@ -557,9 +627,64 @@
     nachLayout();
   }
 
+  /**
+   * Den jetzigen Inhalt ins Lager legen, statt ihn wegzuwerfen.
+   *
+   * Die Knoten wandern nur aus dem Blick; Leinwände, Arbeiter und der
+   * Beobachter bleiben, wie sie sind. Ein Beobachter darf auf Knoten
+   * zeigen, die gerade nirgends hängen – er meldet dann schlicht nichts.
+   *
+   * Gibt false zurück, wenn es nichts zu lagern gibt; dann muss der
+   * Aufrufer aufräumen wie bisher.
+   */
+  function legeInsLager() {
+    const koerper = E('griff-view-body');
+    if (!_offen || !koerper || !_fertig || (!_pdf && !_bildUrl)) return false;
+
+    raeumeLagerWeg();          // das vorige Stück macht Platz
+    _lager = {
+      id: String(_offen),
+      knoten: Array.from(koerper.childNodes),
+      pdf: _pdf, bildUrl: _bildUrl,
+      beobachter: _beobachter, sichtbar: _sichtbar,
+      rollte: koerper.scrollTop
+    };
+    for (const k of _lager.knoten) k.remove();
+
+    _pdf = null; _bildUrl = ''; _beobachter = null; _sichtbar = new Set();
+    return true;
+  }
+
+  /** Ein gelagertes Stück wieder einhängen – ohne einen einzigen Ladevorgang. */
+  function holeAusLager(eintrag) {
+    const koerper = E('griff-view-body');
+    if (!eintrag || !koerper) return false;
+
+    leere(koerper);
+    for (const k of eintrag.knoten) koerper.appendChild(k);
+    _pdf = eintrag.pdf;
+    _bildUrl = eintrag.bildUrl;
+    _beobachter = eintrag.beobachter;
+    _sichtbar = eintrag.sichtbar;
+
+    /* Erst nach dem Einhängen steht die Höhe wieder – vorher zeigte
+       scrollTop ins Leere und die Stelle wäre verloren. */
+    requestAnimationFrame(() => { koerper.scrollTop = eintrag.rollte; });
+    return true;
+  }
+
+  function raeumeLagerWeg() {
+    if (!_lager) return;
+    if (_lager.beobachter) { try { _lager.beobachter.disconnect(); } catch (err) { /* egal */ } }
+    if (_lager.pdf) { try { _lager.pdf.destroy(); } catch (err) { /* egal */ } }
+    if (_lager.bildUrl) { try { URL.revokeObjectURL(_lager.bildUrl); } catch (err) { /* egal */ } }
+    _lager = null;
+  }
+
   /* Ein PDF hängt an Arbeitern und Puffern, ein Bild an einer URL. Beides
-     muss beim Wechsel weg – sonst sammelt sich mit jedem Aufschlagen ein
-     weiterer Satz an, und nach dem zehnten Mal steht die App. */
+     muss weg, wenn es nicht ins Lager geht – sonst sammelt sich mit jedem
+     Aufschlagen ein weiterer Satz an, und nach dem zehnten Mal steht die
+     App. */
   function raeumeInhaltWeg() {
     if (_beobachter) { _beobachter.disconnect(); _beobachter = null; }
     _sichtbar = new Set();
@@ -620,7 +745,7 @@
       verhaeltnisse.push(v.width / v.height);
       if (lauf !== _lauf) return;
     }
-    const ersatz = verhaeltnisse[0] || 0.7071;   // A4 hochkant
+    const ersatz = ueblicheForm(verhaeltnisse);
 
     leere(koerper);
     for (let n = 1; n <= doc.numPages; n++) {
@@ -641,6 +766,32 @@
     }, { root: koerper, rootMargin: '600px 0px' });
 
     for (const k of koerper.querySelectorAll('.griff-seite')) _beobachter.observe(k);
+  }
+
+  /**
+   * Die Form, die unter den gemessenen Seiten am häufigsten vorkommt.
+   *
+   * Sie gilt für alles, was nicht gemessen wurde. Die erste Seite wäre
+   * die naheliegende Wahl und die falsche: ein Deckblatt ist oft breiter
+   * oder quadratischer als der Rest, und dann stünden hinter ihm hundert
+   * Kästen in einer Höhe, die für keine einzige Seite stimmt.
+   *
+   * Gerundet auf zwei Stellen wird gezählt, damit ein Blatt, das um ein
+   * Tausendstel abweicht, nicht als eigene Form durchgeht.
+   */
+  function ueblicheForm(verhaeltnisse) {
+    if (!verhaeltnisse.length) return 0.7071;   // A4 hochkant
+    const zaehlung = new Map();
+    for (const v of verhaeltnisse) {
+      const schluessel = v.toFixed(2);
+      const bisher = zaehlung.get(schluessel);
+      zaehlung.set(schluessel, bisher ? { wert: bisher.wert, wie: bisher.wie + 1 } : { wert: v, wie: 1 });
+    }
+    let beste = null;
+    for (const eintrag of zaehlung.values()) {
+      if (!beste || eintrag.wie > beste.wie) beste = eintrag;
+    }
+    return beste.wert;
   }
 
   async function zeichneSeite(kasten) {
@@ -753,8 +904,16 @@
     if (!v) return;
     let x0 = 0, y0 = 0, aktiv = false;
 
+    /* >>> Nicht auf einem Knopf <<<
+       Der Ziehknopf sitzt IN der Ansicht, und die Breite wird an ihm
+       nach rechts kleiner gezogen. Ohne diese Zeile war genau das ein
+       Wisch nach rechts: wer die Datei schmaler machen wollte, hatte sie
+       zugemacht. Dasselbe gilt für das ✕ – wer daneben trifft und die
+       Hand wegzieht, soll nichts anderes auslösen. */
+    const aufKnopf = (ziel) => !!(ziel && ziel.closest && ziel.closest('button'));
+
     v.addEventListener('touchstart', (e) => {
-      aktiv = e.touches.length === 1 && ansichtOffen();
+      aktiv = e.touches.length === 1 && ansichtOffen() && !aufKnopf(e.target);
       if (!aktiv) return;
       x0 = e.touches[0].clientX; y0 = e.touches[0].clientY;
     }, { passive: true });
@@ -763,7 +922,7 @@
       if (!aktiv) return;
       aktiv = false;
       const t = e.changedTouches && e.changedTouches[0];
-      if (!t) return;
+      if (!t || aufKnopf(e.target)) return;
       const dx = t.clientX - x0, dy = t.clientY - y0;
       if (dx > WISCH_MIN && Math.abs(dx) > Math.abs(dy)) schliesse();
     }, { passive: true });

@@ -235,7 +235,32 @@ console.log('\n6. Die Bereiche der Auslieferung\n');
   check('Unsinn: alles', b('Zeug', 1000), null);
 }
 
-console.log('\n7. Die Vereinbarung zwischen den Prozessen\n');
+console.log('\n7. Die Form der Kaesten\n');
+{
+  /* Vor dem ersten Blick steht für jede Seite ein leerer Kasten. Seine
+     Höhe kommt aus der Form der gemessenen Seiten – und gemessen werden
+     nur die ersten acht, weil jede eine eigene Anfrage ist.
+
+     Genommen wird deshalb die HÄUFIGSTE Form, nicht die erste: ein
+     Deckblatt ist oft anders geschnitten als der Rest, und als Vorlage
+     verzöge es die Höhe aller hundert Kästen dahinter. */
+  const ctx = umgebung();
+  vm.runInContext(funktion(uiQuelle, 'ueblicheForm'), ctx);
+  const f = ctx.ueblicheForm;
+
+  const A4 = 0.7071, QUER = 1.414;
+  check('Gar nichts gemessen: A4 hochkant', f([]), 0.7071);
+  check('Alle gleich', f([A4, A4, A4]), A4);
+  check('Ein anderes Deckblatt zaehlt nicht mehr als der Rest',
+    f([QUER, A4, A4, A4]), A4);
+  check('Winzige Abweichungen sind dieselbe Form',
+    Math.abs(f([0.707, 0.7071, 0.7072, QUER]) - 0.707) < 0.001, true);
+  check('Ist wirklich alles quer, gilt quer', f([QUER, QUER, A4]), QUER);
+  // Bei Gleichstand gewinnt die zuerst gesehene – irgendeine muss es sein
+  check('Gleichstand: die erste', f([A4, QUER]), A4);
+}
+
+console.log('\n8. Die Vereinbarung zwischen den Prozessen\n');
 {
   /* Ein Kanal, den preload.js anbietet und main.js nicht bedient, faellt
      erst im Betrieb auf — und dann als Fenster, in dem nichts geschieht. */

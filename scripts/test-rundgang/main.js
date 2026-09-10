@@ -1407,6 +1407,95 @@ app.on('ready', async () => {
       if (breit > window.innerWidth / 2 + 1)
         throw new Error('breiter als das halbe Fenster: ' + breit);`, 260);
 
+    /* >>> Der Knopf ist kein Wisch <<<
+       Die Breite wird am Knopf nach rechts kleiner gezogen – und nach
+       rechts wischen heisst zumachen. Mit dem Finger war das dieselbe
+       Bewegung: wer schmaler machen wollte, hatte die Datei zu. Der
+       Wisch zählt deshalb überall in der Ansicht, nur nicht auf einem
+       Knopf. */
+    await schritt('Am Knopf ziehen macht die Datei nicht zu', `
+      const z = E('griff-zieher'), v = E('griff-view');
+      const vorher = parseFloat(getComputedStyle(v).getPropertyValue('--griff-breite'));
+      const finger = (x) => new Touch({ identifier: 3, target: z, clientX: x, clientY: 300 });
+      const tipp = (art, x, laufend) => z.dispatchEvent(new TouchEvent(art, {
+        touches: laufend ? [finger(x)] : [], changedTouches: [finger(x)],
+        bubbles: true, cancelable: true }));
+
+      // Genau die Geste, die zumachte: am Knopf weit nach rechts
+      tipp('touchstart', 600, true);
+      z.dispatchEvent(new PointerEvent('pointerdown',
+        { pointerId: 9, clientX: 600, clientY: 300, bubbles: true }));
+      z.dispatchEvent(new PointerEvent('pointermove',
+        { pointerId: 9, clientX: 900, clientY: 300, bubbles: true }));
+      z.dispatchEvent(new PointerEvent('pointerup',
+        { pointerId: 9, clientX: 900, clientY: 300, bubbles: true }));
+      tipp('touchend', 900, false);
+      await new Promise(r => setTimeout(r, 350));
+
+      if (!v.classList.contains('open'))
+        throw new Error('das Ziehen hat die Datei zugemacht');
+      /* Solange sie offen ist, hat das Reiter-Rechteck nichts davor zu
+         suchen: der Name steht in ihrer Kopfzeile. */
+      if (getComputedStyle(E('griff-reiter')).display !== 'none')
+        throw new Error('die Reiter stehen noch vor der offenen Datei');
+      const nachher = parseFloat(getComputedStyle(v).getPropertyValue('--griff-breite'));
+      if (!(nachher < vorher))
+        throw new Error('schmaler wurde sie auch nicht: ' + vorher + ' -> ' + nachher);`, 300);
+
+    /* Auf dem Blatt daneben gilt der Wisch weiter – sonst hätte die
+       Ausnahme die Geste ganz abgeschafft. */
+    await schritt('Auf dem Inhalt schliesst der Wisch weiterhin', `
+      const k = E('griff-view-body'), v = E('griff-view');
+      const finger = (x) => new Touch({ identifier: 4, target: k, clientX: x, clientY: 400 });
+      const tipp = (art, x, laufend) => k.dispatchEvent(new TouchEvent(art, {
+        touches: laufend ? [finger(x)] : [], changedTouches: [finger(x)],
+        bubbles: true, cancelable: true }));
+      tipp('touchstart', 1000, true);
+      tipp('touchend', 1200, false);
+      await new Promise(r => setTimeout(r, 350));
+      if (v.classList.contains('open'))
+        throw new Error('der Wisch auf dem Inhalt macht nicht mehr zu');
+      // Für den nächsten Schritt wieder aufschlagen – der Reiter hört
+      // auf Zeiger-Ereignisse, ein blosser Klick tut dort nichts
+      const b = E('griff-reiter').querySelector('.griff-reiter-btn');
+      const zeig = (art, x) => b.dispatchEvent(new PointerEvent(art,
+        { pointerId: 11, clientX: x, clientY: 400, bubbles: true }));
+      zeig('pointerdown', 1400); zeig('pointerup', 1340);
+      await new Promise(r => setTimeout(r, 700));
+      if (!v.classList.contains('open'))
+        throw new Error('das Wiederaufschlagen misslang');`, 300);
+
+    /* >>> Zugemacht heisst nicht weggeworfen <<<
+       Ein Buch noch einmal zu laden dauert spürbar, und zugemacht wird
+       oft. Der Beweis, dass nichts neu gebaut wurde, ist die Identität
+       der Knoten: derselbe Kasten, dieselbe Leinwand darin. */
+    await schritt('Dieselbe Datei kommt ohne Neuladen zurueck', `
+      const v = E('griff-view'), k = E('griff-view-body');
+      const vorher = k.firstElementChild;
+      if (!vorher) throw new Error('nichts zu vergleichen');
+      /* Die Attrappe liefert ein Bild von 1x1 – darin lässt sich nicht
+         rollen. Geprüft wird deshalb gegen das, was wirklich ankam. */
+      k.scrollTop = 40;
+      await new Promise(r => setTimeout(r, 100));
+      const stelle = k.scrollTop;
+
+      E('griff-view-close').click();
+      await new Promise(r => setTimeout(r, 500));
+      if (v.classList.contains('open')) throw new Error('sie ging nicht zu');
+
+      const b = E('griff-reiter').querySelector('.griff-reiter-btn');
+      const zeig = (art, x) => b.dispatchEvent(new PointerEvent(art,
+        { pointerId: 12, clientX: x, clientY: 400, bubbles: true }));
+      zeig('pointerdown', 1400); zeig('pointerup', 1340);
+      await new Promise(r => setTimeout(r, 700));
+
+      if (!v.classList.contains('open')) throw new Error('sie ging nicht wieder auf');
+      if (E('griff-view-body').firstElementChild !== vorher)
+        throw new Error('der Inhalt wurde neu gebaut');
+      if (Math.abs(E('griff-view-body').scrollTop - stelle) > 2)
+        throw new Error('die Rollstelle ging verloren: '
+          + E('griff-view-body').scrollTop + ' statt ' + stelle);`, 320);
+
     /* >>> Zwei Spalten an einer Kante sind genug <<<
        Die offene Unterlage sitzt dort, wo auch die Kommentarleiste
        aufginge. Beide nebeneinander liessen vom Blatt einen Streifen –
