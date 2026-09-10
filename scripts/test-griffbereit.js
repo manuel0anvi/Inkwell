@@ -434,7 +434,87 @@ console.log('\n8. Ein Fach je Heft\n');
   }
 }
 
-console.log('\n9. Die Vereinbarung zwischen den Prozessen\n');
+console.log('\n9. Die Kanaele, wirklich durchlaufen\n');
+{
+  /* >>> Warum das hier steht <<<
+     Im Rumpf von griff-uebernehmen stand einmal `griffSchreib(stand)`,
+     wo `fach` gemeint war. Ein ReferenceError - kein `node --check`
+     sieht so etwas, und keine Pruefung, die nur die Hilfsfunktionen
+     einzeln aufruft. Der Kanal warf, das Fenster bekam nie eine
+     Antwort, und eine hinzugefuegte Unterlage tauchte nie auf.
+
+     Deshalb laufen die Kanaele hier von Anfang bis Ende durch, gegen
+     eine gestellte Datei. Ein Wurf faellt dabei sofort auf. */
+  let daten = null;
+  let zeit = 100;
+  const ctx = umgebung();
+  ctx.console = { error: () => {}, log: () => {} };
+  ctx.Date = Date;
+  ctx.Map = Map;
+  ctx.fs = {
+    statSync: () => {
+      if (daten === null) throw Object.assign(new Error('weg'), { code: 'ENOENT' });
+      return { mtimeMs: zeit };
+    },
+    readFileSync: () => daten,
+    writeFileSync: (ziel, text) => { daten = text; zeit++; },
+    existsSync: () => true
+  };
+  vm.runInContext("const griffPath = 'stand.json'; const GRIFF_MAX = 3;", ctx);
+  vm.runInContext('let griffStand = null; let griffStandZeit = -1;', ctx);
+  /* var, nicht const: nur var landet als Eigenschaft am Kontext und
+     ist damit von hier aus zu fuellen. Dieselbe Falle wie bei window.S. */
+  vm.runInContext('var griffAngebote = new Map();', ctx);
+  for (const name of ['griffLeer', 'griffFach', 'griffForm', 'griffLies', 'griffHeft',
+                      'griffSichere', 'griffSchreib', 'griffAntwort', 'griffMass',
+                      'griffOrdne', 'griffUebernimm', 'griffAendere', 'griffEntferne',
+                      'griffOrdneHeft', 'griffVerstecke']) {
+    vm.runInContext(funktion(mainQuelle, name), ctx);
+  }
+
+  const biete = (id, pfad) => ctx.griffAngebote.set(id, { pfad, art: 'pdf' });
+  const namen = (a) => (a.dateien || []).map(d => d.name);
+
+  // Ohne Heft geht gar nichts - eine Unterlage liegt neben einem Heft
+  biete('x', 'C:/x/x.pdf');
+  check('Ohne Heft wird nichts uebernommen', ctx.griffUebernimm('', 'x', 'X').fehler, 'kein Heft');
+
+  biete('g1', 'C:/x/eins.pdf');
+  check('Die erste kommt an', namen(ctx.griffUebernimm('heftA', 'g1', 'Das Erste')), ['Das Erste']);
+  biete('g2', 'C:/x/zwei.pdf');
+  check('Die zweite stellt sich daneben',
+    namen(ctx.griffUebernimm('heftA', 'g2', 'Das Zweite')), ['Das Erste', 'Das Zweite']);
+
+  // Und sie stehen wirklich in der Datei, nicht nur in der Antwort
+  check('Beide stehen in der Datei',
+    JSON.parse(daten).hefte.heftA.dateien.map(d => d.name), ['Das Erste', 'Das Zweite']);
+
+  // Ein Angebot gilt genau einmal - sonst liesse sich ein Pfad wiederverwenden
+  check('Dasselbe Angebot ein zweites Mal', ctx.griffUebernimm('heftA', 'g1', 'Nochmal').fehler, 'unbekannt');
+
+  biete('g3', 'C:/x/drei.pdf');
+  ctx.griffUebernimm('heftA', 'g3', 'Das Dritte');
+  biete('g4', 'C:/x/vier.pdf');
+  check('Ueber drei geht es nicht', ctx.griffUebernimm('heftA', 'g4', 'Zu viel').fehler, 'voll');
+
+  check('Umbenennen', namen(ctx.griffAendere('heftA', 'g2', { name: 'Neuer Name' })),
+    ['Das Erste', 'Neuer Name', 'Das Dritte']);
+  check('Umsortieren', namen(ctx.griffOrdneHeft('heftA', ['g3', 'g1', 'g2'])),
+    ['Das Dritte', 'Das Erste', 'Neuer Name']);
+  check('Ausblenden', ctx.griffVerstecke('heftA', true).versteckt, true);
+  check('Wegnehmen', namen(ctx.griffEntferne('heftA', 'g1')), ['Das Dritte', 'Neuer Name']);
+
+  // Das andere Heft hat von alldem nichts mitbekommen
+  check('Das andere Heft bleibt leer', ctx.griffAntwort(ctx.griffHeft('heftB')).dateien.length, 0);
+
+  // Und nach einem Neustart steht alles noch so da
+  vm.runInContext('griffStand = null; griffStandZeit = -1;', ctx);
+  check('Alles ueberlebt den Neustart',
+    namen(ctx.griffAntwort(ctx.griffHeft('heftA'))), ['Das Dritte', 'Neuer Name']);
+  check('Das Ausblenden auch', ctx.griffAntwort(ctx.griffHeft('heftA')).versteckt, true);
+}
+
+console.log('\n10. Die Vereinbarung zwischen den Prozessen\n');
 {
   /* Ein Kanal, den preload.js anbietet und main.js nicht bedient, faellt
      erst im Betrieb auf — und dann als Fenster, in dem nichts geschieht. */

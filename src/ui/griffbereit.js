@@ -89,6 +89,30 @@
     return _stand;
   }
 
+  /**
+   * Eine Auskunft holen, ohne dass ein Fehler still verschluckt wird.
+   *
+   * >>> Warum das nötig war <<<
+   * Im Hauptprozess stand im Rumpf von griff-uebernehmen einmal ein
+   * Bezeichner, den es dort nicht gab. Der Kanal warf, das Versprechen
+   * wurde abgelehnt – und weil hier niemand hinsah, brach das Hinzufügen
+   * mittendrin ab: kein Neuzeichnen, keine Zeile, keine Meldung. Aus der
+   * Sicht des Nutzers geschah beim Hinzufügen einfach nichts.
+   *
+   * Ein Kanal, der wirft, ist ein Fehler in der App und keiner des
+   * Nutzers. Zu sehen sein muss er trotzdem – sonst sucht der Nutzer ihn
+   * bei sich.
+   */
+  async function ueberBruecke(was, tun) {
+    try {
+      return await tun();
+    } catch (err) {
+      console.error('[Griffbereit] ' + was + ' fehlgeschlagen:', (err && err.message) || err);
+      toast(txt('griffKanalKaputt', 'Das hat nicht geklappt.'), true);
+      return null;
+    }
+  }
+
   /* Schmaler als das hier wird die Ansicht nicht – darunter passt keine
      PDF-Seite mehr, auf der man etwas lesen könnte. */
   const MIN_BREITE = 220;
@@ -506,8 +530,10 @@
       angebot.vorschlag || '');
     if (!name) return;
 
-    const antwort = await api().uebernehmen(heftId(), angebot.id, name);
-    if (antwort && antwort.fehler) {
+    const antwort = await ueberBruecke('Übernehmen',
+      () => api().uebernehmen(heftId(), angebot.id, name));
+    if (!antwort) return;
+    if (antwort.fehler) {
       toast(txt('griffVoll', 'Drei Unterlagen sind das Höchste. Nimm zuerst eine weg.'), true);
       return;
     }
@@ -549,7 +575,9 @@
     if (!d) return;
     const name = await txtModal(txt('griffNameFrage', 'Wie soll die Unterlage heißen?'), d.name);
     if (!name || name === d.name) return;
-    standAnnehmen(await api().aendern(heftId(), id, { name }));
+    const neu = await ueberBruecke('Umbenennen', () => api().aendern(heftId(), id, { name }));
+    if (!neu) return;
+    standAnnehmen(neu);
     zeichne();
     if (String(_offen) === String(id)) {
       const anzeige = E('griff-view-name');
@@ -564,7 +592,9 @@
       txt('griffWegFrage', 'Nur der Verweis wird entfernt – die Datei selbst bleibt liegen, wo sie ist.'));
     if (!ok) return;
     if (String(_offen) === String(id)) schliesse();
-    standAnnehmen(await api().entfernen(heftId(), id));
+    const nachher = await ueberBruecke('Wegnehmen', () => api().entfernen(heftId(), id));
+    if (!nachher) return;
+    standAnnehmen(nachher);
     zeichne();
   }
 
@@ -646,7 +676,10 @@
       try { liste.releasePointerCapture(e.pointerId); } catch (err) { /* egal */ }
       if (ziel === null) return;
 
-      standAnnehmen(await api().ordnen(heftId(), neueFolge(_stand.dateien.map(d => d.id), gezogen, ziel)));
+      const folge = neueFolge(_stand.dateien.map(d => d.id), gezogen, ziel);
+      const geordnet = await ueberBruecke('Umsortieren', () => api().ordnen(heftId(), folge));
+      if (!geordnet) return;
+      standAnnehmen(geordnet);
       zeichne();
     };
 
@@ -1417,7 +1450,10 @@
 
   E('griff-verstecken')?.addEventListener('click', async () => {
     if (!api()) return;
-    standAnnehmen(await api().verstecken(heftId(), !_stand.versteckt));
+    const umgestellt = await ueberBruecke('Ausblenden',
+      () => api().verstecken(heftId(), !_stand.versteckt));
+    if (!umgestellt) return;
+    standAnnehmen(umgestellt);
     if (_stand.versteckt) schliesse();
     zeichne();
     nachLayout();

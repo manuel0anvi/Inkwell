@@ -2489,7 +2489,7 @@ ipcMain.handle('griff-abgelegt', (_, pfade) => {
   return raus;
 });
 
-ipcMain.handle('griff-uebernehmen', (_, nbId, id, name) => {
+function griffUebernimm(nbId, id, name) {
   if (!String(nbId || '').trim()) return { fehler: 'kein Heft' };
   const angebot = griffAngebote.get(String(id));
   if (!angebot) return { fehler: 'unbekannt' };
@@ -2508,10 +2508,11 @@ ipcMain.handle('griff-uebernehmen', (_, nbId, id, name) => {
     zoom: 1,       // 1 heisst: eine Seite so breit wie die Spalte
     quer: 0        // wie weit nach rechts geschoben, ebenfalls als Anteil
   });
-  return griffSchreib(stand);
-});
+  return griffSchreib(fach);
+}
+ipcMain.handle('griff-uebernehmen', (_, nbId, id, name) => griffUebernimm(nbId, id, name));
 
-ipcMain.handle('griff-aendern', (_, nbId, id, patch) => {
+function griffAendere(nbId, id, patch) {
   const fach = griffHeft(nbId);
   const d = fach.dateien.find(x => x.id === String(id));
   if (!d) return griffAntwort(fach);
@@ -2533,13 +2534,15 @@ ipcMain.handle('griff-aendern', (_, nbId, id, patch) => {
      zuletzt benutzte ist die, die man gleich wieder braucht. */
   if (patch && patch.zuletzt) d.zuletzt = Date.now();
   return griffSchreib(fach);
-});
+}
+ipcMain.handle('griff-aendern', (_, nbId, id, patch) => griffAendere(nbId, id, patch));
 
-ipcMain.handle('griff-entfernen', (_, nbId, id) => {
+function griffEntferne(nbId, id) {
   const fach = griffHeft(nbId);
   fach.dateien = fach.dateien.filter(d => d.id !== String(id));
   return griffSchreib(fach);
-});
+}
+ipcMain.handle('griff-entfernen', (_, nbId, id) => griffEntferne(nbId, id));
 
 /* Umsortieren. Das Fenster schickt die Kennungen in der neuen Folge; was
    nicht darin vorkommt, hängt sich hinten an – so kann eine Liste, die
@@ -2551,17 +2554,19 @@ function griffOrdne(dateien, ids) {
   return dateien.slice().sort((a, b) => platz(a) - platz(b));
 }
 
-ipcMain.handle('griff-ordnen', (_, nbId, ids) => {
+function griffOrdneHeft(nbId, ids) {
   const fach = griffHeft(nbId);
   fach.dateien = griffOrdne(fach.dateien, ids);
   return griffSchreib(fach);
-});
+}
+ipcMain.handle('griff-ordnen', (_, nbId, ids) => griffOrdneHeft(nbId, ids));
 
-ipcMain.handle('griff-verstecken', (_, nbId, an) => {
+function griffVerstecke(nbId, an) {
   const fach = griffHeft(nbId);
   fach.versteckt = !!an;
   return griffSchreib(fach);
-});
+}
+ipcMain.handle('griff-verstecken', (_, nbId, an) => griffVerstecke(nbId, an));
 
 ipcMain.handle('griff-lesen', (_, nbId, id) => {
   const d = griffHeft(nbId).dateien.find(x => x.id === String(id));
