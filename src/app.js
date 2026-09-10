@@ -1743,7 +1743,21 @@ E('btn-zoom-reset')?.addEventListener('click', zoomReset);
   function pinchBeenden() {
     if (_pinchBild) { cancelAnimationFrame(_pinchBild); _pinchBild = 0; }
     _pinchZuletzt = null;
+
+    /* ══ DIE VERSCHIEBUNG UEBERLEBT DAS LOSLASSEN ═══════════════════
+       >>> Gemeldet: „ich schreibe, zoome woanders hin – und sobald ich
+       die Finger loslasse, springt es dorthin zurueck, wo ich
+       geschrieben habe" <<<
+       Ueber panThreshold() wird nicht gerollt, sondern verschoben: die
+       Lage steht im transform, die Rollposition bleibt, wo sie war. Die
+       Nacharbeit beim Loslassen (_applyZoom) schreibt das transform aber
+       neu – nur mit dem Massstab. Die Verschiebung war weg, und zu sehen
+       war wieder die alte Rollposition: die Stelle, an der geschrieben
+       worden war. Seit der Zoom um die Finger rechnet, steckt fast die
+       ganze Bewegung in dieser Verschiebung. */
+    const pan = getPanOffset();
     if (typeof beendeZoomGeste === 'function') beendeZoomGeste();
+    if (_zoom > panThreshold()) setPan(pan.x, pan.y);
   }
 
   /* ══════════════════════════════════════════════════════════════════
@@ -1763,10 +1777,12 @@ E('btn-zoom-reset')?.addEventListener('click', zoomReset);
          war, und der Rest dieser Beruehrung zaehlt nicht mehr.
      ══════════════════════════════════════════════════════════════════ */
   const PINCH_TOTZONE = 14;         // Pixel, bis zwei Beruehrungen ziehen
-  /* Knapp: eine Hand liegt vielleicht eine halbe Sekunde vor dem Stift.
-     Wer mit zwei Fingern zoomt und danach zum Stift greift, soll seinen
-     Zoom behalten. */
-  const HAND_VOR_STIFT_MS = 700;
+  /* Zurueckgenommen wird nur, wenn der Stift AUFSETZT, solange die Finger
+     noch liegen (stiftMeldetSich). Das Fenster darf deshalb so lang sein,
+     wie eine Hand vor dem Stift liegen kann: stand hier 0,7 s, solange
+     schon ein schwebender Stift genuegte, kam es fuer eine Hand, die sich
+     erst zurechtlegt, zu spaet. */
+  const HAND_VOR_STIFT_MS = 1500;
   let _pinchGezogen = false;
   let _hand = null;                 // { anfang, ansicht, verworfen }
 
@@ -1806,10 +1822,31 @@ E('btn-zoom-reset')?.addEventListener('click', zoomReset);
     }
     const h = _hand;
     if (!h || h.verworfen) return;
-    h.verworfen = true;
-    // Lag sie schon lange, hat wirklich jemand gezoomt – das bleibt
-    if (performance.now() - h.anfang > HAND_VOR_STIFT_MS) return;
-    ansichtZurueck(h.ansicht);
+
+    /* ══ ZURUECK NUR, WENN DER STIFT AUFSETZT ═══════════════════════
+       >>> Gemeldet: „schreibe ich und zoome dann woanders hin, springt
+       es dorthin, wo ich zuletzt geschrieben habe" <<<
+       Hier genuegte es, dass der Stift SCHWEBTE. Wer mit der Hand zoomt,
+       in der er den Stift haelt, bringt ihn dabei aber zwangslaeufig in
+       die Naehe des Bildschirms – und die Ansicht sprang zurueck auf den
+       Stand beim Aufsetzen der Finger, also dorthin, wo geschrieben
+       worden war.
+
+       Eine Hand, die vor dem Stift aufliegt, endet damit, dass der Stift
+       AUFSETZT. Nur dann wird zurueckgenommen. Ein schwebender Stift haelt
+       eine Beruehrung bloss an, solange sie noch nichts bewegt hat – ein
+       ruhig aufliegender Handballen. Was schon zoomt oder rollt, bleibt. */
+    if (e.type === 'pointerdown') {
+      h.verworfen = true;
+      // Lag sie schon lange, hat wirklich jemand gezoomt – das bleibt
+      if (performance.now() - h.anfang <= HAND_VOR_STIFT_MS) ansichtZurueck(h.ansicht);
+      return;
+    }
+    const jetzt = ansichtMerken();
+    const bewegt = Math.abs(jetzt.zoom - h.ansicht.zoom) > 0.001
+      || Math.abs(jetzt.oben - h.ansicht.oben) > 2 || Math.abs(jetzt.links - h.ansicht.links) > 2
+      || Math.abs(jetzt.pan.x - h.ansicht.pan.x) > 2 || Math.abs(jetzt.pan.y - h.ansicht.pan.y) > 2;
+    if (!bewegt) h.verworfen = true;
   }
   document.addEventListener('pointermove', stiftMeldetSich, { capture: true, passive: true });
   document.addEventListener('pointerdown', stiftMeldetSich, { capture: true, passive: true });

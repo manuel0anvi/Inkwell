@@ -1593,27 +1593,60 @@ function attachInput(canvas, textDiv, objLayer, page) {
     if (sel) sel.setBaseAndExtent(a.n, a.o, b.n, b.o);
   }
 
-  /** Dreifachklick: der ganze Absatz – oder frei im Feld die ganze Zeile. */
-  function markiereAbsatzAn(x, y) {
-    let rg = null;
-    try { rg = document.caretRangeFromPoint(x, y); } catch (err) { return; }
-    const sel = window.getSelection();
-    if (!rg || !sel || rg.startContainer.nodeType !== Node.TEXT_NODE
-        || !markierbareStelle(rg.startContainer)) return;
-    const knoten = rg.startContainer;
-    const absatz = absatzUm(knoten);
-    if (absatz) {
-      const ganz = document.createRange();
-      ganz.selectNodeContents(absatz);
-      sel.removeAllRanges();
-      sel.addRange(ganz);
-      return;
+  /* ══════════════════════════════════════════════════════════════════
+     DREIMAL: DIE ZEILE – VIERMAL: DIE SEITE
+
+     >>> Gewuenscht: „dreimal druecken waehlt die ganze Zeile, viermal
+     die ganze Seite" <<<
+     Dreimal markierte vorher den ABSATZ – und bei einem frei stehenden
+     Wort ist das genau dasselbe wie das Wort vom Doppelklick: es sah
+     aus, als passiere nichts.
+
+     Zeile heisst, was auf dem Blatt in EINER Reihe steht, auch zwei frei
+     stehende Absaetze nebeneinander. Gemessen wird deshalb an den Zeilen
+     selbst (messeZeilen) und nicht am Absatz: ein umbrochener Absatz hat
+     mehrere Zeilen, und gemeint ist nur die angeklickte.
+     ══════════════════════════════════════════════════════════════════ */
+  function markiereZeileAn(x, y) {
+    if (typeof raeumeVorlaeufiges === 'function') raeumeVorlaeufiges(textDiv);
+    const zeilen = messeZeilen();
+    const r = textDiv.getBoundingClientRect();
+    const lx = x - r.left, ly = y - r.top;
+
+    // Die Zeile unter dem Zeiger – wie beim Ziehen: erst die Reihe, dann die naechste
+    let beste = null, besteDy = Infinity, besteDx = Infinity;
+    for (const z of zeilen) {
+      const dy = ly < z.o ? z.o - ly : (ly > z.u ? ly - z.u : 0);
+      const dx = lx < z.l ? z.l - lx : (lx > z.r ? lx - z.r : 0);
+      if (dy < besteDy - 1 || (dy <= besteDy + 1 && dx < besteDx)) {
+        beste = z; besteDy = dy; besteDx = dx;
+      }
     }
-    const text = knoten.nodeValue, pos = rg.startOffset;
-    const anfang = pos > 0 ? text.lastIndexOf('\n', pos - 1) + 1 : 0;
-    let ende = text.indexOf('\n', pos);
-    if (ende < 0) ende = text.length;
-    sel.setBaseAndExtent(knoten, anfang, knoten, ende);
+    if (!beste) return;
+
+    // Alles, was auf ihrer Hoehe steht
+    const mitte = (beste.o + beste.u) / 2;
+    const reihe = zeilen.filter(z => z.o <= mitte && z.u >= mitte);
+    const links = reihe.reduce((a, b) => (b.l < a.l ? b : a));
+    const rechts = reihe.reduce((a, b) => (b.r > a.r ? b : a));
+
+    // Eine Markierung reicht im DOM von hier bis dort – siehe IN LESERICHTUNG
+    freieAbsaetzeInLeserichtung(textDiv);
+    const anfang = stelleInLeserichtung(r.left + links.l, r.top + (links.o + links.u) / 2, zeilen);
+    const ende = stelleInLeserichtung(r.left + rechts.r, r.top + (rechts.o + rechts.u) / 2, zeilen);
+    const sel = window.getSelection();
+    if (!anfang || !ende || !sel) return;
+    sel.setBaseAndExtent(anfang.startContainer, anfang.startOffset, ende.startContainer, ende.startOffset);
+  }
+
+  function markiereSeite() {
+    if (typeof raeumeVorlaeufiges === 'function') raeumeVorlaeufiges(textDiv);
+    const sel = window.getSelection();
+    if (!sel) return;
+    const ganz = document.createRange();
+    ganz.selectNodeContents(textDiv);
+    sel.removeAllRanges();
+    sel.addRange(ganz);
   }
 
   /* Nur ein Druck der MAUS. Nach einem Fingertipp schickt der Browser
@@ -1621,15 +1654,35 @@ function attachInput(canvas, textDiv, objLayer, page) {
      Voreinstellung setzt fuer den Finger die Marke (siehe unten, MIT DEM
      FINGER). Abgebrochen stand der Tipp ohne Schreibmarke da. */
   let druckMitMaus = true;
-  textDiv.addEventListener('pointerdown', e => { druckMitMaus = e.pointerType === 'mouse'; }, true);
+
+  /* Die Druecke werden auch selbst gezaehlt. e.detail zaehlt der Browser,
+     und dass er ueber zwei hinaus weiterzaehlt, wenn sein mousedown jedes
+     Mal abgebrochen wird, ist nirgends zugesagt – gemeldet war „dreimal
+     druecken, und nichts passiert". Gilt als Folge, was kurz nacheinander
+     an derselben Stelle gedrueckt wird. */
+  const MEHRFACH_MS = 500;
+  const MEHRFACH_PX = 6;
+  let letzterDruck = null;     // { zeit, x, y, anzahl }
+
+  textDiv.addEventListener('pointerdown', e => {
+    druckMitMaus = e.pointerType === 'mouse';
+    if (!druckMitMaus || e.button !== 0) return;
+    const jetzt = performance.now();
+    const v = letzterDruck;
+    const folgt = !!v && jetzt - v.zeit < MEHRFACH_MS
+      && Math.hypot(e.clientX - v.x, e.clientY - v.y) < MEHRFACH_PX;
+    letzterDruck = { zeit: jetzt, x: e.clientX, y: e.clientY, anzahl: folgt ? v.anzahl + 1 : 1 };
+  }, true);
 
   textDiv.addEventListener('mousedown', e => {
     if (!druckMitMaus || S.mode !== 'cursor' || S.readOnly || e.button !== 0) return;
     if (!textDiv.contains(e.target) || eigenerGriff(e.target)) return;
     e.preventDefault();
     if (e.shiftKey) return;   // erweitert schon im pointerdown
-    if (e.detail === 2) markiereWortAn(e.clientX, e.clientY);
-    else if (e.detail >= 3) markiereAbsatzAn(e.clientX, e.clientY);
+    const anzahl = Math.max(e.detail || 1, letzterDruck ? letzterDruck.anzahl : 1);
+    if (anzahl === 2) markiereWortAn(e.clientX, e.clientY);
+    else if (anzahl >= 4) markiereSeite();
+    else if (anzahl >= 3) markiereZeileAn(e.clientX, e.clientY);
   });
 
   /* ══════════════════════════════════════════════════════════════════

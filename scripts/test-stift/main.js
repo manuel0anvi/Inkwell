@@ -1015,13 +1015,18 @@ app.on('ready', async () => {
     await warte(80);
     const gerollt = await ansicht();
 
-    // Jetzt meldet sich der Stift, knapp ueber dem Bildschirm
-    await dbg.sendCommand('Input.dispatchMouseEvent', {
-      type: 'mouseMoved', button: 'none', buttons: 0, pointerType: 'pen',
-      x: handPunkt.x - 150, y: handPunkt.y - 60 });
+    /* Jetzt setzt der Stift auf. Schweben allein genuegt nicht mehr: das
+       tut er auch in der Hand, die gerade zoomt (siehe unten, DER STIFT
+       IN DER ZOOMENDEN HAND). Geschickt ans Dokument, damit er dabei
+       keinen Strich auf die Seite setzt. */
+    await js(`(() => {
+      const art = { bubbles: true, pointerType: 'pen', pointerId: 11, button: 0 };
+      document.dispatchEvent(new PointerEvent('pointerdown', Object.assign({ buttons: 1 }, art)));
+      document.dispatchEvent(new PointerEvent('pointerup', Object.assign({ buttons: 0 }, art)));
+      return true; })()`);
     await warte(120);
     const zurueck = await ansicht();
-    pruefe('Meldet sich der Stift, steht die Seite wieder wie vor der Hand ('
+    pruefe('Setzt der Stift auf, steht die Seite wieder wie vor der Hand ('
       + gerollt.zoom + ' → ' + zurueck.zoom + ')',
       zurueck.zoom === vorHand.zoom && Math.abs(zurueck.oben - vorHand.oben) < 3,
       'vorher ' + JSON.stringify(vorHand) + ', danach ' + JSON.stringify(zurueck));
@@ -1122,6 +1127,66 @@ app.on('ready', async () => {
       pruefe('Und die Stelle unter den Fingern bleibt stehen (' + fehlX + ' / ' + fehlY + ' px daneben)',
         Math.abs(fehlY) <= 6 && (!auchWaagerecht || Math.abs(fehlX) <= 6),
         JSON.stringify({ vorZoom, nachZoom }));
+
+      /* Und NACH dem Loslassen. Gemeldet: „sobald ich die Finger loslasse,
+         springt es dorthin zurueck, wo ich geschrieben habe" – die
+         Nacharbeit beim Loslassen warf die Verschiebung weg. Gemessen
+         wurde vorher nur, solange die Finger lagen. */
+      const losgelassen = await unterFingern(mitte);
+      const sprungY = Math.round((losgelassen.y - vorZoom.y) * losgelassen.z);
+      const sprungX = Math.round((losgelassen.x - vorZoom.x) * losgelassen.z);
+      pruefe('Auch nach dem Loslassen bleibt sie dort (' + sprungX + ' / ' + sprungY + ' px daneben)',
+        Math.abs(sprungY) <= 6 && (!auchWaagerecht || Math.abs(sprungX) <= 6),
+        JSON.stringify({ vorZoom, losgelassen }));
+    }
+
+    /* ══════════════════════════════════════════════════════════════════
+       DER STIFT IN DER ZOOMENDEN HAND
+
+       Gemeldet: „schreibe ich mit dem Stift und zoome dann woanders hin,
+       springt es dorthin, wo ich zuletzt geschrieben habe." Beim Zoomen
+       schwebte der Stift in derselben Hand knapp ueber dem Bildschirm –
+       und das galt als die Hand, die vor dem Stift aufliegt: die Ansicht
+       sprang auf den Stand beim Aufsetzen der Finger zurueck.
+       ══════════════════════════════════════════════════════════════════ */
+    abschnitt('Der Stift in der zoomenden Hand holt die Ansicht nicht zurück');
+    await bisStiftWeg();
+    await js(`(() => { deselectStroke(); switchMode('pen1'); setZoom(1);
+      document.getElementById('pg-scroll').scrollTop = 150; return true; })()`);
+    await warte(500);
+    {
+      const seite = await stelle(350);
+      const mitte = { x: seite.x - 140, y: seite.y };
+      const vorher = await zahl(`getZoom()`);
+      const finger = a => ([
+        { x: Math.round(mitte.x - a), y: Math.round(mitte.y), id: 1, force: 1 },
+        { x: Math.round(mitte.x + a), y: Math.round(mitte.y), id: 2, force: 1 }]);
+      const zieheAuf = async (a) => {
+        await dbg.sendCommand('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: finger(a) });
+        await warte(40);
+      };
+
+      await dbg.sendCommand('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: finger(60) });
+      await warte(40);
+      for (let i = 1; i <= 6; i++) await zieheAuf(60 + i * 8);
+      const gezoomt = await zahl(`getZoom()`);
+
+      // Die Hand mit dem Stift kommt dem Bildschirm nahe
+      await dbg.sendCommand('Input.dispatchMouseEvent', {
+        type: 'mouseMoved', button: 'none', buttons: 0, pointerType: 'pen',
+        x: mitte.x + 220, y: mitte.y - 80 });
+      await warte(120);
+      const nachSchweben = await zahl(`getZoom()`);
+
+      for (let i = 7; i <= 10; i++) await zieheAuf(60 + i * 8);
+      const weiter = await zahl(`getZoom()`);
+      await dbg.sendCommand('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+      await warte(300);
+
+      const verlauf = [vorher, gezoomt, nachSchweben, weiter].map(z => z.toFixed(2)).join(' → ');
+      pruefe('Schwebt der Stift beim Zoomen, springt es nicht zurück (' + verlauf + ')',
+        gezoomt > vorher * 1.05 && Math.abs(nachSchweben - gezoomt) < 0.01, verlauf);
+      pruefe('Und die Finger zoomen danach weiter', weiter > nachSchweben + 0.02, verlauf);
     }
 
     fertig(0);

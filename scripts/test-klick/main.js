@@ -569,6 +569,31 @@ app.on('ready', async () => {
     pruefe('Doppelklick auf „' + wort + '" waehlt genau dieses Wort', s === wort, JSON.stringify(s));
   }
 
+  /* Gewuenscht: dreimal druecken waehlt die ganze Zeile, viermal die
+     ganze Seite. Dreimal markierte vorher den Absatz – bei einem frei
+     stehenden Wort sah das aus, als passiere gar nichts. */
+  async function mehrfachklick(x, y, n) {
+    for (let i = 1; i <= n; i++) {
+      for (const type of ['mousePressed', 'mouseReleased']) {
+        await dbg.sendCommand('Input.dispatchMouseEvent', { type, x: Math.round(x), y: Math.round(y),
+          button: 'left', clickCount: i, buttons: type === 'mousePressed' ? 1 : 0 });
+      }
+      await new Promise(r => setTimeout(r, 40));
+    }
+    await new Promise(r => setTimeout(r, 250));
+  }
+  const obenLinks = await wortKasten('oben links');
+  await mehrfachklick(obenLinks.l + 6, (obenLinks.t + obenLinks.b) / 2, 3);
+  const dreimal = await auswahl();
+  pruefe('Dreimal gedrueckt waehlt die ganze Zeile („oben links" bis „oben rechts")',
+    dreimal.includes('oben links') && dreimal.includes('oben rechts') && !dreimal.includes('mitte'),
+    JSON.stringify(dreimal));
+  await mehrfachklick(obenLinks.l + 6, (obenLinks.t + obenLinks.b) / 2, 4);
+  const viermal = await auswahl();
+  pruefe('Viermal gedrueckt waehlt die ganze Seite',
+    ['oben links', 'oben rechts', 'die mitte', 'unten links', 'unten rechts'].every(w => viermal.includes(w)),
+    JSON.stringify(viermal));
+
   // Die Marke im Wort setzt jetzt die App, nicht mehr der Browser
   const zwischen = await js(`(() => { const td = document.querySelector('.j-text');
     const lauf = document.createTreeWalker(td, NodeFilter.SHOW_TEXT);
