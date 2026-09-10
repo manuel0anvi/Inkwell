@@ -36,10 +36,17 @@
       </svg>
       <span data-i18n="overview">Übersicht</span>
     </button>
+    <!-- Dieselbe Feder wie im Anwendungszeichen (scripts/icon.svg), hier
+         aber ohne die goldene Flaeche: bei 15 Punkten bliebe von der Feder
+         darin nichts uebrig, und eine gefuellte Kachel sieht in der
+         Titelleiste wie eine Schaltflaeche aus. Der Ausschnitt ist eng
+         gewaehlt, damit das Zeichen die 15 Punkte auch ausfuellt. -->
     <span class="app-logo" id="app-logo">
-      <svg width="15" height="15" viewBox="0 0 15 15" fill="none">
-        <rect x="2" y="2" width="11" height="11" rx="2" stroke="var(--gold)" stroke-width="1.2"/>
-        <path d="M5 2v11M7 5h5M7 8h5M7 11h3" stroke="var(--gold)" stroke-width="1" opacity=".7"/>
+      <svg width="15" height="15" viewBox="11 9 78 82" fill="currentColor">
+        <g transform="rotate(40 50 50)">
+          <rect x="36" y="12" width="28" height="20" rx="5"/>
+          <path fill-rule="evenodd" d="M36 37h28c2 3 3 7 3 10 0 11-9 25-17 41-8-16-17-30-17-41 0-3 1-7 3-10ZM55.77 58A6.5 6.5 0 1 0 44.23 58L50 88Z"/>
+        </g>
       </svg>
     </span>
   </div>
