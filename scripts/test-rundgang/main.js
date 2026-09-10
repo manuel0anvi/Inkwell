@@ -1681,6 +1681,54 @@ app.on('ready', async () => {
       await new Promise(r => setTimeout(r, 700));
       if (gezeigt() !== ersteB) throw new Error('die zweite wurde neu gebaut');`, 340);
 
+    /* >>> Eine neue Unterlage bei offener Ansicht <<<
+       Steht schon eine offen, sind die Reiter weg – sie stuenden sonst
+       auf ihrem Rand. Eine frisch hinzugefuegte Datei kam damit ins
+       Heft, ohne dass irgendetwas darauf hindeutete: gemeldet als „sie
+       liegt hinter der anderen und man sieht sie nicht".
+
+       Auch die Leiste hilft da nicht, denn sie schliesst die Ansicht
+       nicht – beides steht zugleich offen, und hinter der Leiste bleibt
+       die ALTE Datei stehen. */
+    await schritt('Eine neue Unterlage wird gleich aufgeschlagen', `
+      const v = E('griff-view');
+      if (!v.classList.contains('open')) {
+        const b = E('griff-reiter').querySelector('.griff-reiter-btn');
+        const z = (art, x) => b.dispatchEvent(new PointerEvent(art,
+          { pointerId: 51, clientX: x, clientY: 400, bubbles: true }));
+        z('pointerdown', 1400); z('pointerup', 1340);
+        await new Promise(r => setTimeout(r, 700));
+      }
+      const vorher = document.querySelector('.griff-satz:not([hidden])');
+      if (!vorher) throw new Error('es steht keine Unterlage offen');
+      const alteKennung = vorher.dataset.id;
+
+      // Wie im gemeldeten Fall: die Leiste dazu aufmachen
+      E('btn-griff').click();
+      await new Promise(r => setTimeout(r, 400));
+      if (!v.classList.contains('open'))
+        throw new Error('die Leiste hat die Ansicht zugemacht – dann gilt dieser Schritt nicht mehr');
+
+      E('griff-waehlen').click();
+      await new Promise(r => setTimeout(r, 300));
+      E('txt-modal-in').value = 'Die Dritte';
+      E('txt-modal-ok').click();
+      await new Promise(r => setTimeout(r, 900));
+
+      const jetzt = document.querySelector('.griff-satz:not([hidden])');
+      if (!jetzt) throw new Error('nach dem Hinzufuegen steht nichts offen');
+      if (jetzt.dataset.id === alteKennung)
+        throw new Error('es steht immer noch die alte Datei da');
+      if (E('griff-view-name').textContent !== 'Die Dritte')
+        throw new Error('in der Kopfzeile steht: ' + E('griff-view-name').textContent);
+
+      // Die alte ist nicht weg, nur aus dem Blick
+      if (!document.querySelector('.griff-satz[data-id="' + alteKennung + '"]'))
+        throw new Error('die vorige Unterlage wurde weggeraeumt');
+
+      E('griff-panel-close').click();
+      await new Promise(r => setTimeout(r, 400));`, 340);
+
     /* >>> Eine Unterlage gehoert zu EINEM Heft <<<
        Die Liste galt einmal fuer die ganze App: wer in einem Heft ein
        Skript danebenlegte, hatte es in JEDEM Heft am Rand stehen. Und

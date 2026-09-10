@@ -517,6 +517,25 @@
        geschieht. */
     if (_stand.versteckt) standAnnehmen(await api().verstecken(heftId(), false));
     zeichne();
+
+    /* >>> Und aufschlagen <<<
+       Steht schon eine Unterlage offen, sind die Reiter weg (sie stünden
+       sonst auf ihrem Rand, siehe zeichneReiter). Die neue Datei kam
+       damit ins Heft, ohne dass irgendetwas darauf hindeutete – gemeldet
+       als „sie liegt hinter der anderen und man sieht sie nicht".
+
+       Wer eine Datei ablegt, will sie ansehen. Also wird sie
+       aufgeschlagen, und das ist zugleich die Rückmeldung, dass sie
+       angekommen ist.
+
+       Steht KEINE offen und ist die Leiste da, bleibt es dabei: dort
+       steht die neue Zeile in der Liste, das ist Rückmeldung genug. Wer
+       gerade mehrere einsortiert, will nicht nach jeder einzelnen aus
+       der Liste geworfen werden.
+
+       Die Leiste schliesst die Ansicht nicht (setzeLeiste) – beides
+       kann zugleich offen stehen, und genau dann trat der Fehler auf. */
+    if (ansichtOffen() || !leisteOffen()) oeffne(angebot.id);
   }
 
   async function waehleAus() {
