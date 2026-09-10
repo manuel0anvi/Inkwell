@@ -710,6 +710,100 @@ app.on('ready', async () => {
       obenWieder !== null && obenWieder < 200, obenWieder + 'px');
   }
 
+  /* ══════════════════════════════════════════════════════════════════
+     8  VON EINER SEITE AUF EINE ANDERE
+
+     >>> Gemeldet <<<
+     „wenn man den Cursor auf einer anderen Seite hat und dann irgendwo
+     in der Mitte oder unten auf einer anderen Seite klickt, springt er
+     immer an den Anfang dieser Seite" – mit Maus wie mit Finger.
+
+     Der Grund lag in placeCaretAnywhere: focus() auf ein Textfeld, das
+     den Fokus noch nicht hat, setzt die Marke erst an Stelle 0 – den
+     Seitenanfang – und der Browser scrollt die ins Bild. Die richtige
+     Stelle kam danach, der Sprung war schon geschehen.
+
+     Zu sehen ist das nur, wenn der Anfang der angeklickten Seite OBEN
+     AUS DEM BILD ragt. Deshalb wird hier eigens dorthin geschoben.
+     ══════════════════════════════════════════════════════════════════ */
+  zeilen.push('\n  8  Ein Klick auf eine andere Seite springt nicht an deren Anfang');
+  await js(`(() => {
+    const nb = { id: 'p8', name: 'P8', color: '#c8a96e', defaultBg: 'ruled',
+                 pages: [makePage('ruled'), makePage('ruled')], sections: [], created: Date.now() };
+    S.notebooks = [nb]; openNotebook('p8'); return true; })()`);
+  await new Promise(r => setTimeout(r, 900));
+
+  await js(`(() => {
+    const f = document.querySelectorAll('.j-text');
+    f[0].innerHTML = Array.from({length: 10}, (_, i) => 'Eins Zeile ' + (i+1)).join('<br>');
+    f[1].innerHTML = Array.from({length: 10}, (_, i) => 'Zwei Zeile ' + (i+1)).join('<br>');
+    return true; })()`);
+  await new Promise(r => setTimeout(r, 700));
+
+  /* Der Scroll-Container wird gesucht, nicht geraten – seine Kennung
+     hat sich schon einmal geaendert. */
+  await js(`(() => {
+    let el = document.querySelectorAll('.j-page')[1];
+    while (el && el !== document.body) {
+      const cs = getComputedStyle(el);
+      if (el.scrollHeight > el.clientHeight + 4 && /auto|scroll/.test(cs.overflowY)) {
+        window._sc8 = el; return true; }
+      el = el.parentElement;
+    }
+    window._sc8 = document.scrollingElement; return true; })()`);
+
+  const lage8 = () => js(`(() => ({
+    scroll: Math.round(window._sc8.scrollTop),
+    oben: Math.round(document.querySelectorAll('.j-page')[1].getBoundingClientRect().top)
+  }))()`);
+
+  /** Marke auf Seite 1 setzen und Seite 2 so schieben, dass ihr Anfang
+      oberhalb des Bildes liegt. */
+  async function stellungAufbauen() {
+    await js(`(() => { const s = window._sc8, p = document.querySelectorAll('.j-page')[0];
+      s.scrollTop += p.getBoundingClientRect().top - 100; return true; })()`);
+    await new Promise(r => setTimeout(r, 500));
+    const z = await js(`(() => {
+      const lauf = document.createTreeWalker(document.querySelectorAll('.j-text')[0],
+                                             NodeFilter.SHOW_TEXT);
+      for (let n = lauf.nextNode(); n; n = lauf.nextNode()) {
+        if (!n.nodeValue.trim()) continue;
+        const rg = document.createRange(); rg.selectNodeContents(n);
+        const r = rg.getClientRects()[0];
+        if (r && r.top > 110) return { l: r.left, t: r.top, b: r.bottom };
+      }
+      return null; })()`);
+    if (z) await klick(z.l + 40, (z.t + z.b) / 2);
+    await js(`(() => { const s = window._sc8, p = document.querySelectorAll('.j-page')[1];
+      s.scrollTop += p.getBoundingClientRect().top + 420; return true; })()`);
+    await new Promise(r => setTimeout(r, 600));
+  }
+
+  const mitteY = Math.round((await js('window.innerHeight')) * 0.55);
+  const mitteX = Math.round(feld.l + 100);
+
+  await stellungAufbauen();
+  const vor8 = await lage8();
+  await klick(mitteX, mitteY);
+  const nach8 = await lage8();
+  pruefe('Mit der Maus bleibt die Ansicht stehen',
+    Math.abs(nach8.scroll - vor8.scroll) < 10,
+    'Scroll sprang um ' + (nach8.scroll - vor8.scroll) + ' px (Seitenanfang '
+    + vor8.oben + ' -> ' + nach8.oben + ')');
+
+  await stellungAufbauen();
+  const vorF = await lage8();
+  await dbg.sendCommand('Input.dispatchTouchEvent',
+    { type: 'touchStart', touchPoints: [{ x: mitteX, y: mitteY, id: 1 }] });
+  await new Promise(r => setTimeout(r, 60));
+  await dbg.sendCommand('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+  await new Promise(r => setTimeout(r, 450));
+  const nachF = await lage8();
+  pruefe('Und mit dem Finger ebenso',
+    Math.abs(nachF.scroll - vorF.scroll) < 10,
+    'Scroll sprang um ' + (nachF.scroll - vorF.scroll) + ' px (Seitenanfang '
+    + vorF.oben + ' -> ' + nachF.oben + ')');
+
   fertig(fehl ? 1 : 0);
  } catch (err) {
   zeilen.push('  ABBRUCH: ' + (err && err.stack));

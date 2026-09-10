@@ -1818,7 +1818,30 @@ function placeCaretAnywhere(textDiv, clientX, clientY, forceManual = false, page
   /* Was der vorige Klick angelegt und niemand beschrieben hat, gehört
      weg, bevor der nächste etwas Neues anlegt (siehe VORLAEUFIG). */
   raeumeVorlaeufiges(textDiv);
-  textDiv.focus();
+
+  /* ══════════════════════════════════════════════════════════════
+     FOKUS OHNE SPRUNG
+
+     >>> Der Fall, den das repariert <<<
+     Wer die Marke auf einer Seite hatte und dann mitten oder unten auf
+     eine ANDERE Seite klickte, dessen Ansicht sprang an den Anfang
+     jener Seite.
+
+     Der Grund liegt eine Zeile tiefer: focus() auf ein Textfeld, das
+     den Fokus noch nicht hat, setzt die Marke zunaechst an Stelle 0 –
+     den Seitenanfang – und der Browser scrollt diese Stelle ins Bild.
+     Erst danach setzt der Rest dieser Funktion die Marke dorthin, wo
+     geklickt wurde. Der Sprung ist da laengst passiert und wird nicht
+     zurueckgenommen.
+
+     Gemessen: Seitenanfang bei -420, geklickt auf halber Hoehe, danach
+     stand der Anfang bei +306 – die Ansicht war um 726 Punkte gesprungen.
+
+     Gescrollt werden muss hier ohnehin nichts: die Stelle, auf die
+     geklickt wurde, ist sichtbar, sonst haette niemand sie treffen
+     koennen.
+     ══════════════════════════════════════════════════════════════ */
+  try { textDiv.focus({ preventScroll: true }); } catch (err) { textDiv.focus(); }
 
   const r = textDiv.getBoundingClientRect();
   const cs = getComputedStyle(textDiv);
