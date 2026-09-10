@@ -1,0 +1,29 @@
+<!--
+  ANWENDUNGSZEICHEN — DIE QUELLE
+
+  Alles andere wird hieraus gerechnet. Wer das Zeichen ändern will,
+  ändert diese Datei und ruft danach auf:
+
+      npm run render-icon    erzeugt scripts/icon-source.png (1024×1024)
+      npm run make-icons     erzeugt daraus alle Dateien für Web, App, Store
+
+  Die Feder folgt dem früheren Zeichen: schräg bei 40 Grad, der Halter als
+  eigener Block darüber, ein Spalt dazwischen. Luftloch und Schlitz sind
+  bewusst EINE Form — als zwei getrennte Aussparungen bliebe dazwischen ein
+  Steg stehen und unter dem Schlitz ein Fleck.
+
+  Gezeichnet ist die Feder aufrecht und erst danach gedreht. Sonst müsste
+  jeder Punkt von Hand umgerechnet werden und niemand könnte die Form
+  später noch nachvollziehen.
+
+  Die Ecken sind auf 15 Prozent der Kantenlänge gerundet (rx="15" bei einer
+  Kantenlänge von 100). Aussen davon ist die Fläche durchsichtig — nur so
+  bleiben die Ecken auf jedem Untergrund rund.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="1024" height="1024">
+  <rect width="100" height="100" rx="15" fill="#c9a227"/>
+  <g transform="rotate(40 50 50)" fill="#0c0e18">
+    <rect x="36" y="12" width="28" height="20" rx="5"/>
+    <path fill-rule="evenodd" d="M36 37h28c2 3 3 7 3 10 0 11-9 25-17 41-8-16-17-30-17-41 0-3 1-7 3-10ZM55.77 58A6.5 6.5 0 1 0 44.23 58L50 88Z"/>
+  </g>
+</svg>

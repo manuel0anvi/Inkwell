@@ -13,6 +13,7 @@
     "sync-share": "node scripts/sync-share.js",
     "check-share": "node scripts/sync-share.js --check",
     "build-yjs": "node scripts/build-yjs.js",
+    "render-icon": "electron scripts/render-icon.js",
     "make-icons": "node scripts/make-icons.js",
     "deploy-web": "node scripts/sync-share.js && node scripts/deploy-website.js",
     "pull-web": "node scripts/pull-website.js",

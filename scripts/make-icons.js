@@ -1,19 +1,28 @@
 'use strict';
 
 /* ══════════════════════════════════════════════════════════════════════
-   ANWENDUNGSZEICHEN FREISTELLEN
+   ANWENDUNGSZEICHEN IN ALLE GRÖSSEN RECHNEN
 
-   Die Vorlage (scripts/icon-source.png) ist ein goldenes Zeichen auf
-   dunklem Grund, mit Schlagschatten. Auf jeder helleren Fläche – der
-   Titelleiste der Website, dem Reiter im Browser, dem Startmenü – stand
-   dadurch ein dunkles Kästchen um das Zeichen herum.
+   Die Vorlage (scripts/icon-source.png) ist das fertige Zeichen in
+   1024×1024: die goldene Fläche mit gerundeten Ecken, darauf die Feder in
+   Navy. Aussen um die Ecken herum ist sie durchsichtig.
 
-   Dieses Script rechnet den Grund heraus und schreibt:
-       website/icon.png   das freigestellte Zeichen, quadratisch
-       website/icon.ico   dasselbe als Symboldatei für den Browser
-       icon.ico           dasselbe für den Anwendungsbau (electron-builder)
+   Erzeugt wird sie aus scripts/icon.svg mit `npm run render-icon`. Dort
+   wird das Zeichen geändert, nicht hier und nicht in den Ergebnissen.
 
-   Aufruf:  node scripts/make-icons.js
+   Dieses Script schreibt:
+       website/icon.png    das Zeichen für Kopfzeile, Startseite, Reiter
+       website/icon.ico    dasselbe als Symboldatei für den Browser
+       icon.ico            dasselbe für den Anwendungsbau (electron-builder)
+       build/appx/         die Kacheln für das Store-Paket
+
+   Aufruf:  npm run make-icons
+
+   >>> Warum hier nicht mehr freigestellt wird <<<
+   Früher war die Vorlage ein goldenes Zeichen auf dunklem Grund, und
+   dieses Script rechnete den Grund heraus. Seit das Zeichen selbst eine
+   Fläche hat, wäre das falsch: die goldene Fläche IST das Zeichen. Die
+   Vorlage kommt fertig aus der SVG und wird nur noch verkleinert.
    ══════════════════════════════════════════════════════════════════════ */
 
 const fs = require('fs');
@@ -23,85 +32,7 @@ const png = require('./png.js');
 const ROOT = path.join(__dirname, '..');
 const SOURCE = path.join(__dirname, 'icon-source.png');
 
-/* ── Wie der Grund erkannt wird ──────────────────────────────────────
-   Die Vorlage ist praktisch zweifarbig: der Grund liegt bei Helligkeit
-   24, das Gold zwischen 120 und 215. Dazwischen liegt fast nichts (rund
-   2500 von 720 000 Bildpunkten) – das sind die weichen Ränder.
-
-   Genau dort steigt die Deckkraft an. Der Schlagschatten ist mit
-   Helligkeit 17 DUNKLER als der Grund und fällt damit von selbst weg.
-   ─────────────────────────────────────────────────────────────────── */
-
-const BACKGROUND = [24, 24, 26];
-const OPAQUE_FROM = 120;     // ab hier ganz deckend
-const CLEAR_UNTIL = 30;      // bis hier ganz durchsichtig
-
-const PADDING = 0.05;        // Luft ringsum, als Anteil der Kantenlänge
 const ICO_SIZES = [16, 24, 32, 48, 64, 128, 256];
-
-function luma(r, g, b) {
-  return 0.299 * r + 0.587 * g + 0.114 * b;
-}
-
-/** Rechnet den dunklen Grund heraus und liefert echtes Alpha. */
-function removeBackground(image) {
-  const out = Buffer.alloc(image.data.length);
-  const span = OPAQUE_FROM - CLEAR_UNTIL;
-
-  for (let i = 0; i < image.data.length; i += 4) {
-    const r = image.data[i], g = image.data[i + 1], b = image.data[i + 2];
-    const alpha = Math.min(1, Math.max(0, (luma(r, g, b) - CLEAR_UNTIL) / span));
-
-    if (alpha <= 0) { out[i + 3] = 0; continue; }
-
-    /* Der Bildpunkt ist eine Mischung aus Gold und Grund. Ohne das
-       Herausrechnen bliebe in jedem weichen Rand ein dunkler Saum stehen –
-       auf hellem Untergrund sieht das aus wie ein schmutziger Umriss. */
-    for (let c = 0; c < 3; c++) {
-      const mixed = image.data[i + c];
-      const pure = (mixed - BACKGROUND[c] * (1 - alpha)) / alpha;
-      out[i + c] = Math.min(255, Math.max(0, Math.round(pure)));
-    }
-    out[i + 3] = Math.round(alpha * 255);
-  }
-
-  return { width: image.width, height: image.height, data: out };
-}
-
-/** Schneidet auf das Zeichen zu und legt es mittig auf ein Quadrat. */
-function squareCrop(image) {
-  let minX = image.width, minY = image.height, maxX = -1, maxY = -1;
-
-  for (let y = 0; y < image.height; y++) {
-    for (let x = 0; x < image.width; x++) {
-      if (image.data[(y * image.width + x) * 4 + 3] < 8) continue;
-      if (x < minX) minX = x;
-      if (x > maxX) maxX = x;
-      if (y < minY) minY = y;
-      if (y > maxY) maxY = y;
-    }
-  }
-
-  if (maxX < 0) throw new Error('Nach dem Freistellen ist nichts übrig geblieben');
-
-  const contentW = maxX - minX + 1;
-  const contentH = maxY - minY + 1;
-  const side = Math.round(Math.max(contentW, contentH) * (1 + 2 * PADDING));
-
-  const offsetX = Math.round((side - contentW) / 2);
-  const offsetY = Math.round((side - contentH) / 2);
-  const out = Buffer.alloc(side * side * 4);
-
-  for (let y = 0; y < contentH; y++) {
-    for (let x = 0; x < contentW; x++) {
-      const from = ((minY + y) * image.width + (minX + x)) * 4;
-      const to = ((offsetY + y) * side + (offsetX + x)) * 4;
-      image.data.copy(out, to, from, from + 4);
-    }
-  }
-
-  return { width: side, height: side, data: out };
-}
 
 /* ── Symboldatei (.ico) ──────────────────────────────────────────────
    Bis 128 Bildpunkte als BMP, die 256er als eingebettetes PNG. Genau so
@@ -173,8 +104,9 @@ function buildIco(entries) {
    Die Kacheln sind NICHT alle quadratisch. Das Zeichen wird deshalb
    mittig auf die jeweilige Fläche gelegt, statt es zu verzerren.
 
-   Luft ringsum ist Absicht: Windows zeichnet um die Kachel herum keinen
-   Rand. Ohne Abstand klebt das Zeichen an der Kante.
+   Der Rand ringsum ist durchsichtig und bleibt es. Dahinter steht die
+   backgroundColor aus electron-builder.config.js – das Navy der Marke.
+   Ohne diesen Abstand klebte die goldene Fläche an der Kachelkante.
    ─────────────────────────────────────────────────────────────────── */
 
 const APPX_DIR = path.join(ROOT, 'build', 'appx');
@@ -226,14 +158,21 @@ function writeAppxAssets(square) {
 function main() {
   if (!fs.existsSync(SOURCE)) {
     console.error('Vorlage fehlt: ' + path.relative(ROOT, SOURCE));
+    console.error('Erst zeichnen lassen:  npm run render-icon');
     process.exit(1);
   }
 
-  const source = png.decode(fs.readFileSync(SOURCE));
-  console.log(`Vorlage: ${source.width}×${source.height}`);
+  const square = png.decode(fs.readFileSync(SOURCE));
+  console.log(`Vorlage: ${square.width}×${square.height}`);
 
-  const square = squareCrop(removeBackground(source));
-  console.log(`Freigestellt und zugeschnitten: ${square.width}×${square.width}`);
+  /* Nicht quadratisch heisst: die Vorlage stammt nicht aus icon.svg. Dann
+     würden alle Ergebnisse verzerrt, und zwar unauffällig. */
+  if (square.width !== square.height) {
+    console.error('Die Vorlage muss quadratisch sein, ist aber '
+      + square.width + '×' + square.height + '.');
+    console.error('Neu zeichnen lassen:  npm run render-icon');
+    process.exit(1);
+  }
 
   const webPng = png.resize(square, 512, 512);
   fs.writeFileSync(path.join(ROOT, 'website', 'icon.png'), png.encode(webPng));
