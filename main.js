@@ -699,7 +699,18 @@ function createWindow() {
     if (allowClose) return;
 
     event.preventDefault();
-    bitteSpeichern().then(forceClose);
+    /* >>> Ein Abbruch ist eine Antwort, kein Ausbleiben <<<
+       Hier stand .then(forceClose) ohne Ansehen des Ergebnisses. Konnte
+       die Oberflaeche ein Heft nicht speichern, schloss die App trotzdem
+       - gerade in dem Augenblick, in dem sie es haette retten sollen.
+       Sagt sie jetzt "nicht schliessen", bleibt das Fenster offen. */
+    bitteSpeichern().then((ergebnis) => {
+      if (ergebnis === 'abbruch') {
+        console.log('[Quit] Die Oberflaeche haelt das Beenden auf');
+        return;
+      }
+      forceClose();
+    });
   });
 }
 
@@ -707,6 +718,8 @@ function createWindow() {
 let allowClose = false;
 let closeFallbackTimer = null;
 let speicherFertig = null;   // loest die laufende Bitte auf (siehe unten)
+let quitAbbrechen = null;    // dasselbe, aber mit "nicht schliessen"
+let quitAnhalten = null;     // haelt die Zeitgrenze an, solange gefragt wird
 
 function forceClose() {
   clearTimeout(closeFallbackTimer);
@@ -731,34 +744,51 @@ function forceClose() {
  * Grenze, das hat Vorrang), danach bekommen geteiltes Dokument, Cloud
  * und der Live-Raum zusammen noch einige Sekunden – siehe core/init.js.
  *
- * @returns {Promise<void>} auch dann erfüllt, wenn niemand antwortet
+ * @returns {Promise<'fertig'|'abbruch'|'zeit'>} auch dann erfüllt, wenn
+ *   niemand antwortet. 'abbruch' heißt: die Oberfläche will NICHT, dass
+ *   geschlossen wird – etwa weil ein Heft nicht gespeichert werden konnte.
  */
 function bitteSpeichern(timeoutMs = 8000) {
-  if (!win || win.isDestroyed()) return Promise.resolve();
+  if (!win || win.isDestroyed()) return Promise.resolve('fertig');
 
   return new Promise((resolve) => {
     let erledigt = false;
-    const fertig = (grund) => {
+    const fertig = (ausgang, grund) => {
       if (erledigt) return;
       erledigt = true;
       speicherFertig = null;
+      quitAbbrechen = null;
+      quitAnhalten = null;
       clearTimeout(closeFallbackTimer);
       if (grund) console.warn('[Quit]', grund);
-      resolve();
+      resolve(ausgang);
     };
 
-    speicherFertig = () => fertig(null);
+    speicherFertig = () => fertig('fertig', null);
+    quitAbbrechen = () => fertig('abbruch', null);
+
+    /* ══════════════════════════════════════════════════════════════
+       SOLANGE DER NUTZER GEFRAGT WIRD, LÄUFT KEINE UHR
+
+       Die Zeitgrenze unten ist dafür da, dass eine hängende oder
+       abgestürzte Oberfläche das Beenden nicht für immer aufhält. Ein
+       Rückfragefenster ist aber das Gegenteil davon: dort wartet die
+       App auf einen Menschen, und acht Sekunden sind zu knapp, um eine
+       Frage zu lesen. Ohne diese Möglichkeit hätte der Fallback genau
+       die Entscheidung überfahren, um die gerade gebeten wird.
+       ══════════════════════════════════════════════════════════════ */
+    quitAnhalten = () => clearTimeout(closeFallbackTimer);
 
     try {
       win.webContents.send('app-before-quit');
     } catch (err) {
-      fertig('Renderer nicht erreichbar: ' + err.message);
+      fertig('fertig', 'Renderer nicht erreichbar: ' + err.message);
       return;
     }
 
     // Antwortet die Oberfläche nicht (hängt/abgestürzt), trotzdem weiter
     closeFallbackTimer = setTimeout(
-      () => fertig('Keine Antwort beim Speichern, weiter nach Zeitablauf'),
+      () => fertig('zeit', 'Keine Antwort beim Speichern, weiter nach Zeitablauf'),
       timeoutMs
     );
   });
@@ -768,6 +798,19 @@ function bitteSpeichern(timeoutMs = 8000) {
 ipcMain.on('confirm-quit', () => {
   if (speicherFertig) speicherFertig();
   else forceClose();     // kam ohne laufende Bitte – dann eben direkt
+});
+
+/* Die Oberfläche meldet: bitte NICHT schließen. Es ist etwas offen, das
+   nicht gespeichert werden konnte, und der Nutzer hat sich dagegen
+   entschieden, es aufzugeben. */
+ipcMain.on('cancel-quit', () => {
+  if (quitAbbrechen) quitAbbrechen();
+});
+
+/* Die Oberfläche fragt gerade nach – die Zeitgrenze darf nicht
+   dazwischenfunken. Siehe bitteSpeichern(). */
+ipcMain.on('quit-hold', () => {
+  if (quitAnhalten) quitAnhalten();
 });
 
 /* ── Der eigene Updater und der Microsoft Store ──────────────────────
@@ -837,7 +880,12 @@ ipcMain.handle('install-and-restart', async () => {
        Die Reihenfolge ist ebenfalls wichtig: der Installierer lief
        vorher ZUERST los. Er ersetzt Dateien im Programmordner, während
        die App noch schreibt – das ist ein Rennen, das man nicht braucht. */
-    await bitteSpeichern();
+    /* Sagt die Oberflaeche "nicht schliessen", wird auch nicht
+       aktualisiert: der Installierer beendet die App, und ungesicherte
+       Arbeit waere genauso weg wie beim gewoehnlichen Schliessen. */
+    if (await bitteSpeichern() === 'abbruch') {
+      return { ok: false, err: 'QUIT_CANCELLED' };
+    }
 
     spawn(downloadedUpdatePath, ['/S', '/force-run'], { detached: true, stdio: 'ignore' }).unref();
     // Ohne dieses Flag würde der close-Handler das Beenden abbrechen

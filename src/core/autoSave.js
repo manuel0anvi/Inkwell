@@ -32,6 +32,26 @@ const AUTOSAVE_DELAY_MS = 2000;   // nach der letzten Aenderung
 const AUTOSAVE_RETRY_MS = 5000;   // nach einem Fehlschlag
 const AUTOSAVE_RETRIES = 3;
 
+/* ══════════════════════════════════════════════════════════════════════
+   UND SPAETESTENS NACH ZWANZIG SEKUNDEN
+
+   Die zwei Sekunden oben sind ein Debounce: jede Taste schiebt sie neu
+   nach hinten. Wer ohne zweisekuendige Pause schreibt – und beim
+   Mitschreiben in einer Vorlesung tut man genau das –, verschiebt den
+   Speichervorgang beliebig lange vor sich her. Auf der Platte stand dann
+   im schlimmsten Fall der Stand von vor einer Viertelstunde.
+
+   Deshalb eine zweite, harte Grenze: ab der ERSTEN ungesicherten
+   Aenderung laeuft eine Uhr, die sich nicht zurueckstellen laesst. Laeuft
+   sie ab, wird gespeichert, auch wenn gerade weitergetippt wird.
+
+   Zwanzig Sekunden, weil Speichern mitten im Schreiben nichts kostet: es
+   laeuft nebenher, und ein Heft ist ein paar hundert Kilobyte. Kuerzer
+   waere sinnlos haeufig, laenger waere wieder ein Stueck Arbeit, das
+   niemand hat.
+   ══════════════════════════════════════════════════════════════════════ */
+const AUTOSAVE_MAX_MS = 20000;
+
 class AutoSaveEngine {
   constructor() {
     this.dirtyNotebooks = new Set();
@@ -40,11 +60,13 @@ class AutoSaveEngine {
     this._changeVersions = new Map();
     this._debounceTimers = new Map();
     this._retries = new Map();     // nbId -> Zahl der Fehlversuche
+    this._erstAenderung = new Map(); // nbId -> wann es zuletzt sauber war
   }
 
   init() {
     console.log('[AutoSave] Bereit – gespeichert wird', AUTOSAVE_DELAY_MS / 1000,
-      'Sekunden nach der letzten Aenderung.');
+      'Sekunden nach der letzten Aenderung, spaetestens nach',
+      AUTOSAVE_MAX_MS / 1000, 'Sekunden.');
   }
 
   // Wird bei jeder Änderung aufgerufen (Tippen, Zeichnen, Seiten, Abschnitte),
@@ -70,6 +92,9 @@ class AutoSaveEngine {
     // des Empfängers fremde Hefte in sein eigenes Drive.
     if (typeof isSharedNotebook === 'function' && isSharedNotebook(nbId)) return;
 
+    // Die harte Grenze laeuft ab der ERSTEN ungesicherten Aenderung
+    if (!this._erstAenderung.has(nbId)) this._erstAenderung.set(nbId, Date.now());
+
     this.dirtyNotebooks.add(nbId);
     this._changeVersions.set(nbId, (this._changeVersions.get(nbId) || 0) + 1);
     this._scheduleDebouncedSave(nbId);
@@ -80,6 +105,8 @@ class AutoSaveEngine {
     this.dirtyNotebooks.delete(nbId);
     this.lastSaveTime.set(nbId, Date.now());
     this._retries.delete(nbId);
+    // Die harte Grenze faengt beim naechsten Mal von vorne an
+    this._erstAenderung.delete(nbId);
     this._notifyStateChange();
   }
 
@@ -188,6 +215,15 @@ class AutoSaveEngine {
     const timer = this._debounceTimers.get(nbId);
     if (timer) clearTimeout(timer);
 
+    /* Die harte Grenze schneidet die Wartezeit ab – siehe AUTOSAVE_MAX_MS.
+       Fuer den zweiten Anlauf nach einem Fehlschlag gilt sie nicht: dort
+       waere sie eine Schleife, die immer sofort wieder losrennt. */
+    let warten = delay;
+    if (delay === AUTOSAVE_DELAY_MS) {
+      const seit = this._erstAenderung.get(nbId);
+      if (seit) warten = Math.max(0, Math.min(delay, seit + AUTOSAVE_MAX_MS - Date.now()));
+    }
+
     const nextTimer = setTimeout(() => {
       this._debounceTimers.delete(nbId);
       if (!this.isDirty(nbId)) return;
@@ -198,7 +234,7 @@ class AutoSaveEngine {
         console.error('[AutoSave] Speichern fehlgeschlagen:', err);
         this._retryLater(nbId, err && err.message);
       });
-    }, delay);
+    }, warten);
 
     this._debounceTimers.set(nbId, nextTimer);
   }

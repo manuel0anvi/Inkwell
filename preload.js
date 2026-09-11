@@ -71,6 +71,10 @@ contextBridge.exposeInMainWorld('api', {
   // Sauberes Beenden: Hauptprozess fragt an, Oberfläche speichert und bestätigt
   onBeforeQuit: (cb) => ipcRenderer.on('app-before-quit', () => cb()),
   confirmQuit:  () => ipcRenderer.send('confirm-quit'),
+  // „Nicht schliessen" – etwas Ungesichertes ist offen, siehe core/init.js
+  cancelQuit:   () => ipcRenderer.send('cancel-quit'),
+  // Haelt die Zeitgrenze an, solange der Nutzer gefragt wird
+  holdQuit:     () => ipcRenderer.send('quit-hold'),
 
   // Anmeldung: Tokentausch läuft im Hauptprozess (kein CORS im Fenster)
   oauthTokenRequest: (url, body) => ipcRenderer.invoke('oauth-token-request', url, body),

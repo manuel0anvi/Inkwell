@@ -247,14 +247,76 @@ function registriereBeendenHandler() {
         return;
       }
 
-      try {
-        // 1. Lokal speichern – das hat Vorrang und geht schnell
-        if (AutoSave.dirtyNotebooks.size > 0) {
-          console.log('[Init] Speichere', AutoSave.dirtyNotebooks.size, 'Notizbuch/Notizbücher vor dem Schließen');
-          await AutoSave.saveNow();
+      /* ══════════════════════════════════════════════════════════════
+         EIN FEHLGESCHLAGENES SPEICHERN IST KEIN GRUND ZU SCHLIESSEN
+
+         Hier wurde auf AutoSave.saveNow() gewartet und das Ergebnis
+         weggeworfen. _saveNotebook() wirft aber nicht, es LIEFERT den
+         Fehler zurück ({ success: false }) – und _saveAllDirty sammelt
+         diese Rückgaben nur ein. Ist die Platte voll, der Speicherordner
+         nicht mehr erreichbar oder das Schreibrecht weg, lief der Weg
+         hier also ohne einen einzigen Fehler durch, und unten stand
+         bedingungslos confirmQuit(). Die App schloss sich mit genau der
+         Arbeit im Arm, die sie gerade hätte retten sollen.
+
+         Jetzt zählt, was HINTERHER noch schmutzig ist – das ist die
+         ehrlichste Frage, unabhängig davon, welchen Weg der Fehler
+         genommen hat. Ein zweiter Anlauf kostet nichts und hilft gegen
+         das, was am häufigsten dahintersteckt: eine Datei, die einen
+         Augenblick lang gesperrt war. Bleibt es dabei, entscheidet der
+         Nutzer, nicht die App.
+         ══════════════════════════════════════════════════════════════ */
+      const ersterFehler = (ergebnisse) => {
+        const liste = Array.isArray(ergebnisse) ? ergebnisse : [ergebnisse];
+        const schlecht = liste.find(r => r && r.success === false);
+        return (schlecht && schlecht.error) || '';
+      };
+
+      let speicherFehler = '';
+      for (const anlauf of [1, 2]) {
+        if (AutoSave.dirtyNotebooks.size === 0) break;
+        try {
+          console.log('[Init] Speichere', AutoSave.dirtyNotebooks.size,
+                      'Notizbuch/Notizbücher vor dem Schließen (Anlauf ' + anlauf + ')');
+          const fehler = ersterFehler(await AutoSave.saveNow());
+          if (fehler) speicherFehler = fehler;
+        } catch (err) {
+          console.error('[Init] Speichern vor dem Schließen fehlgeschlagen:', err);
+          speicherFehler = (err && err.message) || String(err);
         }
-      } catch (err) {
-        console.error('[Init] Speichern vor dem Schließen fehlgeschlagen:', err);
+      }
+
+      if (AutoSave.dirtyNotebooks.size > 0) {
+        // Die Uhr im Hauptprozess anhalten, solange gefragt wird
+        try { if (window.api.holdQuit) window.api.holdQuit(); } catch (e) {}
+
+        const namen = Array.from(AutoSave.dirtyNotebooks).map(id => {
+          const nb = typeof getNb === 'function' ? getNb(id) : null;
+          return (nb && nb.name) || id;
+        }).join(', ');
+
+        const frage = (t('quitSaveFailed') || 'Nicht gespeichert: {hefte}\n\n{grund}\n\nTrotzdem schließen?')
+          .replace('{hefte}', namen)
+          .replace('{grund}', speicherFehler || '');
+
+        let trotzdem = false;
+        try {
+          trotzdem = await showConfirm(frage);
+        } catch (err) {
+          /* Kommt die Rückfrage selbst nicht zustande, ist Schließen die
+             falsche Vorgabe: lieber offen bleiben, dann ist die Arbeit
+             wenigstens noch da. */
+          console.error('[Init] Rückfrage nicht möglich:', err);
+        }
+
+        if (!trotzdem) {
+          try { sageStand('quittingCancelled', 'Abgebrochen — Inkwells bleibt offen.'); } catch (e) {}
+          if (window.api.cancelQuit) { window.api.cancelQuit(); return; }
+          /* Eine ältere Brücke kennt cancelQuit noch nicht. Dann bleibt
+             nur, gar nichts zu melden – der Hauptprozess schliesst nach
+             seiner Zeitgrenze, aber wenigstens nicht auf unser Wort hin. */
+          return;
+        }
       }
 
       try {
