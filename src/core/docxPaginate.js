@@ -41,7 +41,6 @@
      an dieser Stelle und werden nicht verstreut nachgerechnet. */
   const TEXT_TOP = 64;
   const TEXT_LEFT = 72;
-  const TEXT_RIGHT = 32;
   const TEXT_BOTTOM = 24;
   const TEXT_PADDING_TOP = 19;
   const SCHRIFT_PX = 17;
@@ -49,6 +48,35 @@
   /** Zeilenhöhe je Papier – muss zu canvas/text.js passen (lhForBg). */
   function zeilenhoeheFuer(bg) {
     return (bg === 'grid' || bg === 'dots') ? 24 : 32;
+  }
+
+  /* ══════════════════════════════════════════════════════════════════
+     DER RECHTE RAND IST NICHT UEBERALL DERSELBE
+
+     Hier stand TEXT_RIGHT = 32, fest. In css/pages.css (und in
+     canvas/text.js, rightPadForBg) sind es aber nur beim linierten
+     Papier 32 – bei kariert, gepunktet, weiss und Kraftpapier sind es
+     72. Der Umbruch rechnete also mit 794-72-32 = 690 px, waehrend der
+     Text spaeter in 650 px steht.
+
+     Was dabei herauskommt: der eingemessene Absatz braucht im Heft mehr
+     Zeilen als beim Messen, steht damit unter der Blattkante – und
+     .j-page hat overflow:hidden. Der Text ist noch im Modell, fuer den
+     Leser aber abgeschnitten, im Ausdruck ebenso. Auf vier von fuenf
+     Papierarten.
+
+     Die Zahl kommt deshalb aus derselben Regel wie im Editor. Steht
+     canvas/text.js zur Verfuegung, wird sie von dort geholt – so gibt es
+     auf Dauer nur eine Stelle, an der sie sich aendern kann.
+     ══════════════════════════════════════════════════════════════════ */
+  function rechterRandFuer(bg) {
+    if (typeof rightPadForBg === 'function') return rightPadForBg(bg);
+    return (bg === 'grid' || bg === 'dots' || bg === 'blank' || bg === 'craft') ? 72 : 32;
+  }
+
+  /** Die nutzbare Textbreite auf diesem Papier. */
+  function textBreiteFuer(seitenBreite, bg) {
+    return seitenBreite - TEXT_LEFT - rechterRandFuer(bg);
   }
 
   /**
@@ -71,7 +99,7 @@
        absolutes Element mit top/bottom hätte er die Höhe der Seite und
        verriete über seine eigene Höhe gar nichts. */
     feld.style.cssText = 'position:static;'
-      + 'width:' + (seitenBreite - TEXT_LEFT - TEXT_RIGHT) + 'px;'
+      + 'width:' + textBreiteFuer(seitenBreite, bg) + 'px;'
       + 'font-size:' + SCHRIFT_PX + 'px;'
       + 'line-height:' + zeilenhoeheFuer(bg) + 'px;'
       + 'padding-top:0;overflow:visible';
@@ -262,7 +290,36 @@
              selbst geteilt werden. */
           const rest = teileZuHohen(neue, feld, feldOben() + grenze, block);
           // Was gemessen auf die Seite passt, bleibt stehen
-          aktuell.teile = [...feld.children];
+          const gebliebene = [...feld.children];
+
+          /* ══════════════════════════════════════════════════════════
+             FORTSCHRITT MUSS SEIN
+
+             Blieb nichts stehen und ging alles in den Rest, dann hat
+             das Teilen nichts bewirkt – und der Rest ginge unverändert
+             zurück in die Schleife, wo ihm genau dasselbe widerfährt.
+
+             Das ist keine graue Theorie: ein Word-Absatz mit vielen
+             manuellen Zeilenumbrüchen und ohne ein einziges Textzeichen
+             reicht dafür. stelleAnGrenze findet dort keinen Textknoten
+             und liefert -1, der ganze Absatz wandert in den Rest, und
+             der nächste Durchgang steht vor derselben Lage. Die
+             Blockliste wächst, der Speicher auch, und der Import hängt
+             die App auf – mitsamt allem, was noch nicht gespeichert ist.
+
+             Dann bekommt der Block seine eigene Seite, auch wenn er über
+             deren Rand hinausragt. Ein Stück Inhalt unter der Kante ist
+             schlecht; eine App, die nicht mehr reagiert, ist schlimmer.
+             ══════════════════════════════════════════════════════════ */
+          if (!gebliebene.length && rest && rest.length) {
+            for (const el of rest) feld.appendChild(el);
+            aktuell.teile = [...feld.children];
+            if (block.bild || block.form) aktuell.bilder.push(objektLage(feld, block, feldOben()));
+            seiteSchliessen();
+            continue;
+          }
+
+          aktuell.teile = gebliebene;
           if (block.bild || block.form) aktuell.bilder.push(objektLage(feld, block, feldOben()));
           seiteSchliessen();
 
@@ -334,6 +391,35 @@
   }
 
   /**
+   * Teilt ein Element an einem Zeilenumbruch.
+   *
+   * Für einen Absatz ohne Text – hundert <br> hintereinander sind in
+   * Word ein ganz gewöhnlicher Weg, Abstand zu machen – ist das die
+   * einzige Trennstelle, die es gibt.
+   *
+   * @returns {Element|null} der Teil, der nicht mehr passt
+   */
+  function teileAnUmbruch(el, grenzeY) {
+    const kinder = [...el.childNodes];
+
+    // Der letzte Umbruch, der noch ganz über der Grenze liegt
+    let schnitt = -1;
+    for (let i = 0; i < kinder.length; i++) {
+      const k = kinder[i];
+      if (k.nodeType !== 1 || k.tagName !== 'BR') continue;
+      const r = k.getBoundingClientRect();
+      if (r.bottom <= grenzeY) schnitt = i; else break;
+    }
+
+    // Nichts gefunden oder nichts zu verschieben
+    if (schnitt < 0 || schnitt >= kinder.length - 1) return null;
+
+    const zweite = el.cloneNode(false);      // dieselbe Hülle, leer
+    for (const k of kinder.slice(schnitt + 1)) zweite.appendChild(k);
+    return zweite;
+  }
+
+  /**
    * Teilt einen Block, der allein schon zu hoch ist.
    *
    * Gibt zurück, was NICHT mehr auf die Seite passt (als Elemente).
@@ -366,6 +452,12 @@
 
       const stelle = stelleAnGrenze(el, grenzeY);
       if (stelle < 0) {
+        /* Kein Text zum Trennen – aber vielleicht Umbrüche. Ein
+           Word-Absatz aus lauter Shift+Enter hat keinen einzigen
+           Textknoten; stelleAnGrenze liefert dort immer -1. */
+        const zweiterTeil = teileAnUmbruch(el, grenzeY);
+        if (zweiterTeil) { rest.push(zweiterTeil); continue; }
+
         /* Nicht teilbar (ein einziges Wort, ein Bild) – dann steht es
            ganz auf der nächsten Seite. */
         rest.push(el);
@@ -418,6 +510,10 @@
     verteile,
     zeilenhoeheFuer,
     nutzhoehe,
-    __intern: { stelleAnGrenze, teileElement, teileTabelle, baueMessplatz, TEXT_TOP, TEXT_LEFT }
+    textBreiteFuer,
+    __intern: {
+      stelleAnGrenze, teileElement, teileTabelle, teileAnUmbruch,
+      baueMessplatz, rechterRandFuer, TEXT_TOP, TEXT_LEFT
+    }
   };
 })(typeof window !== 'undefined' ? window : globalThis);

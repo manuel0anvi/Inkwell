@@ -1,0 +1,227 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<link rel="stylesheet" href="../../src/css/base.css">
+<link rel="stylesheet" href="../../src/css/pages.css">
+</head>
+<body>
+
+<div id="pg-scroll"></div>
+
+<script>
+/* Was core/tables.js aus der App erwartet. Die Leiste und das Ziehen an
+   den Kanten brauchen wir nicht – nur die Aktionen darunter. */
+const CFG = { PAGE_W: 794, PAGE_H: 1123, HDR: 58 };
+const S = { readOnly: false, activePgId: null };
+function E(id) { return document.getElementById(id); }
+function t() { return ''; }
+function toast() {}
+function getPage() { return null; }
+function markCurrentNotebookDirty() {}
+function pushPageHistory() {}
+function uid() { return 'x' + Math.random().toString(36).slice(2, 10); }
+</script>
+
+<script src="../../src/core/tables.js"></script>
+
+<script>
+const zeilen = [];
+function abschnitt(name) { zeilen.push(''); zeilen.push(name); }
+function pruefe(was, bedingung, hinweis) {
+  zeilen.push((bedingung ? 'ok   ' : 'FEHL ') + was + (bedingung ? '' : '  -> ' + hinweis));
+}
+
+/** Die Tabelle als lesbares Bild: je Zeile die Zellen mit ihren Spannen. */
+function bild(table) {
+  return [...table.querySelectorAll('tr')].map(tr =>
+    [...tr.children].map(z => {
+      const cs = z.getAttribute('colspan');
+      const rs = z.getAttribute('rowspan');
+      return (z.textContent || '·')
+        + (cs ? '/c' + cs : '') + (rs ? '/r' + rs : '');
+    }).join(' ')
+  ).join(' | ');
+}
+
+function baue(html) {
+  const halter = document.createElement('div');
+  halter.innerHTML = html;
+  document.body.appendChild(halter);
+  return halter.querySelector('table');
+}
+
+/* Genau die Tabelle aus dem Befund: oben eine verbundene Kopfzelle. */
+const MIT_SPANNE = '<table class="j-table"><tbody>'
+  + '<tr><td colspan="2">AB</td><td>C</td></tr>'
+  + '<tr><td>D</td><td>E</td><td>F</td></tr>'
+  + '</tbody></table>';
+
+try {
+  abschnitt('Das logische Raster');
+
+  {
+    const tbl = baue(MIT_SPANNE);
+    const raster = logischesRaster(tbl);
+    pruefe('drei Spalten, nicht zwei', raster.spalten === 3, raster.spalten);
+    pruefe('AB belegt Feld 0 und 1',
+      raster.raster[0][0].zelle === raster.raster[0][1].zelle, 'nein');
+    pruefe('C sitzt auf Feld 2',
+      raster.raster[0][2].zelle.textContent === 'C', raster.raster[0][2].zelle.textContent);
+    pruefe('E sitzt in der zweiten Zeile auf Feld 1',
+      raster.raster[1][1].zelle.textContent === 'E', raster.raster[1][1].zelle.textContent);
+  }
+
+  abschnitt('Eine Spalte loeschen trifft die richtige');
+
+  {
+    const tbl = baue(MIT_SPANNE);
+    removeColumn(tbl, 2);              // die logisch dritte: C und F
+    pruefe('C und F sind weg, AB wird nicht schmaler',
+      bild(tbl) === 'AB/c2 | D E', bild(tbl));
+  }
+
+  {
+    const tbl = baue(MIT_SPANNE);
+    removeColumn(tbl, 1);              // mitten durch die verbundene Zelle
+    pruefe('AB wird schmaler statt zu verschwinden, E faellt weg',
+      bild(tbl) === 'AB C | D F', bild(tbl));
+  }
+
+  {
+    const tbl = baue(MIT_SPANNE);
+    removeColumn(tbl, 0);
+    pruefe('Auch von links her bleibt AB stehen',
+      bild(tbl) === 'AB C | E F', bild(tbl));
+  }
+
+  abschnitt('Eine Spalte einfuegen zerreisst nichts');
+
+  {
+    const tbl = baue(MIT_SPANNE);
+    addColumn(tbl, 0);                 // innerhalb der verbundenen Zelle
+    pruefe('AB wird breiter, die anderen Zeilen bekommen eine Zelle',
+      bild(tbl) === 'AB/c3 C | D · E F', bild(tbl));
+  }
+
+  {
+    const tbl = baue(MIT_SPANNE);
+    addColumn(tbl, 2);                 // hinter der letzten Spalte
+    pruefe('Hinten kommt ueberall eine Zelle dazu',
+      bild(tbl) === 'AB/c2 C · | D E F ·', bild(tbl));
+  }
+
+  abschnitt('Eine Zeile bekommt so viele Zellen, wie logisch frei sind');
+
+  {
+    const tbl = baue(MIT_SPANNE);
+    const kopf = tbl.querySelectorAll('tr')[0];
+    addRow(tbl, kopf);
+    const neue = tbl.querySelectorAll('tr')[1];
+    pruefe('drei Zellen, nicht eine', neue.children.length === 3,
+      neue.children.length + ' (' + bild(tbl) + ')');
+  }
+
+  {
+    /* Und mit rowspan: die Zelle darueber waechst mit, statt dass die
+       neue Zeile ein Loch bekommt. */
+    const tbl = baue('<table class="j-table"><tbody>'
+      + '<tr><td rowspan="2">L</td><td>A</td></tr>'
+      + '<tr><td>B</td></tr>'
+      + '</tbody></table>');
+    addRow(tbl, tbl.querySelectorAll('tr')[0]);
+    pruefe('L reicht jetzt ueber drei Zeilen',
+      bild(tbl) === 'L/r3 A | · | B', bild(tbl));
+  }
+
+  abschnitt('Eine Zeile loeschen laesst die Spannen stimmen');
+
+  {
+    const tbl = baue('<table class="j-table"><tbody>'
+      + '<tr><td rowspan="2">L</td><td>A</td></tr>'
+      + '<tr><td>B</td></tr>'
+      + '<tr><td>C</td><td>D</td></tr>'
+      + '</tbody></table>');
+    removeRow(tbl, tbl.querySelectorAll('tr')[1]);
+    pruefe('L reicht nur noch ueber eine Zeile',
+      bild(tbl) === 'L A | C D', bild(tbl));
+  }
+
+  {
+    /* Die Zeile, in der die verbundene Zelle ANFAENGT: sie zieht in die
+       naechste um, statt mit ihrem Inhalt zu verschwinden. */
+    const tbl = baue('<table class="j-table"><tbody>'
+      + '<tr><td rowspan="2">L</td><td>A</td></tr>'
+      + '<tr><td>B</td></tr>'
+      + '</tbody></table>');
+    removeRow(tbl, tbl.querySelectorAll('tr')[0]);
+    pruefe('L bleibt erhalten und steht jetzt in der ersten Zeile',
+      bild(tbl) === 'L B', bild(tbl));
+  }
+
+  abschnitt('cellPos nennt die logische Spalte');
+
+  {
+    const tbl = baue(MIT_SPANNE);
+    const zeilen2 = tbl.querySelectorAll('tr');
+    pruefe('C steht in Spalte 2, nicht in Spalte 1',
+      cellPos(zeilen2[0].children[1]).spalte === 2,
+      cellPos(zeilen2[0].children[1]).spalte);
+    pruefe('AB steht in Spalte 0',
+      cellPos(zeilen2[0].children[0]).spalte === 0,
+      cellPos(zeilen2[0].children[0]).spalte);
+    pruefe('E steht in Spalte 1',
+      cellPos(zeilen2[1].children[1]).spalte === 1,
+      cellPos(zeilen2[1].children[1]).spalte);
+  }
+
+  abschnitt('Gewoehnliche Tabellen bleiben, wie sie waren');
+
+  {
+    const EINFACH = '<table class="j-table"><tbody>'
+      + '<tr><td>1</td><td>2</td><td>3</td></tr>'
+      + '<tr><td>4</td><td>5</td><td>6</td></tr>'
+      + '</tbody></table>';
+
+    let tbl = baue(EINFACH);
+    removeColumn(tbl, 1);
+    pruefe('Spalte loeschen', bild(tbl) === '1 3 | 4 6', bild(tbl));
+
+    tbl = baue(EINFACH);
+    addColumn(tbl, 0);
+    pruefe('Spalte einfuegen', bild(tbl) === '1 · 2 3 | 4 · 5 6', bild(tbl));
+
+    tbl = baue(EINFACH);
+    addRow(tbl, tbl.querySelectorAll('tr')[0]);
+    pruefe('Zeile einfuegen', bild(tbl) === '1 2 3 | · · · | 4 5 6', bild(tbl));
+
+    tbl = baue(EINFACH);
+    removeRow(tbl, tbl.querySelectorAll('tr')[0]);
+    pruefe('Zeile loeschen', bild(tbl) === '4 5 6', bild(tbl));
+
+    tbl = baue(EINFACH);
+    pruefe('Die letzte Zeile bleibt stehen',
+      removeRow(tbl, tbl.querySelectorAll('tr')[0]) &&
+      !removeRow(tbl, tbl.querySelectorAll('tr')[0]), 'sie ging weg');
+  }
+
+  abschnitt('Die Spaltenbreiten gehen mit');
+
+  {
+    const tbl = baue('<table class="j-table">'
+      + '<colgroup><col width="100"><col width="200"><col width="300"></colgroup>'
+      + '<tbody><tr><td>1</td><td>2</td><td>3</td></tr></tbody></table>');
+    removeColumn(tbl, 1);
+    const breiten = [...tbl.querySelectorAll('col')].map(c => c.getAttribute('width'));
+    pruefe('Die Breite der geloeschten Spalte faellt mit weg',
+      JSON.stringify(breiten) === JSON.stringify(['100', '300']), JSON.stringify(breiten));
+  }
+
+} catch (err) {
+  zeilen.push('ABBRUCH ' + err.message + ' | ' + String(err.stack).split('\n')[1]);
+}
+
+window.__ergebnis = zeilen.join('\n');
+</script>
+</body>
+</html>

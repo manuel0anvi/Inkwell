@@ -1548,7 +1548,9 @@ async function fillNotebookFromDocx(nb, dataUrl, onFortschritt) {
   try {
     gelesen = await InkwellsDocxImport.lese(dataUrlZuBytes(dataUrl), {
       zeilenhoehe,
-      maxBildHoehe: nutz
+      maxBildHoehe: nutz,
+      // Der rechte Rand haengt am Papier – siehe docxPaginate.textBreiteFuer
+      bg
     });
   } catch (err) {
     const kennung = String(err && err.message || '');

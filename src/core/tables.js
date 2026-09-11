@@ -96,18 +96,101 @@ function focusCell(cell) {
   return true;
 }
 
-/** Hängt unten eine Zeile an, mit derselben Spaltenzahl. */
-function addRow(table, nachZeile) {
-  const zeilen = [...table.querySelectorAll('tr')];
-  const muster = nachZeile || zeilen[zeilen.length - 1];
-  if (!muster) return null;
-  if (zeilen.length >= TBL_MAX) return null;
+/* ══════════════════════════════════════════════════════════════════════
+   VERBUNDENE ZELLEN BRAUCHEN EIN LOGISCHES RASTER
 
+   Zeile und Spalte wurden hier als Platz im DOM gerechnet:
+   zeile.children[index] war „die Spalte index", children.length „die
+   Spaltenzahl". Solange jede Zelle genau ein Feld belegt, stimmt das.
+
+   Aus Word kommen aber Tabellen mit colspan und rowspan – der Import
+   unterstützt beides ausdrücklich (core/docxImport.js). Damit fällt die
+   Rechnung auseinander:
+
+     Kopfzeile:  [ AB (colspan 2) ] [ C ]     ← zwei Kinder, drei Spalten
+     Datenzeile: [ D ] [ E ] [ F ]            ← drei Kinder, drei Spalten
+
+   „Spalte 2 löschen" traf in der ersten Zeile C (die logisch dritte) und
+   in der zweiten E (die logisch zweite). Eine neue Zeile bekam so viele
+   Zellen, wie die Musterzeile KINDER hatte – nach der Kopfzeile oben also
+   eine statt drei.
+
+   Das Raster unten bildet jede Zelle auf die Felder ab, die sie wirklich
+   belegt. Darauf rechnen alle Aktionen, und die Spannen werden
+   mitgezogen statt übergangen.
+   ══════════════════════════════════════════════════════════════════════ */
+
+/** colspan/rowspan als Zahl – fehlend, leer oder unsinnig heisst 1. */
+function spanne(zelle, name) {
+  const roh = parseInt(zelle.getAttribute(name) || '1', 10);
+  return (Number.isFinite(roh) && roh > 0) ? roh : 1;
+}
+
+/** Setzt eine Spanne – oder nimmt das Attribut weg, wenn sie 1 ist. */
+function setzeSpanne(zelle, name, wert) {
+  if (wert > 1) zelle.setAttribute(name, String(wert));
+  else zelle.removeAttribute(name);
+}
+
+/**
+ * Welche Zelle liegt auf welchem Feld?
+ *
+ * @returns {{trs: Element[], raster: Array<Array>, spalten: number}}
+ *   raster[zeile][spalte] = { zelle, ursprung, r, c, cs, rs } oder leer
+ */
+function logischesRaster(table) {
+  const trs = [...table.querySelectorAll('tr')];
+  const raster = trs.map(() => []);
+
+  trs.forEach((tr, r) => {
+    let c = 0;
+    for (const zelle of [...tr.children]) {
+      while (raster[r][c]) c++;               // schon von oben belegt
+      const cs = spanne(zelle, 'colspan');
+      const rs = spanne(zelle, 'rowspan');
+      for (let dr = 0; dr < rs && r + dr < trs.length; dr++) {
+        for (let dc = 0; dc < cs; dc++) {
+          raster[r + dr][c + dc] = { zelle, ursprung: dr === 0 && dc === 0, r, c, cs, rs };
+        }
+      }
+      c += cs;
+    }
+  });
+
+  const spalten = raster.reduce((m, z) => Math.max(m, z.length), 0);
+  return { trs, raster, spalten };
+}
+
+/** Hängt eine Zeile an – mit so vielen Zellen, wie logisch frei sind. */
+function addRow(table, nachZeile) {
+  const { trs, raster, spalten } = logischesRaster(table);
+  const muster = nachZeile || trs[trs.length - 1];
+  if (!muster) return null;
+  if (trs.length >= TBL_MAX) return null;
+
+  const nr = trs.indexOf(muster);
   const neu = document.createElement('tr');
-  for (let i = 0; i < muster.children.length; i++) {
+
+  /* Felder, die eine Zelle von oben her überdeckt, bekommen keine neue
+     Zelle – die Zelle darüber wächst stattdessen um eine Zeile. Genau
+     das tut Word auch. */
+  const gewachsen = new Set();
+  for (let c = 0; c < spalten; c++) {
+    const feld = nr >= 0 ? (raster[nr] || [])[c] : null;
+    const deckt = feld && (feld.r + feld.rs - 1) > nr;
+    if (deckt) {
+      if (!gewachsen.has(feld.zelle)) {
+        setzeSpanne(feld.zelle, 'rowspan', feld.rs + 1);
+        gewachsen.add(feld.zelle);
+      }
+      continue;
+    }
     // Leer, ohne <br> – die Begründung steht in buildTableHtml
     neu.appendChild(document.createElement('td'));
   }
+
+  // Eine Tabelle ohne jede freie Spalte gibt es nicht – dann eine Zelle
+  if (!neu.children.length) neu.appendChild(document.createElement('td'));
 
   /* Eine Datenzeile gehört nicht in den <thead>. Bei einer aus Word
      eingefügten Tabelle steht die Musterzeile dort, und die neue Zeile
@@ -128,19 +211,46 @@ function addRow(table, nachZeile) {
 
 /** Eine Spalte rechts neben der angegebenen – oder ganz hinten. */
 function addColumn(table, nachIndex) {
-  const zeilen = [...table.querySelectorAll('tr')];
-  if (!zeilen.length) return false;
-  if (zeilen[0].children.length >= TBL_MAX) return false;
+  const { trs, raster, spalten } = logischesRaster(table);
+  if (!trs.length) return false;
+  if (spalten >= TBL_MAX) return false;
 
-  for (const zeile of zeilen) {
+  const breiter = new Set();
+
+  trs.forEach((zeile, r) => {
     const kopf = zeile.parentNode && zeile.parentNode.tagName === 'THEAD';
     const alsKopf = kopf || (zeile.children[0] && zeile.children[0].tagName === 'TH');
-    const zelle = document.createElement(alsKopf ? 'th' : 'td');
 
-    const bezug = (nachIndex >= 0) ? zeile.children[nachIndex] : null;
-    if (bezug) zeile.insertBefore(zelle, bezug.nextSibling);
-    else zeile.appendChild(zelle);
-  }
+    const feld = (nachIndex >= 0) ? (raster[r] || [])[nachIndex] : null;
+
+    /* Reicht die Zelle an dieser Stelle über die Grenze hinaus, wird sie
+       breiter statt eine neue daneben zu bekommen – sonst zerrisse die
+       neue Spalte eine verbundene Zelle. */
+    if (feld && (feld.c + feld.cs - 1) > nachIndex) {
+      if (!breiter.has(feld.zelle)) {
+        setzeSpanne(feld.zelle, 'colspan', feld.cs + 1);
+        breiter.add(feld.zelle);
+      }
+      return;
+    }
+
+    const zelle = document.createElement(alsKopf ? 'th' : 'td');
+    if (feld && feld.zelle.parentNode === zeile) {
+      zeile.insertBefore(zelle, feld.zelle.nextSibling);
+    } else if (feld) {
+      /* Das Feld gehört einer Zelle aus einer Zeile darüber (rowspan).
+         Hier gehört die neue Zelle an die Stelle, an der die Zeile das
+         nächste eigene Feld rechts davon hat. */
+      const naechste = [...zeile.children].find(k => {
+        const f = (raster[r] || []).find(x => x && x.zelle === k);
+        return f && f.c > nachIndex;
+      });
+      if (naechste) zeile.insertBefore(zelle, naechste);
+      else zeile.appendChild(zelle);
+    } else {
+      zeile.appendChild(zelle);
+    }
+  });
 
   // Feste Breiten mitziehen, sonst rutschen sie um eine Spalte
   const grp = table.querySelector('colgroup');
@@ -155,18 +265,57 @@ function addColumn(table, nachIndex) {
 
 /** Die Zeile weg – die letzte nicht, sonst bliebe eine leere Tabelle. */
 function removeRow(table, zeile) {
-  const zeilen = [...table.querySelectorAll('tr')];
-  if (zeilen.length <= 1 || !zeile) return false;
+  const { trs, raster } = logischesRaster(table);
+  if (trs.length <= 1 || !zeile) return false;
+
+  const nr = trs.indexOf(zeile);
+  if (nr < 0) return false;
+
+  /* Zellen, die von oben in diese Zeile hineinreichen, werden um eine
+     Zeile kürzer. Und eine Zelle, die HIER anfängt und weiter nach unten
+     reicht, zieht in die nächste Zeile um – sonst verlöre die Tabelle
+     ihren Inhalt und die Zeilen darunter bekämen ein Loch. */
+  const behandelt = new Set();
+  const naechste = trs[nr + 1] || null;
+
+  for (const feld of (raster[nr] || [])) {
+    if (!feld || behandelt.has(feld.zelle)) continue;
+    behandelt.add(feld.zelle);
+    if (feld.rs <= 1) continue;
+
+    if (feld.r < nr) {
+      setzeSpanne(feld.zelle, 'rowspan', feld.rs - 1);
+    } else if (naechste) {
+      setzeSpanne(feld.zelle, 'rowspan', feld.rs - 1);
+      // An die Stelle, an der sie in der nächsten Zeile hingehört
+      const davor = [...naechste.children].find(k => {
+        const f = (raster[nr + 1] || []).find(x => x && x.zelle === k);
+        return f && f.c > feld.c;
+      });
+      if (davor) naechste.insertBefore(feld.zelle, davor);
+      else naechste.appendChild(feld.zelle);
+    }
+  }
+
   zeile.remove();
   return true;
 }
 
 function removeColumn(table, index) {
-  const zeilen = [...table.querySelectorAll('tr')];
-  if (!zeilen.length || zeilen[0].children.length <= 1) return false;
-  for (const zeile of zeilen) {
-    const zelle = zeile.children[index];
-    if (zelle) zelle.remove();
+  const { trs, raster, spalten } = logischesRaster(table);
+  if (!trs.length || spalten <= 1) return false;
+
+  /* Eine Zelle, die mehrere Felder belegt, wird schmaler statt zu
+     verschwinden – und eine, die über mehrere Zeilen reicht, darf nicht
+     mehrfach angefasst werden. */
+  const behandelt = new Set();
+  for (let r = 0; r < trs.length; r++) {
+    const feld = (raster[r] || [])[index];
+    if (!feld || behandelt.has(feld.zelle)) continue;
+    behandelt.add(feld.zelle);
+
+    if (feld.cs > 1) setzeSpanne(feld.zelle, 'colspan', feld.cs - 1);
+    else feld.zelle.remove();
   }
 
   /* Die feste Breite MUSS mitgehen – dasselbe wie in addColumn, nur
@@ -182,16 +331,26 @@ function removeColumn(table, index) {
   return true;
 }
 
-/** Die Stelle einer Zelle: in welcher Zeile, in welcher Spalte. */
+/**
+ * Die Stelle einer Zelle: in welcher Zeile, in welcher Spalte.
+ *
+ * `spalte` ist die LOGISCHE Spalte – bei verbundenen Zellen ist das
+ * etwas anderes als der Platz unter den Geschwistern, und die Aktionen
+ * darüber rechnen alle logisch (siehe logischesRaster).
+ */
 function cellPos(cell) {
   const zeile = cell.parentNode;
   const table = cell.closest('table');
-  return {
-    table,
-    zeile,
-    spalte: [...zeile.children].indexOf(cell),
-    zeileNr: [...table.querySelectorAll('tr')].indexOf(zeile)
-  };
+  const { trs, raster } = logischesRaster(table);
+  const zeileNr = trs.indexOf(zeile);
+
+  let spalte = [...zeile.children].indexOf(cell);
+  const reihe = raster[zeileNr] || [];
+  for (let c = 0; c < reihe.length; c++) {
+    if (reihe[c] && reihe[c].zelle === cell && reihe[c].ursprung) { spalte = c; break; }
+  }
+
+  return { table, zeile, spalte, zeileNr };
 }
 
 /**

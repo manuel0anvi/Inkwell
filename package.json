@@ -21,6 +21,7 @@
     "test:objects": "electron scripts/test-object-layers",
     "test:sanitize": "electron scripts/test-sanitize",
     "test:lists": "electron scripts/test-lists",
+    "test:tabellen": "electron scripts/test-tabellen",
     "test:docx": "electron scripts/test-docx-import",
     "test:pdf": "electron scripts/test-pdf-bilder",
     "test:pdfseiten": "electron scripts/test-pdf-seiten",

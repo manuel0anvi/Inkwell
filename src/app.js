@@ -552,6 +552,29 @@ function updateUndoRedoUI() {
   }
 }
 
+/* ══════════════════════════════════════════════════════════════════════
+   RUECKGAENGIG GILT IMMER DEM OFFENEN HEFT
+
+   Die Schrittfolge ist global, und getPage() sucht über ALLE offenen
+   Hefte (core/data.js). Beides zusammen ergab einen stillen Fehler mit
+   Ansage: in Heft A etwas ändern, zu Heft B wechseln, dort Strg+Z – und
+   zurückgenommen wurde der Schritt in A. Unsichtbar, denn A ist ja nicht
+   im Bild. Ein Seitenwechsel geschieht nur, wenn das betroffene DOM im
+   gerade sichtbaren Heft steht; hier stand es woanders.
+
+   Nebenbei wurde B als geändert markiert (markCurrentNotebookDirty) und A
+   nicht – die Änderung an A ging also am Dirty-Weg vorbei und wurde beim
+   nächsten Speichern aus einem anderen Anlass mit festgeschrieben.
+
+   Schritte anderer Hefte werden hier deshalb ÜBERSPRUNGEN, nicht
+   weggeworfen: kommt man zurück, ist ihr Verlauf noch da.
+   ══════════════════════════════════════════════════════════════════════ */
+function _seiteImAktivenHeft(pgId) {
+  const nb = typeof getNb === 'function' ? getNb() : null;
+  if (!nb) return false;
+  return (nb.pages || []).some(p => String(p.id) === String(pgId));
+}
+
 /**
  * Die Seite, auf der der nächste Schritt dieser Richtung liegt.
  *
@@ -560,11 +583,16 @@ function updateUndoRedoUI() {
  * stünde ihre Kennung dann noch.
  */
 function _naechsteSchrittSeite(folge, fromKey) {
-  while (folge.length) {
-    const id = folge[folge.length - 1];
+  for (let i = folge.length - 1; i >= 0; i--) {
+    const id = folge[i];
     const entry = S.history[id];
-    if (entry && entry[fromKey].length && getPage(id)) return id;
-    folge.pop();
+    if (!entry || !entry[fromKey].length || !getPage(id)) {
+      folge.splice(i, 1);                 // wirklich tot – weg damit
+      continue;
+    }
+    // Ein Schritt aus einem anderen Heft bleibt liegen, wo er ist
+    if (!_seiteImAktivenHeft(id)) continue;
+    return id;
   }
   /* Rückfall auf die offene Seite – für Schritte, die vor dieser
      Fassung gesichert wurden und deshalb in keiner Liste stehen. */
@@ -574,6 +602,14 @@ function _naechsteSchrittSeite(folge, fromKey) {
 }
 
 function _stepHistory(fromKey, toKey, emptyMsgKey) {
+  /* Ohne Schreibrecht wird auch nichts zurückgenommen. Die Werkzeuge sind
+     dann aus, aber das Tastenkürzel hört niemand ab – und die Änderung
+     ginge örtlich durch, ohne je gespeichert zu werden. */
+  if (S.readOnly) {
+    toast((typeof t === 'function' && t('sharedNoRight')) || 'Kein Schreibrecht.', true);
+    return false;
+  }
+
   const vonFolge = (fromKey === 'undo') ? _schrittFolge : _redoFolge;
   const zuFolge = (fromKey === 'undo') ? _redoFolge : _schrittFolge;
 
@@ -596,7 +632,10 @@ function _stepHistory(fromKey, toKey, emptyMsgKey) {
       if (!info || !entry || !entry[fromKey].length) break;
 
       const snap = entry[fromKey].pop();
-      if (vonFolge[vonFolge.length - 1] === pgId) vonFolge.pop();
+      /* Die letzte Erwähnung dieser Seite streichen – sie muss nicht mehr
+         am Ende stehen, seit Schritte anderer Hefte übersprungen werden. */
+      const stelle = vonFolge.lastIndexOf(pgId);
+      if (stelle > -1) vonFolge.splice(stelle, 1);
       if (gruppe === null) gruppe = snap.gruppe;
 
       // Aktuellen Stand auf die Gegenseite legen, damit es umkehrbar bleibt

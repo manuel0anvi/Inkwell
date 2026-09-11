@@ -366,6 +366,90 @@ window.__fertig = (async function () {
     const zeilenNachher = (seitenListe.map(s => s.html).join('').match(/<td>\d+<\/td>/g) || []).length;
     pruefe('Keine Tabellenzeile geht verloren', zeilenNachher === 120, zeilenNachher);
 
+    /* ══════════════════════════════════════════════════════════════
+       EIN ABSATZ AUS LAUTER UMBRUECHEN
+
+       In Word ist Shift+Enter das uebliche Mittel, um Abstand zu machen.
+       Kommen genug davon zusammen, ist der Absatz hoeher als eine Seite –
+       und er hat kein einziges Textzeichen. stelleAnGrenze findet dort
+       keinen Textknoten und liefert -1; der ganze Absatz wanderte
+       unveraendert in den Rest, und der naechste Durchgang stand vor
+       derselben Lage. Endlosschleife im Renderer: die Blockliste waechst,
+       der Speicher auch, und die App reagiert nicht mehr.
+       ══════════════════════════════════════════════════════════════ */
+    const umbrueche = '<p>' + '<br>'.repeat(120) + '</p>';
+    const vorher = Date.now();
+    seitenListe = P.verteile([{ html: umbrueche }],
+      { breite: 794, hoehe: 1123, bg: 'ruled' });
+    const gedauert = Date.now() - vorher;
+
+    pruefe('Ein Absatz aus 120 Umbruechen bringt den Umbruch nicht zum Haengen',
+      gedauert < 8000, gedauert + ' ms');
+    pruefe('Er wird auf mehrere Seiten verteilt', seitenListe.length > 1,
+      seitenListe.length);
+    pruefe('Und keine davon laeuft ueber',
+      seitenListe.every(s => misstHoehe(s.html) <= NUTZ + 1),
+      seitenListe.map(s => Math.round(misstHoehe(s.html))).join(','));
+    const umbruecheNachher = (seitenListe.map(s => s.html).join('').match(/<br>/g) || []).length;
+    pruefe('Kein Umbruch geht dabei verloren', umbruecheNachher === 120, umbruecheNachher);
+
+    /* Und der Fall, in dem sich wirklich nichts teilen laesst: ein
+       einziges ueberlanges Wort ohne jede Trennstelle. Es bekommt seine
+       eigene Seite, statt die Schleife festzufahren. */
+    seitenListe = P.verteile([{ html: '<p>' + 'x'.repeat(40000) + '</p>' }],
+      { breite: 794, hoehe: 1123, bg: 'ruled' });
+    pruefe('Auch ein unteilbares Stueck haelt den Umbruch nicht auf',
+      seitenListe.length >= 1, seitenListe.length);
+    pruefe('Und es geht dabei nicht verloren',
+      seitenListe.map(s => s.html).join('').includes('xxxxxxxxxx'), 'weg');
+
+    /* ══════════════════════════════════════════════════════════════
+       DER RECHTE RAND HAENGT AM PAPIER
+
+       Gerechnet wurde immer mit 794-72-32 = 690 px. In css/pages.css
+       (rightPadForBg) sind es aber nur beim linierten Papier 32 – bei
+       kariert, gepunktet, weiss und Kraftpapier 72, also 650 px. Der
+       eingemessene Absatz brauchte im Heft mehr Zeilen als beim Messen
+       und stand unter der Blattkante, wo .j-page overflow:hidden hat.
+       ══════════════════════════════════════════════════════════════ */
+    pruefe('Liniert: 690 px', P.textBreiteFuer(794, 'ruled') === 690,
+      P.textBreiteFuer(794, 'ruled'));
+    for (const papier of ['grid', 'dots', 'blank', 'craft']) {
+      pruefe(papier + ': 650 px', P.textBreiteFuer(794, papier) === 650,
+        P.textBreiteFuer(794, papier));
+    }
+
+    /* Und der Messplatz muss diese Breite auch wirklich benutzen –
+       sonst stimmt die Zahl, aber gemessen wird weiter falsch. */
+    for (const papier of ['ruled', 'grid', 'blank']) {
+      const { seite, feld } = P.__intern.baueMessplatz(794, papier);
+      const breit = Math.round(feld.getBoundingClientRect().width);
+      seite.remove();
+      pruefe('Der Messplatz fuer ' + papier + ' ist so breit wie das Textfeld',
+        breit === P.textBreiteFuer(794, papier), breit);
+    }
+
+    /* Der Beleg, dass es darauf ankommt: derselbe Absatz wird auf dem
+       schmaleren Papier hoeher – und genau diese Hoehe entscheidet
+       darueber, wie viel auf eine Seite gelegt wird. Weiss und liniert
+       haben dieselbe Zeilenhoehe, der Unterschied kommt also allein von
+       der Breite. */
+    const fuellSatz = '<p>' + ('Ein ziemlich langer Satz mit vielen Woertern darin, '
+      + 'damit der Umbruch wirklich etwas zu tun bekommt. ').repeat(12) + '</p>';
+
+    function hoeheAuf(papier, html) {
+      const { seite, feld } = P.__intern.baueMessplatz(794, papier);
+      feld.innerHTML = html;
+      const h = Math.round(feld.getBoundingClientRect().height);
+      seite.remove();
+      return h;
+    }
+
+    const hLiniert = hoeheAuf('ruled', fuellSatz);
+    const hWeiss = hoeheAuf('blank', fuellSatz);
+    pruefe('Auf schmalerem Papier wird derselbe Absatz hoeher',
+      hWeiss > hLiniert, 'liniert ' + hLiniert + ', weiss ' + hWeiss);
+
     // Ein Bild-Platzhalter: die Stelle muss gemessen herauskommen
     seitenListe = P.verteile([
       { html: '<p>davor</p>' },

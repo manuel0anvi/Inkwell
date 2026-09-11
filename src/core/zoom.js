@@ -84,11 +84,40 @@ function beendeZoomGeste() {
 /** Läuft gerade eine? Für Prüfstände und die Fehlersuche. */
 function zoomGesteLaeuft() { return _gesteLaeuft; }
 
+/* ══════════════════════════════════════════════════════════════════════
+   NICHT JEDE SEITE IST 794 PUNKTE BREIT
+
+   Beide Einpassungen rechneten mit CFG.PAGE_W. Seit es Bildseiten und
+   PDF-Vorlagen gibt, stimmt das nicht mehr: eine Querformatfolie ist
+   1123 breit (blattMass in core/importExport.js).
+
+   Was daraus wurde: in einem Fenster von rund 1000 Punkten stand die
+   Folie bei der Grundvergrösserung 1,2 links und rechts ausserhalb des
+   Sichtfelds. Herankommen konnte man nicht – waagerecht rollen ist
+   abgeschaltet (.pg-scroll, overflow-x: hidden), und das Schieben mit
+   dem Finger fängt erst über panThreshold() an, also über 1,21. Genau
+   dazwischen lag der Standard.
+
+   Gerechnet wird deshalb mit der BREITESTEN Seite des offenen Hefts.
+   Liegt eine Folie darin, wird beim Empfangen etwas weiter
+   herausgezoomt – dafür ist alles zu sehen. Wer näher heran will, zoomt
+   hinein und kann dann auch schieben.
+   ══════════════════════════════════════════════════════════════════════ */
+function breitesteSeite() {
+  let breit = CFG.PAGE_W;
+  const nb = (typeof getNb === 'function') ? getNb() : null;
+  for (const p of ((nb && nb.pages) || [])) {
+    const w = Number(p && p.w);
+    if (Number.isFinite(w) && w > breit) breit = w;
+  }
+  return breit;
+}
+
 /** Der grösste Zoom, bei dem die Seite noch ganz in den Rahmen passt. */
 function getFitZoom() {
   const sc = E('pg-scroll');
   if (!sc || !sc.clientWidth) return null;
-  return sc.clientWidth / CFG.PAGE_W;
+  return sc.clientWidth / breitesteSeite();
 }
 
 function getZoom() { return _wirksam; }
@@ -140,7 +169,7 @@ function getVerticalFitZoom() {
   const sc = E('pg-scroll');
   if (!sc) return null;
   const availW = Math.max(1, sc.clientWidth - 16);
-  const fit = availW / CFG.PAGE_W;
+  const fit = availW / breitesteSeite();
   return Math.max(ZOOM_MIN, Math.min(VERTICAL_MAX_ZOOM, fit));
 }
 
@@ -162,6 +191,23 @@ function _applyZoom() {
   if (!pw) return;
   pw.style.transform = 'scale(' + z + ')';
   pw.style.transformOrigin = 'top center';
+
+  /* ══════════════════════════════════════════════════════════════════
+     UND WENN ES DOCH BREITER IST, LÄSST ES SICH ERREICHEN
+
+     .pg-scroll hat overflow-x: hidden – richtig, solange alles in den
+     Rahmen passt: ein waagerechter Balken unter jeder Seite wäre nur im
+     Weg. Beim Hineinzoomen in eine breite Seite war es aber eine Sperre:
+     das Schieben mit dem Finger fängt erst über panThreshold() an, und
+     mit der Maus gab es gar keinen Weg an den rechten Rand.
+
+     Deshalb nur dann, wenn es wirklich nötig ist.
+     ══════════════════════════════════════════════════════════════════ */
+  const sc2 = E('pg-scroll');
+  if (sc2) {
+    const brauchtBreite = breitesteSeite() * z > sc2.clientWidth + 1;
+    sc2.style.overflowX = brauchtBreite ? 'auto' : '';
+  }
   // Liest offsetHeight, erzwingt also einen Umbruch – siehe _gesteLaeuft
   if (!_gesteLaeuft) passeRollhoeheAn();
   /* ══ WER DIE FINGERBEWEGUNG BEKOMMT: BROWSER ODER STRICH ══

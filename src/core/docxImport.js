@@ -768,12 +768,25 @@
        { html, umbruchDavor: true }  ausdrücklicher Seitenumbruch
      ══════════════════════════════════════════════════════════════════ */
 
-  const TEXT_BREITE = CFG_TEXT_BREITE();
+  /* Die nutzbare Textbreite einer Heftseite – wie in css/pages.css.
 
-  /** Die nutzbare Textbreite einer Heftseite – wie in css/pages.css. */
-  function CFG_TEXT_BREITE() {
+     >>> Warum das keine feste Zahl mehr ist <<<
+     Der rechte Rand ist nur beim linierten Papier 32 px; bei kariert,
+     gepunktet, weiss und Kraftpapier sind es 72 (rightPadForBg in
+     canvas/text.js). Ein Bild wurde deshalb auf 690 px gezogen und
+     stand danach in einem 650 px breiten Feld – es ragte rechts über den
+     Textbereich hinaus. Dieselbe Rechnung wie im Umbruch, aus derselben
+     Quelle (core/docxPaginate.js). */
+  let TEXT_BREITE = textBreiteFuerPapier('ruled');
+
+  function textBreiteFuerPapier(bg) {
     const seite = (typeof CFG !== 'undefined' && CFG.PAGE_W) ? CFG.PAGE_W : 794;
-    return seite - 72 - 32;      // .j-text left und right
+    if (typeof InkwellsDocxPaginate !== 'undefined'
+        && typeof InkwellsDocxPaginate.textBreiteFuer === 'function') {
+      return InkwellsDocxPaginate.textBreiteFuer(seite, bg);
+    }
+    const rechts = (bg === 'grid' || bg === 'dots' || bg === 'blank' || bg === 'craft') ? 72 : 32;
+    return seite - 72 - rechts;
   }
 
   /**
@@ -1330,6 +1343,10 @@
    * @returns {Promise<{bloecke:Array, bericht:object}>}
    */
   async function lese(bytes, optionen = {}) {
+    /* Die nutzbare Textbreite haengt am Papier des ZIELHEFTS – dort
+       stehen die Bilder nachher. Siehe textBreiteFuerPapier. */
+    TEXT_BREITE = textBreiteFuerPapier(optionen.bg || 'ruled');
+
     const dateien = await entpacke(bytes);
 
     const doc = alsXml(dateien.get('word/document.xml'));
@@ -1380,7 +1397,7 @@
       hatSeitenumbruch, escapeHtml, LISTEN_FORM, istAufzaehlung,
       bloeckeIn, absatzZuHtml, tabelleZuHtml, alsDataUrl, platzhalterFuer,
       formenIn, blockFuerForm, formArt, leseDesignfarben, textrahmenIn,
-      W, R, A, WP, EMU_PER_PX, TEXT_BREITE
+      W, R, A, WP, EMU_PER_PX, TEXT_BREITE, textBreiteFuerPapier
     }
   };
 })(typeof window !== 'undefined' ? window : globalThis);
