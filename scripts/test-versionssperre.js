@@ -35,7 +35,23 @@ const path = require('path');
 const vm = require('vm');
 
 const quelle = fs.readFileSync(
-  path.join(__dirname, '..', 'website', 'js', 'share.js'), 'utf8'
+  /* ══════════════════════════════════════════════════════════════════
+     GEPRUEFT WIRD DIE QUELLE, NICHT DIE KOPIE
+
+     Hier stand website/js/share.js. Das ist aber die ERZEUGTE Fassung:
+     sync-share schreibt sie aus src/core/share.js (CLAUDE.md, "Beim
+     Aendern beachten"). Und der Ordner website/ steht in .gitignore – er
+     liegt nur oertlich und wird von keinem git pull aktualisiert.
+
+     Damit prueft dieser Test nach jedem Pull erst einmal den STAND VON
+     GESTERN, bis jemand von Hand sync-share laufen laesst. Genau so ist
+     es passiert: eine Funktion war in der App laengst da und im Test
+     "nicht gefunden", und npm test war rot ohne einen Fehler im Code.
+
+     Ein frisch geklontes Repo hat den Ordner ueberhaupt nicht – dort
+     lief der Test gar nicht erst an.
+     ══════════════════════════════════════════════════════════════════ */
+  path.join(__dirname, '..', 'src', 'core', 'share.js'), 'utf8'
 );
 
 function extract(name) {

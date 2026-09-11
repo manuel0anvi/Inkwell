@@ -123,10 +123,29 @@ module.exports = {
   // node_modules hebt genau diese Filterung auf - firebase, esbuild, yjs
   // und electron-builder selbst wanderten dadurch mit in den Installer,
   // obwohl die App keine davon zur Laufzeit braucht.
+  /* ══════════════════════════════════════════════════════════════════
+     WAS MIT INS PAKET GEHT – UND WAS DAS BEDEUTET
+
+     Das Muster ueber src/ nimmt auch src/core/cloudConfig.local.js mit, und in der
+     steht das Google-Client-Secret. Es ist damit in der ausgelieferten
+     .exe auslesbar.
+
+     Das ist KEIN Versehen, sondern der Preis fuer die dauerhafte
+     Anmeldung: ohne Secret gibt Google kein Refresh-Token, und die
+     Google-Sitzung muesste stuendlich erneuert werden. Die Abwaegung
+     steht ausfuehrlich in src/core/cloudConfig.js.
+
+     Was daran wichtig ist: dass es eine ENTSCHEIDUNG bleibt und nicht
+     ein Nebeneffekt eines Musters. scripts/build-release.js sagt
+     deshalb vor jedem Bau laut, ob ein Secret mitgeht. Wer es NICHT
+     ausliefern will, nimmt die Zeile unten wieder hinein – die App
+     laeuft dann weiter, nur eben mit stuendlicher Neuanmeldung.
+     ══════════════════════════════════════════════════════════════════ */
   files: [
     'main.js',
     'preload.js',
     'src/**/*',
+    // '!src/core/cloudConfig.local.js',   // <- ohne dauerhafte Google-Sitzung
     'icon.ico'
   ],
   directories: {

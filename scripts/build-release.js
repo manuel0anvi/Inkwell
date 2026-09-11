@@ -31,6 +31,60 @@ if (STORE) {
     process.exit(1);
   }
 }
+/* ══════════════════════════════════════════════════════════════════════
+   EIN GEHEIMNIS GEHT NICHT UNBEMERKT MIT
+
+   src/core/cloudConfig.local.js traegt das Google-Client-Secret und wird
+   vom Muster ueber src/ mit ins Paket genommen. Das ist so gewollt (die
+   Abwaegung steht in src/core/cloudConfig.js), darf aber niemandem
+   entgehen, der ein Release baut – am wenigsten auf einem fremden
+   Rechner, auf dem zufaellig eine solche Datei liegt.
+
+   Gelesen wird nur, OB ein Wert darinsteht. Der Wert selbst erscheint
+   nirgends: diese Ausgabe landet im Terminal, in Bildschirmfotos und in
+   Fehlerberichten.
+   ══════════════════════════════════════════════════════════════════════ */
+function meldeGeheimnis() {
+  const datei = path.join(rootDir, 'src', 'core', 'cloudConfig.local.js');
+  const ausgeschlossen = (config.files || []).some(m =>
+    typeof m === 'string' && m.replace(/\\/g, '/').includes('!src/core/cloudConfig.local.js'));
+
+  if (!fs.existsSync(datei)) {
+    console.log('[Bau] Kein cloudConfig.local.js – die Google-Sitzung haelt eine Stunde.');
+    return;
+  }
+
+  const gesetzt = /GOOGLE_CLIENT_SECRET_LOCAL\s*=\s*['"][^'"]+['"]/.test(
+    fs.readFileSync(datei, 'utf-8'));
+
+  if (!gesetzt) {
+    console.log('[Bau] cloudConfig.local.js ist leer – die Google-Sitzung haelt eine Stunde.');
+    return;
+  }
+
+  if (ausgeschlossen) {
+    console.log('[Bau] Ein Client-Secret liegt vor, ist aber vom Paket ausgeschlossen.');
+    console.log('      Die Google-Sitzung haelt in der ausgelieferten App eine Stunde.');
+    return;
+  }
+
+  console.log('');
+  console.log('  ================================================================');
+  console.log('   Das Google-Client-Secret GEHT MIT ins Paket.');
+  console.log('   In der ausgelieferten .exe ist es auslesbar.');
+  console.log('');
+  console.log('   So ist es gemeint: ohne Secret gibt Google kein Refresh-Token,');
+  console.log('   und die Anmeldung hielte nur eine Stunde. Die Abwaegung steht');
+  console.log('   in src/core/cloudConfig.js.');
+  console.log('');
+  console.log('   Nicht gewollt? Dann in electron-builder.config.js die Zeile');
+  console.log('   !src/core/cloudConfig.local.js hereinnehmen.');
+  console.log('  ================================================================');
+  console.log('');
+}
+
+meldeGeheimnis();
+
 const sourceDir = config.directories.output;
 const targetDir = path.join(rootDir, 'dist');
 const packageJson = require(path.join(rootDir, 'package.json'));

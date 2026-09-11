@@ -162,8 +162,30 @@
       });
       console.log('[Init] ✓ File open handler registered');
     }
+
+    /* ── Und die Datei, mit der die App GESTARTET wurde ──────────────
+       Sie wird nicht mehr blind nach einer halben Sekunde geschickt,
+       sondern liegt im Hauptprozess bereit, bis sie jemand abholt.
+       Vorher kam sie an, bevor der Empfänger oben angemeldet war – bei
+       einer grossen Übersicht der Normalfall –, und der Doppelklick auf
+       eine .jrnl tat schlicht nichts. */
   } catch (err) {
     console.error('[Init] ✗ File open handler failed:', err);
+  }
+
+  /* Eigenes Auffangnetz: ein Pruefstand oder eine aeltere Bruecke kennt
+     get-pending-file nicht, und daraus soll kein Fehler beim Hochfahren
+     werden. */
+  try {
+    if (window.api.getPendingFile) {
+      const wartend = await window.api.getPendingFile();
+      if (wartend) {
+        console.log('[Init] Beim Start mitgegebene Datei:', wartend);
+        await openNotebookFromFile(wartend);
+      }
+    }
+  } catch (err) {
+    console.log('[Init] Keine wartende Datei abzuholen:', err && err.message);
   }
 
 

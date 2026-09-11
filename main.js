@@ -42,9 +42,13 @@ function compareVersions(v1, v2) {
    riefen sich dafuer selbst auf. */
 const MAX_REDIRECTS = 5;
 
+/* Ohne Zeitgrenze wartet eine haengende Leitung fuer immer, und der Knopf
+   stuende bis zum Programmende auf "wird geprueft". */
+const FETCH_TIMEOUT_MS = 15000;
+
 function fetchJson(url, rest = MAX_REDIRECTS) {
   return new Promise((resolve, reject) => {
-    https.get(url, { headers: { 'User-Agent': 'Inkwells-Updater' } }, res => {
+    const anfrage = https.get(url, { headers: { 'User-Agent': 'Inkwells-Updater' } }, res => {
       let data = '';
       if (res.statusCode === 301 || res.statusCode === 302) {
         res.resume();   // sonst bleibt die Verbindung offen
@@ -57,6 +61,10 @@ function fetchJson(url, rest = MAX_REDIRECTS) {
         try { resolve(JSON.parse(data)); } catch (e) { reject(e); }
       });
     }).on('error', reject);
+
+    anfrage.setTimeout(FETCH_TIMEOUT_MS, () => {
+      anfrage.destroy(new Error('Zeitgrenze beim Nachsehen ueberschritten'));
+    });
   });
 }
 
@@ -149,17 +157,23 @@ function downloadFile(url, dest, rest = MAX_REDIRECTS) {
     });
   });
 }
+/**
+ * @returns {Promise<object|null>} null heisst: es gibt dort nichts
+ *   Passendes. Kommt die Anfrage gar nicht durch, WIRFT die Funktion.
+ *
+ * >>> Warum der Unterschied zaehlt <<<
+ * Hier wurde jeder Fehler geschluckt und null zurueckgegeben. "Kein
+ * Release" und "nicht nachsehen koennen" waren damit dasselbe, und die
+ * Oberflaeche blendete den Knopf in beiden Faellen aus. Der Nutzer erfuhr
+ * nie, dass die Pruefung nicht durchgekommen ist - und der einzige Weg
+ * zurueck war ein Neustart der App.
+ */
 async function getLatestGitHubRelease() {
-  try {
-    const data = await fetchJson('https://api.github.com/repos/manuel0anvi/Inkwells/releases/latest');
-    if (!data || !data.tag_name) return null;
-    const exeAsset = data.assets && data.assets.find(a => a.name.endsWith('.exe'));
-    if (!exeAsset) return null;
-    return { version: normalizeVersion(data.tag_name), url: exeAsset.browser_download_url, name: exeAsset.name };
-  } catch (err) {
-    console.error('Update check failed:', err);
-    return null;
-  }
+  const data = await fetchJson('https://api.github.com/repos/manuel0anvi/Inkwells/releases/latest');
+  if (!data || !data.tag_name) return null;
+  const exeAsset = data.assets && data.assets.find(a => a.name.endsWith('.exe'));
+  if (!exeAsset) return null;
+  return { version: normalizeVersion(data.tag_name), url: exeAsset.browser_download_url, name: exeAsset.name };
 }
 
 let win;
@@ -222,7 +236,8 @@ if (!gotSingleInstanceLock) {
 function getFileFromArgs(args) {
   // Skip electron executable and script path
   for (const arg of args) {
-    if (arg.endsWith('.jrnl') && fs.existsSync(arg)) {
+    // Ohne Ansehen der Schreibung: Windows liefert auch "Heft.JRNL"
+    if (/\.jrnl$/i.test(String(arg)) && fs.existsSync(arg)) {
       return arg;
     }
   }
@@ -293,25 +308,48 @@ function benenneUm(vonPfad, nachPfad) {
  * Holt den Datenordner der Fassungen bis 1.1.1 herueber.
  * Tut nichts, wenn es den neuen Ordner schon gibt oder den alten nicht.
  */
+/**
+ * @returns {string|null} der Ordner, mit dem dieser Lauf arbeiten soll,
+ *   wenn er vom Ueblichen abweicht. Das ist genau ein Fall: der Umzug
+ *   ist gescheitert, und die alten Daten liegen noch drueben.
+ */
 function migriereAltenDatenordner() {
-  if (process.platform !== 'win32') return;
+  if (process.platform !== 'win32') return null;
 
   const localRoot = process.env.LOCALAPPDATA;
-  if (!localRoot) return;
+  if (!localRoot) return null;
 
   const alt = path.join(localRoot, 'Inkwell');
   const neu = path.join(localRoot, 'Inkwells');
 
   try {
-    if (fs.existsSync(neu)) return;      // schon umgezogen
-    if (!fs.existsSync(alt)) return;     // nichts da, frische Installation
+    if (fs.existsSync(neu)) return null;      // schon umgezogen
+    if (!fs.existsSync(alt)) return null;     // nichts da, frische Installation
 
     fs.renameSync(alt, neu);
     console.log('[Umzug] Datenordner Inkwell -> Inkwells');
   } catch (err) {
-    // Nichts loeschen, nichts anlegen - beim naechsten Start neu versuchen
-    console.error('[Umzug] Datenordner blieb liegen:', err.message);
-    return;
+    /* ══════════════════════════════════════════════════════════════════
+       EIN GESCHEITERTER UMZUG DARF SICH NICHT SELBST BEGRABEN
+
+       Hier stand nur ein return. Danach legte configureAppStoragePaths
+       den NEUEN Ordner trotzdem an – und beim naechsten Start war
+       "neuer Ordner vorhanden" die Abbruchbedingung oben. Der Umzug fand
+       also nie wieder statt, obwohl er nie stattgefunden hatte.
+
+       Fuer den Nutzer heisst das: Einstellungen, Anmeldung und Uebersicht
+       aus der Zeit vor 1.1.2 bleiben dauerhaft unerreichbar. Geloescht
+       ist nichts, aber der im Kommentar versprochene "zweite Anlauf"
+       kommt nie.
+
+       Deshalb arbeitet dieser Lauf mit dem ALTEN Ordner weiter. Es wird
+       nichts Neues angelegt, nichts geht verloren, und der naechste Start
+       versucht es wieder – dann vielleicht ohne die Dateisperre, an der
+       es gerade lag.
+       ══════════════════════════════════════════════════════════════════ */
+    console.error('[Umzug] Datenordner blieb liegen, dieser Lauf bleibt beim alten:',
+      err.message);
+    return alt;
   }
 
   /* Die Dateien darin tragen den Namen ebenfalls. Sie liegen im
@@ -377,9 +415,14 @@ function configureAppStoragePaths() {
 
   // MUSS vor dem ersten Zugriff stehen, sonst legt ensureWritableDir
   // einen leeren neuen Ordner an und der Umzug findet ihn schon vor.
-  migriereAltenDatenordner();
+  const ausweichOrdner = migriereAltenDatenordner();
 
-  const storageRoot = storageRootFor(PROFILE);
+  /* Der Umzug ist gescheitert: dann bleibt dieser Lauf beim alten Ordner,
+     statt einen neuen anzulegen und den naechsten Anlauf damit fuer immer
+     auszuschliessen (siehe migriereAltenDatenordner). */
+  const storageRoot = ausweichOrdner
+    ? (PROFILE ? path.join(ausweichOrdner, 'Profiles', PROFILE) : ausweichOrdner)
+    : storageRootFor(PROFILE);
 
   const userDataDir = ensureWritableDir(path.join(storageRoot, 'UserData'));
   const cacheDir = ensureWritableDir(path.join(storageRoot, 'Cache'));
@@ -1467,14 +1510,20 @@ app.whenReady().then(async () => {
 
   createWindow();
   
-  // If started with a file, open it after window is ready
+  /* ══════════════════════════════════════════════════════════════════
+     DIE OBERFLÄCHE HOLT SICH DEN AUFTRAG SELBST
+
+     Hier wurde nach did-finish-load pauschal 500 ms gewartet und dann
+     gesendet. Der Empfänger meldet sich aber erst nach Einstellungen,
+     Übersicht und Cloud an (core/init.js) – bei einer grossen Übersicht
+     dauert das länger als eine halbe Sekunde. Dann ging der Auftrag ins
+     Leere: Doppelklick auf eine .jrnl, und es geschah gar nichts.
+
+     Der Auftrag bleibt jetzt liegen, bis er abgeholt wird – derselbe
+     Weg, den der Protokollaufruf schon nimmt (get-pending-deep-link).
+     ══════════════════════════════════════════════════════════════════ */
   if (pendingFilePath) {
-    console.log('[journal] Opening file from args:', pendingFilePath);
-    win.webContents.once('did-finish-load', () => {
-      setTimeout(() => {
-        win.webContents.send('open-file', pendingFilePath);
-      }, 500); // Small delay to ensure app is initialized
-    });
+    console.log('[journal] Datei aus den Startargumenten wartet:', pendingFilePath);
   }
   /* Beim Start über das Protokoll aufgerufen. Nur zwischenspeichern und
      NICHT zusätzlich senden: die Oberfläche holt sich den Aufruf beim
@@ -1505,9 +1554,21 @@ app.on('second-instance', (event, argv) => {
   const filePath = getFileFromArgs(argv);
   if (filePath) {
     console.log('[journal] Opening file from second instance:', filePath);
+    // Ausdrücklich geöffnet heisst: diese eine Datei ist erlaubt
+    erlaubeDatei(filePath);
     win.webContents.send('open-file', filePath);
   }
 });
+/* Die beim Start mitgegebene Datei – einmal abholbar. Sie wird dabei
+   ausdrücklich erlaubt: sie liegt fast nie im Speicherort (erlaubeDatei). */
+ipcMain.handle('get-pending-file', () => {
+  const datei = pendingFilePath;
+  pendingFilePath = null;
+  if (!datei) return null;
+  erlaubeDatei(datei);
+  return datei;
+});
+
 app.on('open-url', (event, url) => {
   event.preventDefault();
   if (url && url.startsWith('inkwells://')) routeDeepLink(url);
@@ -1854,6 +1915,13 @@ ipcMain.handle('pick-folder', async (_, defaultPath) => {
   if (defaultPath) options.defaultPath = defaultPath;
   const r = await dialog.showOpenDialog(win, options);
   if (r.canceled) return null;
+
+  /* Der Nutzer hat ihn im Fenster des Betriebssystems ausgewählt – das
+     ist die einzige Stelle, an der ein neuer Ordner dazukommt. Sie liegt
+     VOR dem Umzug der Dateien: sonst weist move-file das Ziel ab, die
+     Oberfläche meldet trotzdem Erfolg, und danach ist weder der alte noch
+     der neue Ort erreichbar (siehe erlaubteOrdner). */
+  erlaubeOrdner(r.filePaths[0]);
   return r.filePaths[0];
 });
 
@@ -1874,24 +1942,125 @@ ipcMain.handle('pick-folder', async (_, defaultPath) => {
    – sonst käme "…\Inkwells-heimlich" an "…\Inkwells" vorbei.
    ══════════════════════════════════════════════════════════════════════ */
 
+/* ══════════════════════════════════════════════════════════════════════
+   C:\ORDNER UND c:\ordner SIND DERSELBE ORDNER
+
+   Verglichen wurde zeichengenau. Auf den üblichen Windows-Dateisystemen
+   ist die Schreibung aber gleichgültig: ein Pfad, der einmal mit grossem
+   und einmal mit kleinem Laufwerksbuchstaben durchs Haus geht – und das
+   tut er, sobald einer aus einem Dialog und einer aus der Übersicht
+   kommt –, galt hier als zwei verschiedene. Die Folge ist eine Absage
+   beim Speichern, für die es keinen Grund gibt.
+   ══════════════════════════════════════════════════════════════════════ */
+function pfadSchluessel(p) {
+  const aufgeloest = path.resolve(p);
+  return process.platform === 'win32' ? aufgeloest.toLowerCase() : aufgeloest;
+}
+
 function liegtUnter(kandidat, ordner) {
   if (!ordner) return false;
-  const a = path.resolve(kandidat);
-  const b = path.resolve(ordner);
+  const a = pfadSchluessel(kandidat);
+  const b = pfadSchluessel(ordner);
   return a === b || a.startsWith(b + path.sep);
 }
 
-/** Der eingestellte Speicherort – aus derselben Datei, die ihn hält. */
+/* ══════════════════════════════════════════════════════════════════════
+   DIE ERLAUBNIS GEHÖRT DEM HAUPTPROZESS
+
+   Hier wurde der Speicherort aus der EINSTELLUNGSDATEI gelesen – und die
+   darf die Oberfläche über save-settings vollständig und ungeprüft
+   schreiben. Damit war die Liste keine zweite Sicherheitsgrenze mehr:
+   fremder Code im Fenster setzte saveLocation auf einen beliebigen Ordner
+   und las oder überschrieb danach dessen Dateien über dieselben
+   Datei-APIs. Ein Nachweis für eine Einschleusung ist das nicht – aber
+   eine Grenze, die nur solange hält, wie niemand sie anfasst, ist keine.
+
+   Die erlaubten Orte stehen deshalb in einer eigenen Datei, die nur der
+   Hauptprozess schreibt, und sie wachsen an genau zwei Stellen:
+
+     · der Nutzer wählt einen Ordner im Auswahlfenster (pick-folder),
+     · der Nutzer öffnet ausdrücklich eine Datei (siehe erlaubeDatei).
+
+   Beides sind Fenster des Betriebssystems oder Handgriffe daran. Code im
+   Renderer kommt an keines von beiden vorbei.
+
+   Die Liste wächst nur. Das ist Absicht: wer den Speicherort wechselt,
+   hat alte Hefte weiterhin dort liegen, und ohne den alten Ort in der
+   Liste wären sie beim nächsten Start "verschwunden" (P01).
+   ══════════════════════════════════════════════════════════════════════ */
+const ortePfad = path.join(app.getPath('userData'), 'inkwells-orte.json');
+let _orte = null;
+
+function ladeOrte() {
+  if (_orte) return _orte;
+  _orte = [];
+  try {
+    if (fs.existsSync(ortePfad)) {
+      const roh = JSON.parse(fs.readFileSync(ortePfad, 'utf-8'));
+      if (Array.isArray(roh)) _orte = roh.filter(o => typeof o === 'string' && o);
+    }
+  } catch (err) {
+    console.warn('[Sicherheit] Orte-Datei nicht lesbar:', err.message);
+  }
+
+  /* Einmalige Übernahme: wer vor dieser Fassung einen Speicherort
+     gewählt hat, hat ihn nur in den Einstellungen stehen. Ihn jetzt
+     nicht zu übernehmen hiesse, ihm seine Hefte wegzunehmen. */
+  if (!fs.existsSync(ortePfad)) {
+    try {
+      if (fs.existsSync(settingsPath)) {
+        const gespeichert = JSON.parse(fs.readFileSync(settingsPath, 'utf-8'));
+        const alt = gespeichert && gespeichert.saveLocation;
+        if (typeof alt === 'string' && alt) _orte.push(alt);
+      }
+    } catch (err) { /* dann eben nur die Vorgabeorte */ }
+    schreibeOrte();
+  }
+  return _orte;
+}
+
+function schreibeOrte() {
+  try {
+    fs.writeFileSync(ortePfad, JSON.stringify(_orte || [], null, 2));
+  } catch (err) {
+    console.error('[Sicherheit] Orte-Datei nicht schreibbar:', err.message);
+  }
+}
+
+/** Einen vom Nutzer gewählten Ordner dauerhaft erlauben. */
+function erlaubeOrdner(ordner) {
+  if (typeof ordner !== 'string' || !ordner) return;
+  ladeOrte();
+  if (_orte.some(o => pfadSchluessel(o) === pfadSchluessel(ordner))) return;
+  _orte.push(ordner);
+  schreibeOrte();
+  console.log('[Sicherheit] Ordner erlaubt:', ordner);
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   EINE AUSDRÜCKLICH GEÖFFNETE DATEI
+
+   "Öffnen mit Inkwells" gibt eine einzelne Datei mit, meist aus
+   Downloads oder vom Schreibtisch – also fast nie aus dem Speicherort.
+   Die Pfadsperre wies sie deshalb ab, und statt des Hefts erschien ein
+   Speicherfehler. Der Doppelklick war trotzdem angeboten: das Format ist
+   beim Betriebssystem angemeldet.
+
+   Erlaubt wird deshalb GENAU DIESE Datei, nicht ihr Ordner. Sie ist
+   nur für diesen Lauf freigegeben und steht in keiner Datei.
+   ══════════════════════════════════════════════════════════════════════ */
+const erlaubteDateien = new Set();
+
+function erlaubeDatei(datei) {
+  if (typeof datei !== 'string' || !datei) return;
+  erlaubteDateien.add(pfadSchluessel(datei));
+  console.log('[Sicherheit] Datei einmalig erlaubt:', datei);
+}
+
+/** Der eingestellte Speicherort – aus der Liste, die nur hier wächst. */
 function erlaubteOrdner() {
   const ordner = [app.getPath('userData')];
-  try {
-    if (fs.existsSync(settingsPath)) {
-      const gespeichert = JSON.parse(fs.readFileSync(settingsPath, 'utf-8'));
-      if (gespeichert && typeof gespeichert.saveLocation === 'string' && gespeichert.saveLocation) {
-        ordner.push(gespeichert.saveLocation);
-      }
-    }
-  } catch (err) { /* dann bleibt es beim Datenordner */ }
+  for (const o of ladeOrte()) ordner.push(o);
   // Der Vorgabeort gilt immer, auch bevor er zum ersten Mal gespeichert ist
   try { ordner.push(path.join(app.getPath('documents'), 'Inkwells')); } catch (err) {}
 
@@ -1909,6 +2078,7 @@ function erlaubteOrdner() {
 
 function pfadErlaubt(filePath) {
   if (typeof filePath !== 'string' || !filePath) return false;
+  if (erlaubteDateien.has(pfadSchluessel(filePath))) return true;
   return erlaubteOrdner().some(o => liegtUnter(filePath, o));
 }
 

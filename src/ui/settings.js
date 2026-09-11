@@ -94,7 +94,24 @@
       // Use S.notebooks directly - they're already loaded in memory
       console.log('[Settings] Transferring', S.notebooks.length, 'notebooks from', oldLocation, 'to', newLocation);
       
+      /* ══════════════════════════════════════════════════════════════
+         WAS NICHT ANKOMMT, DARF NICHT ALS ANGEKOMMEN GEMELDET WERDEN
+
+         Hier wurde gezählt, was gelang – und am Ende unabhängig davon
+         transferComplete gemeldet und der Speicherort umgestellt.
+         Scheiterte das Verschieben (bis zu dieser Fassung der Regelfall:
+         der neue Ordner war noch nicht erlaubt, siehe erlaubteOrdner in
+         main.js), lagen die Hefte weiter am alten Ort, der ab jetzt
+         nicht mehr erlaubt war. Weitere Speichervorgänge schlugen fehl,
+         fileExists sagte nein, und beim nächsten Start räumte
+         loadNotebooksFromRegistry die Einträge weg wie fehlende Dateien.
+         Für den Nutzer waren die Hefte verschwunden.
+
+         Jetzt wird gezählt, was NICHT ankam, und der Speicherort wird
+         nur umgestellt, wenn wirklich alles drüben ist.
+         ══════════════════════════════════════════════════════════════ */
       let transferred = 0;
+      const misslungen = [];
       for (const nb of S.notebooks) {
         /* ── Fremde Dokumente bleiben, wo sie sind: nirgends ──────────
            Ein für mich freigegebenes Dokument gehört jemand anderem. Es
@@ -133,6 +150,9 @@
             await Registry.add(nb, newPath);
             transferred++;
             console.log('[Settings] ✓ Saved fresh:', fileName);
+          } else {
+            console.error('[Settings] ✗ Neu speichern fehlgeschlagen:', newPath, result.error);
+            misslungen.push(nb.name);
           }
           continue;
         }
@@ -146,10 +166,20 @@
           console.log('[Settings] ✓ Moved:', fileName);
         } else {
           console.error('[Settings] ✗ Failed to move:', currentPath, result.error);
+          misslungen.push(nb.name);
         }
       }
       
-      // Update setting immediately
+      if (misslungen.length) {
+        /* Der Speicherort bleibt, wo er ist: sonst zeigte die Übersicht
+           auf einen Ort, an dem die Hefte gar nicht liegen. */
+        console.error('[Settings] Umzug unvollständig:', misslungen.join(', '));
+        toast((t('transferFailed') || 'Nicht übertragen: {namen}. Der Speicherort bleibt unverändert.')
+          .replace('{namen}', misslungen.join(', ')), true);
+        return;
+      }
+
+      // Erst jetzt – alles ist wirklich drüben
       await Settings.update({ saveLocation: newLocation });
       
       console.log('[Settings] Transfer complete:', transferred, 'files moved');

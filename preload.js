@@ -96,6 +96,8 @@ contextBridge.exposeInMainWorld('api', {
   
   // Event listeners for file open
   onOpenFile: (callback) => ipcRenderer.on('open-file', (event, filePath) => callback(filePath)),
+  // Die beim Start mitgegebene Datei – einmal abholbar, siehe main.js
+  getPendingFile: () => ipcRenderer.invoke('get-pending-file'),
 
   /* ── Griffbereit: Unterlagen neben dem Heft ──────────────────────────
      PDFs und Bilder, die nur ANGESEHEN werden. Sie liegen weiterhin da,

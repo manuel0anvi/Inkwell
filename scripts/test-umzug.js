@@ -55,22 +55,45 @@ function check(label, actual, expected) {
   }
 }
 
-/** Baut einen frischen Spielplatz und führt den Umzug darin aus. */
-function umzugMit(aufbau) {
+/**
+ * Baut einen frischen Spielplatz und führt den Umzug darin aus.
+ *
+ * @param {function} aufbau
+ * @param {object} [o]
+ * @param {boolean} [o.renameScheitert] Das Umbenennen des Datenordners
+ *   schlägt fehl – Ordner offen, Virenwächter, volle Platte.
+ * @returns {string} die Wurzel des Spielplatzes. Was migriereAltenDatenordner
+ *   zurueckgegeben hat, steht danach in letzterAusweich.
+ */
+let letzterAusweich = null;
+
+function umzugMit(aufbau, o = {}) {
   const wurzel = fs.mkdtempSync(path.join(os.tmpdir(), 'inkwells-umzug-'));
   aufbau(wurzel);
 
+  /* Nur der eine Aufruf soll scheitern – benenneUm() weiter unten
+     benutzt dasselbe rename und muss weiterarbeiten können. */
+  const echtesRename = fs.renameSync;
+  let erster = true;
+  const fsFuerLauf = o.renameScheitert ? Object.assign(Object.create(fs), {
+    renameSync(a, b) {
+      if (erster) { erster = false; const e = new Error('EPERM'); e.code = 'EPERM'; throw e; }
+      return echtesRename.call(fs, a, b);
+    }
+  }) : fs;
+
   const sandbox = {
-    fs, path, console: { log() {}, warn() {}, error() {} },
+    fs: fsFuerLauf, path, console: { log() {}, warn() {}, error() {} },
     process: { platform: 'win32', env: { LOCALAPPDATA: wurzel } }
   };
   vm.createContext(sandbox);
-  vm.runInContext(
+  sandbox.__ergebnis = vm.runInContext(
     [extract('benenneUm'), extract('migriereAltenDatenordner')].join('\n\n')
       + '\nmigriereAltenDatenordner();',
     sandbox
   );
 
+  letzterAusweich = sandbox.__ergebnis || null;
   return wurzel;
 }
 
@@ -140,6 +163,50 @@ w = umzugMit(() => {});
 check('Es entsteht kein Ordner aus dem Nichts', gibt(path.join(w, 'Inkwells')), false);
 
 /* ── 4. Profile ─────────────────────────────────────────────────────── */
+
+/* ══════════════════════════════════════════════════════════════════════
+   EIN GESCHEITERTER UMZUG BEGRAEBT SICH NICHT SELBST
+
+   Schlaegt das Umbenennen fehl, stand hier nur ein return – und
+   configureAppStoragePaths legte den NEUEN Ordner danach trotzdem an.
+   Beim naechsten Start war "neuer Ordner vorhanden" die Abbruchbedingung:
+   der Umzug fand nie wieder statt, obwohl er nie stattgefunden hatte.
+   Einstellungen, Anmeldung und Uebersicht aus der Zeit davor blieben
+   dauerhaft unerreichbar.
+   ══════════════════════════════════════════════════════════════════════ */
+
+console.log('\nWenn der Umzug scheitert');
+
+w = umzugMit((wurzel) => {
+  schreib(path.join(wurzel, 'Inkwell', 'UserData', 'inkwell-settings.json'),
+    '{"language":"de"}');
+}, { renameScheitert: true });
+
+check('Der alte Ordner liegt unangetastet da',
+  gibt(path.join(w, 'Inkwell', 'UserData', 'inkwell-settings.json')), true);
+check('Und es entsteht KEIN neuer Ordner',
+  gibt(path.join(w, 'Inkwells')), false);
+check('Dieser Lauf bekommt den alten Ordner genannt',
+  letzterAusweich, path.join(w, 'Inkwell'));
+
+/* Der zweite Start, diesmal ohne Sperre: jetzt muss es klappen. */
+{
+  const sandbox = {
+    fs, path, console: { log() {}, warn() {}, error() {} },
+    process: { platform: 'win32', env: { LOCALAPPDATA: w } }
+  };
+  vm.createContext(sandbox);
+  sandbox.__zweiter = vm.runInContext(
+    [extract('benenneUm'), extract('migriereAltenDatenordner')].join('\n\n')
+      + '\nmigriereAltenDatenordner();',
+    sandbox
+  );
+
+  check('Beim naechsten Start zieht er wirklich um',
+    gibt(path.join(w, 'Inkwells', 'UserData', 'inkwells-settings.json')), true);
+  check('Der alte Ordner ist dann weg', gibt(path.join(w, 'Inkwell')), false);
+  check('Und es gibt nichts mehr auszuweichen', sandbox.__zweiter || null, null);
+}
 
 console.log('\nProfile kommen mit');
 

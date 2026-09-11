@@ -36,7 +36,8 @@ const path = require('path');
 const vm = require('vm');
 
 const source = fs.readFileSync(
-  path.join(__dirname, '..', 'website', 'js', 'share.js'), 'utf8'
+  // Die Quelle, nicht die erzeugte Kopie – siehe scripts/test-versionssperre.js
+  path.join(__dirname, '..', 'src', 'core', 'share.js'), 'utf8'
 );
 
 /** Schneidet eine Funktion samt Körper aus dem Quelltext.
