@@ -1,0 +1,130 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<link rel="stylesheet" href="../../src/css/base.css">
+<link rel="stylesheet" href="../../src/css/pages.css">
+<link rel="stylesheet" href="../../src/lib/katex.min.css">
+</head>
+<body>
+
+<script>
+/* Was importExport.js und die Objektzeichner aus der App erwarten. */
+const CFG = { PAGE_W: 794, PAGE_H: 1123, HDR: 58 };
+const S = { readOnly: false, notebooks: [], strokeHistory: {} };
+const BG_TYPES = [{ id: 'ruled' }, { id: 'grid' }, { id: 'dots' }, { id: 'blank' }, { id: 'craft' }];
+const SCHEMA_VERSION = 2;
+function uid() { return 'x' + Math.random().toString(36).slice(2, 10); }
+function makePage(bg) {
+  return { id: uid(), date: new Date().toISOString(), bg: bg,
+           textContent: '', inkStrokes: [], objects: [] };
+}
+function E() { return null; }
+function t(k) { return k === 'page' ? 'Seite' : ''; }
+function toast() {}
+function getNb() { return null; }
+function getPage() { return null; }
+/* Aus core/data.js – hier genuegt, was importExport.js davon anfasst. */
+function getSections(nb) { return (nb && nb.sections) || []; }
+function notebookPages(nb) { return (nb && nb.pages) || []; }
+function findSecForPage() { return null; }
+function pageIsEmpty(p) {
+  if (!p) return true;
+  if (p.bgImg || p.pdfRef) return false;
+  if ((p.inkStrokes || []).length || (p.objects || []).length) return false;
+  return !String(p.textContent || EMPTY).replace(TAGS, EMPTY).trim();
+}
+const EMPTY = "";
+const TAGS = /<[^>]+>/g;
+// Aus core/state.js – das Datum in der Kopfzeile der Seite
+const fmt = iso => new Date(iso).toLocaleDateString('de-DE',
+  { day: '2-digit', month: '2-digit', year: '2-digit' });
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;',
+    '"': '&quot;', "'": '&#39;' }[c]));
+}
+</script>
+
+<script src="../../src/lib/pdf.min.js"></script>
+<script>
+  pdfjsLib.GlobalWorkerOptions.workerSrc = '../../src/lib/pdf.worker.min.js';
+</script>
+<script src="../../src/lib/katex.min.js"></script>
+<script src="../../src/canvas/text.js"></script>
+<script src="../../src/core/sanitize.js"></script>
+<script src="../../src/core/code.js"></script>
+<script src="../../src/core/formula.js"></script>
+<script src="../../src/canvas/shapes.js"></script>
+<script src="../../src/core/docxPaginate.js"></script>
+<script src="../../src/core/importExport.js"></script>
+
+<script>
+/* Ein winziges Bild – damit der gewoehnliche <img>-Weg mitgeprueft wird */
+const EIN_BILD = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
+
+/**
+ * Ein Heft mit allem, was eine Seite tragen kann – und mit einer
+ * LEEREN Seite in der Mitte, damit die Seitenzahlen auseinandergehen.
+ */
+function baueHeft() {
+  return {
+    id: 'nb-pdf', name: 'Ausdruck', defaultBg: 'ruled',
+    sections: [],
+    pages: [
+      {
+        id: 'p1', bg: 'ruled', date: '2026-03-04T10:00:00.000Z',
+        textContent: '<p>Die erste Seite.</p>',
+        inkStrokes: [],
+        objects: [
+          { id: 'o1', kind: 'image', src: EIN_BILD, x: 60, y: 300, w: 120, h: 80, rot: 0 },
+          { id: 'o2', kind: 'shape', shapeType: 'arrow', x: 200, y: 400, w: 180, h: 60,
+            fill: 'none', stroke: '#c04040', strokeWidth: 3 },
+          { id: 'o3', kind: 'formula', latex: 'E = mc^2', display: true,
+            x: 100, y: 600, w: 160, h: 48, natW: 160, natH: 48 },
+          { id: 'o4', kind: 'code', code: 'print("hallo")\n', lang: 'python',
+            x: 60, y: 750, w: 380, h: 120, natW: 380, natH: 120 }
+        ]
+      },
+      // Die leere Seite: sie faellt aus dem Export heraus, zaehlt im Heft aber mit
+      { id: 'p2', bg: 'ruled', textContent: '', inkStrokes: [], objects: [] },
+      {
+        id: 'p3', bg: 'blank', date: '2026-03-04T10:00:00.000Z',
+        textContent: '<p>Eine Querformatfolie.</p>',
+        w: 1123, h: 688,
+        inkStrokes: [], objects: []
+      },
+      {
+        id: 'p4', bg: 'ruled', date: '2026-03-04T10:00:00.000Z',
+        textContent: '<p>Und noch ein gewoehnliches Blatt.</p>',
+        inkStrokes: [], objects: []
+      }
+    ]
+  };
+}
+
+window.__baueHtml = function (formelStil) {
+  return buildPdf(baueHeft(), { formelStil });
+};
+
+/* Die Rechnung des Exportdialogs, ohne seine Oberflaeche: exportPageList
+   liefert pageNo aus dem VOLLSTAENDIGEN Heft, parsePageRange zaehlt
+   ebenso – und dazwischen darf nichts umgerechnet werden. */
+window.__bereichsProbe = function () {
+  const nb = baueHeft();
+  const entries = exportPageList(nb);
+  const gesamt = nb.pages.length;
+
+  const dritte = entries.find(e => e.page.id === 'p3');
+
+  const mitDrei = parsePageRange('3', gesamt);
+  const mitZwei = parsePageRange('2', gesamt);
+
+  return {
+    hinweisNummer: dritte ? dritte.pageNo : -1,
+    bereich3: mitDrei ? entries.filter(e => mitDrei.has(e.pageNo)).map(e => e.pageNo) : null,
+    bereich2: mitZwei ? entries.filter(e => mitZwei.has(e.pageNo)).map(e => e.pageNo) : null
+  };
+};
+</script>
+</body>
+</html>

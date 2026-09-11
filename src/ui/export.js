@@ -38,6 +38,16 @@
     exportNb = null;
   }
 
+  /** Wie viele Seiten hat das Heft – leere mitgezählt. Das ist die Zahl,
+      nach der der Nutzer im Heft blättert, und danach richtet sich die
+      Bereichseingabe. */
+  function gesamtSeiten() {
+    if (!exportNb) return 0;
+    return typeof notebookPages === 'function'
+      ? notebookPages(exportNb).length
+      : (exportNb.pages || []).length;
+  }
+
   function open(nb) {
     if (!nb) { toast(t('noActiveNotebook'), true); return; }
 
@@ -62,9 +72,22 @@
     if (currentIndex >= 0) {
       currentRow.style.display = '';
       currentRadio.disabled = false;
+      /* ══════════════════════════════════════════════════════════════
+         DIE SEITENZAHL IST DIE DES HEFTS
+
+         exportPageList wirft leere Seiten heraus, behält in pageNo aber
+         die Nummer aus dem vollständigen Heft – genau richtig, denn das
+         PDF beschriftet danach. Hier stand trotzdem der Platz in der
+         GEFILTERTEN Liste. Auf der wirklichen Heftseite 3 las man
+         deshalb „Seite 2 von 2", und im Feld daneben galt „3" als
+         ungültig, während „2" die Seite 3 ausgab.
+
+         Der Hinweistext sagt es längst richtig: „Seitenzahlen wie im
+         Heft" (exportRangeHint). Jetzt tut es der Code auch.
+         ══════════════════════════════════════════════════════════════ */
       currentHint.textContent = t('exportPageOf')
-        .replace('{n}', currentIndex + 1)
-        .replace('{total}', entries.length);
+        .replace('{n}', entries[currentIndex].pageNo)
+        .replace('{total}', gesamtSeiten());
     } else {
       currentRow.style.display = 'none';
       currentRadio.disabled = true;
@@ -177,12 +200,13 @@
       if (currentIndex < 0) return null;
       chosen = [entries[currentIndex]];
     } else {
-      const numbers = parsePageRange(rangeInput.value, entries.length);
+      // Gezählt wird im HEFT, nicht in der gefilterten Liste – siehe open()
+      const numbers = parsePageRange(rangeInput.value, gesamtSeiten());
       if (!numbers) {
         statusEl.textContent = t('exportRangeInvalid');
         return null;
       }
-      chosen = entries.filter((_, index) => numbers.has(index + 1));
+      chosen = entries.filter(e => numbers.has(e.pageNo));
     }
 
     // Dann die Abschnitte – nur wenn es ueberhaupt welche zur Wahl gab

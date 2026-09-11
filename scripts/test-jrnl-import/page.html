@@ -53,10 +53,19 @@ function baueDatei() {
       defaultBg: 'grid',
       schemaVersion: 2,
       sections: [
-        { id: 'sec-a', name: 'Erster Teil', pgIds: ['s1', 's2'] },
+        { id: 'sec-a', name: 'Erster Teil', pgIds: ['s1', 's2'],
+          color: '#c04040', defaultBg: 'grid' },
         { id: 'sec-b', name: 'Zweiter Teil', pgIds: ['s3'] },
         { id: 'sec-leer', name: 'Ohne Seiten', pgIds: [] }
       ],
+      /* Das eingefuegte PDF liegt EINMAL im Heft; die Seite traegt nur
+         einen Verweis. Die zweite Datei zeigt auf niemanden und darf
+         nicht mitkommen, die dritte ist keine. */
+      pdfs: {
+        'd1': { name: 'Skript.pdf', daten: 'JVBERi0xLjQK' },
+        'd-unbenutzt': { name: 'Alt.pdf', daten: 'QUJD' },
+        'd-boese': { name: 'x.pdf', daten: '<script>alert(1)<\/script>' }
+      },
       comments: [
         { id: 'k1', pageId: 's2', text: 'Hier fehlt eine Quelle', zitat: 'zweite Seite',
           author: 'T. Reiser', created: 1750000000000, resolved: false,
@@ -80,13 +89,21 @@ function baueDatei() {
               fill: 'url(https://example.invalid/x)', stroke: 'expression(evil)' },
             { id: 'o6', kind: 'formula', latex: 'E = mc^2', display: true,
               x: 300, y: 600, w: 120, h: 40, natW: 120, natH: 40 },
-            { id: 'o7', kind: 'trojaner', x: 0, y: 0, w: 10, h: 10 }
+            { id: 'o7', kind: 'trojaner', x: 0, y: 0, w: 10, h: 10 },
+            { id: 'o8', kind: 'code', code: 'print("hallo")\n', lang: 'python',
+              hell: true, x: 20, y: 700, w: 400, h: 120, natW: 400, natH: 120 },
+            { id: 'o9', kind: 'shape', shapeType: 'ellipse', x: 5, y: 5, w: 80, h: 60,
+              fill: '#c8a96e', stroke: '#1a1510', strokeWidth: 1, fillOpacity: 0.25 }
           ],
           inkStrokes: [
             { id: 'i1', path: [{ x: 10, y: 10, p: 0.5 }, { x: 90, y: 40, p: 0.7 }],
               color: '#2e8a46', width: 3, isHL: false },
             { id: 'i2', path: [], color: '#000', width: 2 },
-            { id: 'i3', path: [{ x: 'weg', y: null }], color: '#000', width: 2 }
+            { id: 'i3', path: [{ x: 'weg', y: null }], color: '#000', width: 2 },
+            { id: 'i4', path: [{ x: 20, y: 20 }, { x: 60, y: 60 }],
+              color: 'rgba(0,0,0,1)', width: 24, isEraser: true },
+            { id: 'i5', path: [{ x: 1, y: 1 }, { x: 2, y: 2 }],
+              color: '#c8a96e', width: 12, isHL: true, alpha: 0.4 }
           ]
         },
         {
@@ -98,6 +115,12 @@ function baueDatei() {
           id: 's3', bg: 'erfundenes-papier', secId: 'sec-b',
           textContent: '<p>Eine Bildseite.</p>',
           bgImg: EIN_BILD, w: 794, h: 500,
+          objects: [], inkStrokes: []
+        },
+        {
+          id: 's4', bg: 'blank', secId: 'sec-b',
+          textContent: '<p>Die unsichtbare Textebene.</p>',
+          pdfRef: { datei: 'd1', seite: 3 },
           objects: [], inkStrokes: []
         }
       ]
@@ -113,10 +136,10 @@ function laufe() {
   const bericht = fillNotebookFromJrnl(nb, datei);
 
   abschnitt('Was ankommt');
-  pruefe('drei Seiten', nb.pages.length === 3, 'gezählt: ' + nb.pages.length);
+  pruefe('vier Seiten', nb.pages.length === 4, 'gezählt: ' + nb.pages.length);
   pruefe('zwei Abschnitte – der leere fällt weg', nb.sections.length === 2,
     'gezählt: ' + nb.sections.length);
-  pruefe('der Bericht zählt mit', bericht.seiten === 3 && bericht.abschnitte === 2,
+  pruefe('der Bericht zählt mit', bericht.seiten === 4 && bericht.abschnitte === 2,
     JSON.stringify(bericht));
   pruefe('das Papier je Seite bleibt',
     nb.pages[0].bg === 'ruled' && nb.pages[1].bg === 'dots', nb.pages.map(p => p.bg).join(', '));
@@ -128,7 +151,7 @@ function laufe() {
     'bgImg: ' + !!nb.pages[2].bgImg + ', h: ' + nb.pages[2].h);
 
   abschnitt('Jede Kennung ist neu');
-  const alt = ['s1', 's2', 's3'];
+  const alt = ['s1', 's2', 's3', 's4'];
   pruefe('keine Seite trägt ihre alte Kennung',
     nb.pages.every(p => !alt.includes(p.id)), nb.pages.map(p => p.id).join(', '));
   pruefe('die Abschnitte auch nicht',
@@ -139,6 +162,8 @@ function laufe() {
   pruefe('die erste und die zweite Seite im selben Abschnitt',
     nb.pages[0].secId === nb.pages[1].secId && nb.pages[1].secId !== nb.pages[2].secId,
     nb.pages.map(p => p.secId).join(', '));
+  pruefe('die PDF-Seite gehört zum zweiten Abschnitt',
+    nb.pages[3].secId === nb.pages[2].secId, nb.pages.map(p => p.secId).join(', '));
   pruefe('pgIds zeigt auf die neuen Seiten',
     nb.sections[0].pgIds.length === 2 && nb.sections[0].pgIds[0] === nb.pages[0].id,
     JSON.stringify(nb.sections.map(s => s.pgIds)));
@@ -156,7 +181,7 @@ function laufe() {
     nb.pages.every(p => sanitizePageHtml(p.textContent) === p.textContent), 'er ändert noch etwas');
 
   const objekte = nb.pages[0].objects;
-  pruefe('vier Objekte bleiben übrig', objekte.length === 4,
+  pruefe('sechs Objekte bleiben übrig', objekte.length === 6,
     'gezählt: ' + objekte.length + ' (' + objekte.map(o => o.kind).join(', ') + ')');
   pruefe('das Bild mit Daten bleibt',
     objekte.some(o => o.kind === 'image' && o.src === EIN_BILD), 'weg');
@@ -178,10 +203,10 @@ function laufe() {
     formel ? formel.latex : 'keine');
 
   const striche = nb.pages[0].inkStrokes;
-  pruefe('nur der eine brauchbare Strich bleibt', striche.length === 1,
+  pruefe('die beiden weglosen Striche fallen weg', striche.length === 3,
     'gezählt: ' + striche.length);
-  pruefe('sein Weg ist vollständig',
-    striche.length === 1 && striche[0].path.length === 2 && striche[0].color === '#2e8a46',
+  pruefe('der Weg des ersten ist vollständig',
+    striche[0] && striche[0].path.length === 2 && striche[0].color === '#2e8a46',
     JSON.stringify(striche[0] || {}));
 
   abschnitt('Kommentare');
@@ -200,6 +225,66 @@ function laufe() {
 
   abschnitt('Kaputte Dateien');
   let meldung = '';
+  /* ══════════════════════════════════════════════════════════════════
+     WAS DER IMPORT FRUEHER LIEGEN LIESS
+
+     Die feldweise Uebernahme kannte nur image, shape und formula. Ein
+     Codekasten fiel durch, PDF-Seiten verloren ihre Datei, ein Radierer
+     wurde zum schwarzen Strich (und das Weggeriebene kam darunter wieder
+     hervor), halbdurchsichtige Formen wurden deckend, und die Gestaltung
+     der Abschnitte ging ganz verloren. Gemeldet wurde jedes Mal Erfolg.
+     ══════════════════════════════════════════════════════════════════ */
+  abschnitt('Die uebrigen Inhaltstypen');
+
+  const objekte2 = nb.pages[0].objects;
+
+  const kasten = objekte2.find(o => o.kind === 'code');
+  pruefe('der Codekasten kommt mit', !!kasten, 'weg');
+  pruefe('samt seinem Text', kasten && kasten.code === 'print("hallo")\n',
+    kasten ? JSON.stringify(kasten.code) : '-');
+  pruefe('und seiner Sprache', kasten && kasten.lang === 'python',
+    kasten ? kasten.lang : '-');
+  pruefe('das helle Gewand bleibt', kasten && kasten.hell === true, '-');
+
+  const halb = objekte2.find(o => o.kind === 'shape' && o.shapeType === 'ellipse');
+  pruefe('die halbdurchsichtige Form bleibt halbdurchsichtig',
+    halb && halb.fillOpacity === 0.25, halb ? String(halb.fillOpacity) : '-');
+
+  const striche2 = nb.pages[0].inkStrokes;
+  const radierer = striche2.find(s => s.isEraser);
+  pruefe('der Radierer bleibt ein Radierer', !!radierer, 'wurde ein Strich');
+  const leuchter = striche2.find(s => s.isHL);
+  pruefe('die Deckkraft des Textmarkers bleibt',
+    leuchter && leuchter.alpha === 0.4, leuchter ? String(leuchter.alpha) : '-');
+
+  const ersterAbschnitt = nb.sections[0];
+  pruefe('der Abschnitt behaelt seine Farbe',
+    ersterAbschnitt && ersterAbschnitt.color === '#c04040',
+    ersterAbschnitt ? String(ersterAbschnitt.color) : '-');
+  pruefe('und sein Vorgabepapier',
+    ersterAbschnitt && ersterAbschnitt.defaultBg === 'grid',
+    ersterAbschnitt ? String(ersterAbschnitt.defaultBg) : '-');
+
+  abschnitt('PDF-Seiten');
+
+  const pdfSeite = nb.pages.find(p => p.pdfRef);
+  pruefe('die PDF-Seite behaelt ihren Verweis', !!pdfSeite, 'weg');
+  pruefe('und zwar auf die richtige Seite darin',
+    pdfSeite && pdfSeite.pdfRef.seite === 3, pdfSeite ? String(pdfSeite.pdfRef.seite) : '-');
+  pruefe('die Datei ist im neuen Heft',
+    !!(pdfSeite && nb.pdfs && nb.pdfs[pdfSeite.pdfRef.datei]),
+    JSON.stringify(Object.keys(nb.pdfs || {})));
+  pruefe('mit den richtigen Daten',
+    !!(pdfSeite && nb.pdfs[pdfSeite.pdfRef.datei].daten === 'JVBERi0xLjQK'), '-');
+  pruefe('die Kennung ist eine neue',
+    !!(pdfSeite && pdfSeite.pdfRef.datei !== 'd1'),
+    pdfSeite ? pdfSeite.pdfRef.datei : '-');
+  pruefe('nicht gebrauchte Dateien kommen nicht mit',
+    Object.keys(nb.pdfs || {}).length === 1,
+    JSON.stringify(Object.keys(nb.pdfs || {})));
+  pruefe('und nichts, was gar keine Base64-Daten sind',
+    !Object.values(nb.pdfs || {}).some(d => /script/i.test(d.daten)), 'durchgelassen');
+
   try { fillNotebookFromJrnl({ pages: [], sections: [] }, 'kein json'); }
   catch (err) { meldung = err.message; }
   pruefe('kaputtes JSON gibt eine Meldung', !!meldung, 'keine Meldung');

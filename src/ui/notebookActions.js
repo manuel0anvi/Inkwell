@@ -43,7 +43,18 @@
          108 dpi, und das sah man dem Ausdruck an. */
       const seitenBilder = window.PdfSeiten
         ? await PdfSeiten.bilderFuer(nb, PdfSeiten.DRUCK_FEINHEIT) : null;
-      const html = buildPdf(nb, { ...options, seitenBilder });
+
+      /* Der KaTeX-Stil fuer die Formeln. Er kommt aus dem Hauptprozess,
+         weil das Export-HTML im TEMP-Ordner liegt und ein relativer
+         Verweis von dort ins Leere ginge (main.js, katex-druckstil). */
+      let formelStil = '';
+      try {
+        if (window.api.katexPrintCss) formelStil = await window.api.katexPrintCss();
+      } catch (err) {
+        console.warn('[PDF] Formelstil nicht geladen:', err);
+      }
+
+      const html = buildPdf(nb, { ...options, seitenBilder, formelStil });
       const defaultName = (typeof window.InkwellsDocx?.safeFileName === 'function'
         ? InkwellsDocx.safeFileName(nb.name)
         : 'inkwells') + '.pdf';

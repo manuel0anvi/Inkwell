@@ -24,6 +24,7 @@
     "test:docx": "electron scripts/test-docx-import",
     "test:pdf": "electron scripts/test-pdf-bilder",
     "test:pdfseiten": "electron scripts/test-pdf-seiten",
+    "test:pdfexport": "electron scripts/test-pdf-export",
     "test:jrnl": "electron scripts/test-jrnl-import",
     "test:touch": "electron scripts/test-touch",
     "test:caret": "electron scripts/test-caret-geometry",

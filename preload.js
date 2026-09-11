@@ -70,6 +70,8 @@ contextBridge.exposeInMainWorld('api', {
 
   // Sauberes Beenden: Hauptprozess fragt an, Oberfläche speichert und bestätigt
   onBeforeQuit: (cb) => ipcRenderer.on('app-before-quit', () => cb()),
+  // Der KaTeX-Stil mit eingebetteten Schriften – fuer den PDF-Export
+  katexPrintCss: () => ipcRenderer.invoke('katex-druckstil'),
   confirmQuit:  () => ipcRenderer.send('confirm-quit'),
   // „Nicht schliessen" – etwas Ungesichertes ist offen, siehe core/init.js
   cancelQuit:   () => ipcRenderer.send('cancel-quit'),

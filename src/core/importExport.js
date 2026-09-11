@@ -81,9 +81,16 @@ const BILD_KOPF_PX = 56;
    damit 1123 x 632 statt 794 x 447 – dieselbe Seite, aber halb so viel
    Zoom, um sie zu lesen.
 
-   Das Mass steht in page.w/page.h und damit im Heft: der Ausdruck
-   (buildPdfPage) und der Word-Export (sectionXml) lesen es von dort und
-   bekommen ihre Seite ohne weiteres Zutun quer.
+   Das Mass steht in page.w/page.h und damit im Heft: der Word-Export
+   (sectionXml) liest es von dort.
+
+   >>> Beim AUSDRUCK stimmte dieser Satz lange nicht <<<
+   Hier stand, der Ausdruck bekomme seine Seite "ohne weiteres Zutun"
+   quer. Das war falsch: @page trug fest A4, und printToPDF bekam
+   ebenfalls A4 mit. Die Folie wurde auf die Breite eines
+   Hochformatblattes geschrumpft. Seit buildPdf je vorkommendem Mass eine
+   eigene @page-Regel schreibt und main.js preferCSSPageSize setzt, ist
+   es wirklich so.
    ══════════════════════════════════════════════════════════════════════ */
 function blattMass(pg, breite, hoehe) {
   // Die lange Kante von A4 als Breite, sobald die Vorlage quer liegt
@@ -1264,7 +1271,10 @@ function jrnlObjekt(o) {
       shapeType: arten.includes(o.shapeType) ? o.shapeType : 'rect',
       fill: jrnlFarbe(o.fill, 'none'),
       stroke: jrnlFarbe(o.stroke, '#1a1510'),
-      strokeWidth: Math.max(0.5, jrnlZahl(o.strokeWidth, 2))
+      strokeWidth: Math.max(0.5, jrnlZahl(o.strokeWidth, 2)),
+      /* Ohne die Deckkraft wurde jede halbdurchsichtige Form beim Import
+         deckend – und verdeckte den Text, ueber dem sie liegt. */
+      fillOpacity: Math.min(1, Math.max(0, jrnlZahl(o.fillOpacity, 1)))
     };
     /* Die Enden einer Linie liegen als Anteile 0…1 im Rechteck
        (canvas/shapes.js). Fehlen sie, gilt dort die alte Diagonale. */
@@ -1285,6 +1295,23 @@ function jrnlObjekt(o) {
     };
   }
 
+  /* ── Und der Codekasten ────────────────────────────────────────────
+     Er fiel hier durch das return null darunter, und damit war er weg:
+     der Import meldete Erfolg, im neuen Heft stand kein Code mehr.
+     Der Text selbst wird NICHT durch den Sanitizer geschickt – er wird
+     nirgends als HTML eingesetzt, sondern zeichenweise eingefaerbt
+     (core/code.js). Eine Laengengrenze bekommt er trotzdem. */
+  if (o.kind === 'code') {
+    return {
+      ...lage, kind: 'code',
+      code: String(o.code || '').slice(0, 200000),
+      lang: String(o.lang || 'text').slice(0, 24),
+      hell: !!o.hell,
+      natW: Math.max(1, jrnlZahl(o.natW, lage.w)),
+      natH: Math.max(1, jrnlZahl(o.natH, lage.h))
+    };
+  }
+
   return null;
 }
 
@@ -1295,7 +1322,7 @@ function jrnlStrich(s) {
     .filter(p => p && Number.isFinite(Number(p.x)) && Number.isFinite(Number(p.y)))
     .map(p => ({ x: Number(p.x), y: Number(p.y), p: jrnlZahl(p.p, 0.6) }));
   if (!path.length) return null;
-  return {
+  const strich = {
     id: uid(),
     path,
     color: jrnlFarbe(s.color, '#1a1510'),
@@ -1303,6 +1330,23 @@ function jrnlStrich(s) {
     isHL: !!s.isHL,
     isGeometric: !!s.isGeometric
   };
+
+  /* ── Ein Radierer ist kein gewoehnlicher Strich ──────────────────
+     Ohne dieses Feld wurde er beim Import zu einem schwarzen Strich –
+     und das Weggeriebene kam darunter wieder zum Vorschein, mit einem
+     dicken Balken obendrauf. Er zeichnet mit
+     globalCompositeOperation 'destination-out' (canvas/drawing.js),
+     die Farbe ist dabei gleichgueltig. */
+  if (s.isEraser) {
+    strich.isEraser = true;
+    strich.color = 'rgba(0,0,0,1)';
+  }
+
+  // Die Deckkraft nur, wenn sie wirklich abweicht
+  const deck = jrnlZahl(s.alpha, 1);
+  if (deck > 0 && deck < 1) strich.alpha = deck;
+
+  return strich;
 }
 
 /**
@@ -1335,8 +1379,54 @@ function fillNotebookFromJrnl(nb, text) {
   nb.sections = (Array.isArray(quelle.sections) ? quelle.sections : []).map(s => {
     const id = uid();
     secKennung.set(String(s && s.id), id);
-    return { id, name: String((s && s.name) || '').slice(0, 120), pgIds: [] };
+    /* Farbe und Vorgabepapier gehoerten dazu und fielen hier weg: alle
+       Etiketten kamen grau und mit dem Papier des Hefts heraus. */
+    const sec = { id, name: String((s && s.name) || '').slice(0, 120), pgIds: [] };
+    const farbe = jrnlFarbe(s && s.color, '');
+    if (farbe) sec.color = farbe;
+    if (s && s.defaultBg) sec.defaultBg = jrnlPapier(s.defaultBg, nb.defaultBg || 'ruled');
+    return sec;
   });
+
+  /* ══════════════════════════════════════════════════════════════════
+     DIE EINGEBETTETEN PDF-DATEIEN
+
+     Seit dem zerlegten Modell liegt ein eingefuegtes PDF EINMAL im Heft
+     (nb.pdfs) und die Seite traegt nur einen Verweis (page.pdfRef).
+     Uebernommen wurde hier nur page.bgImg – das gibt es bei diesen
+     Seiten gar nicht. Die Vorlage fehlte also vollstaendig; uebrig blieb
+     allenfalls die unsichtbare Textebene, und der Import meldete
+     trotzdem Erfolg.
+
+     Die Kennungen werden neu vergeben, wie alle anderen auch: die Datei
+     kann aus einem fremden Heft stammen, und dort vergebene Kennungen
+     haben hier nichts zu suchen.
+     ══════════════════════════════════════════════════════════════════ */
+  const pdfKennung = new Map();
+  const quellPdfs = (quelle.pdfs && typeof quelle.pdfs === 'object') ? quelle.pdfs : {};
+
+  /* Geholt wird erst, wenn eine Seite wirklich darauf zeigt. Eine Datei,
+     die niemand mehr braucht, kaeme sonst mit – bei einem Buch sind das
+     schnell vierzig Megabyte, die keine Seite anzeigt. */
+  const holePdf = (altKennung) => {
+    const schluessel = String(altKennung || '');
+    if (!schluessel) return '';
+    if (pdfKennung.has(schluessel)) return pdfKennung.get(schluessel);
+
+    const eintrag = quellPdfs[schluessel];
+    const daten = eintrag && typeof eintrag.daten === 'string' ? eintrag.daten : '';
+    // Base64 ohne Kopf, sonst nichts – derselbe Riegel wie bei Bildern
+    if (!daten || !/^[A-Za-z0-9+/=\s]+$/.test(daten.slice(0, 256))) {
+      pdfKennung.set(schluessel, '');
+      return '';
+    }
+
+    const neu = uid();
+    pdfKennung.set(schluessel, neu);
+    if (!nb.pdfs) nb.pdfs = {};
+    nb.pdfs[neu] = { name: String((eintrag && eintrag.name) || '').slice(0, 120), daten };
+    return neu;
+  };
 
   const seitenKennung = new Map();
   nb.pages = quelle.pages.map(p => {
@@ -1355,6 +1445,12 @@ function fillNotebookFromJrnl(nb, text) {
 
     const bgImg = jrnlBildDaten(p.bgImg);
     if (bgImg) pg.bgImg = bgImg;
+
+    // Der Verweis auf die PDF-Datei – nur, wenn es sie hier auch gibt
+    const pdfNeu = p.pdfRef && holePdf(p.pdfRef.datei);
+    if (pdfNeu) {
+      pg.pdfRef = { datei: pdfNeu, seite: Math.max(1, Math.round(jrnlZahl(p.pdfRef.seite, 1))) };
+    }
 
     // Bildseiten haben ein eigenes Mass (makeImagePage)
     if (p.w) pg.w = Math.max(100, jrnlZahl(p.w, CFG.PAGE_W));
@@ -1378,6 +1474,7 @@ function fillNotebookFromJrnl(nb, text) {
   }
   nb.sections = nb.sections.filter(s => s.pgIds.length);
   nb.schemaVersion = typeof SCHEMA_VERSION !== 'undefined' ? SCHEMA_VERSION : 2;
+
 
   /* Kommentare hängen an einer Marke im Seitentext, und die trägt die
      Kennung des Kommentars – die bleibt deshalb, wie sie ist. Nur die
@@ -1541,6 +1638,10 @@ async function insertFilesFlow() {
   let addedPages = false;
   let firstNewPageId = null;
   let addedObjects = 0;
+  /* Ist unterwegs etwas schiefgegangen? Dann darf am Ende keine reine
+     Erfolgsmeldung stehen – sonst haelt der Nutzer einen halben Import
+     fuer einen ganzen. */
+  let unvollstaendig = false;
 
   for (const f of files) {
     if (f.kind === 'pdf') {
@@ -1564,7 +1665,18 @@ async function insertFilesFlow() {
           if (window.markCurrentNotebookDirty) window.markCurrentNotebookDirty();
         } else {
           const pdfImageUrls = await parsePdfToImages(f.dataUrl);
-          const pages = pagesOfSec(sec, nb);
+          /* ══════════════════════════════════════════════════════════
+             OHNE ABSCHNITT GIBT ES TROTZDEM SEITEN
+
+             pagesOfSec(null) liefert eine LEERE Liste – und ein Heft
+             ohne Abschnitte ist seit den Etiketten der Normalfall. Ab
+             der sechsten PDF-Seite musste deshalb eine neue Heftseite
+             her, und sec.defaultBg lief dabei in einen Fehler. Die
+             ersten fuenf Objekte standen da schon im Modell: der Nutzer
+             sah "Fehler beim Lesen des PDF" und gleich daneben
+             "5 Objekt(e) eingefuegt".
+             ══════════════════════════════════════════════════════════ */
+          const pages = sec ? pagesOfSec(sec, nb) : notebookPages(nb).slice();
           let curIdx = pages.indexOf(info.page);
           const MAX_PER_PAGE = 5;
           for (let start = 0; start < pdfImageUrls.length; start += MAX_PER_PAGE) {
@@ -1577,7 +1689,7 @@ async function insertFilesFlow() {
               if (curIdx < pages.length) {
                 targetPgInfo = getPage(pages[curIdx].id);
               } else {
-                const newPg = makePage(sec.defaultBg || nb.defaultBg || 'ruled');
+                const newPg = makePage((sec && sec.defaultBg) || nb.defaultBg || 'ruled');
                 insertPageInto(nb, sec, newPg, pageNumberOf(nb, pages[curIdx - 1]?.id));
                 targetPgInfo = { page: newPg };
                 addedPages = true;
@@ -1609,6 +1721,7 @@ async function insertFilesFlow() {
       } catch (err) {
         console.error('PDF Parse error:', err);
         toast(t('pdfError'), true);
+        unvollstaendig = true;
       }
     } else if (f.kind === 'image') {
       if (insertType === 'page') {
@@ -1654,7 +1767,9 @@ async function insertFilesFlow() {
   if (addedPages) {
     renderSideTree();
     openSection(sec, firstNewPageId);
-    toast(t('insertedAsPages'));
+    toast(unvollstaendig
+      ? (t('insertPartialPages') || 'Nicht alle Seiten sind durchgekommen.')
+      : t('insertedAsPages'), unvollstaendig);
   } else if (addedObjects > 0) {
     updateUndoRedoUI();
     S.mode = 'cursor';
@@ -1663,7 +1778,12 @@ async function insertFilesFlow() {
     E('pen-opts').style.display = 'none';
     E('eraser-opts').style.display = 'none';
     E('text-opts').style.display = 'flex';
-    toast(addedObjects + ' ' + t('objectsInserted'));
+    toast(unvollstaendig
+      ? (t('insertPartial') || '{n} eingefügt – der Rest ist nicht durchgekommen.')
+          .replace('{n}', String(addedObjects))
+      : addedObjects + ' ' + t('objectsInserted'), unvollstaendig);
+  } else if (unvollstaendig) {
+    toast(t('insertNothing') || 'Es konnte nichts eingefügt werden.', true);
   }
 }
 window.insertFilesFlow = insertFilesFlow;
@@ -1804,7 +1924,7 @@ function escapeAttr(value) {
 }
 
 /** @param {number} pageNo Seitenzahl des HEFTS (1-basiert), nicht des Abschnitts */
-function buildPdfPage(nb, sec, page, pageNo, seitenBilder) {
+function buildPdfPage(nb, sec, page, pageNo, seitenBilder, fmtKlasse) {
   const bgId = page.bg || sec?.defaultBg || nb.defaultBg || 'ruled';
   const lh = lhForBg(bgId);
   const pt = ptForBg(bgId);
@@ -1812,7 +1932,8 @@ function buildPdfPage(nb, sec, page, pageNo, seitenBilder) {
   const w = page.w || CFG.PAGE_W;
   const h = page.h || CFG.PAGE_H;
 
-  let html = `<div class="pg bg-${bgId}" data-pgid="${escapeAttr(page.id)}" style="width:${w}px;height:${h}px">`;
+  let html = `<div class="pg bg-${bgId}${fmtKlasse ? ' ' + fmtKlasse : ''}" `
+    + `data-pgid="${escapeAttr(page.id)}" style="width:${w}px;height:${h}px">`;
 
   /* Eine PDF-Seite trägt selbst kein Bild mehr (core/pdfSeiten.js). Für
      den Ausdruck wird ihr eines gerechnet, in Druckauflösung – und die
@@ -1858,6 +1979,35 @@ function buildPdfPage(nb, sec, page, pageNo, seitenBilder) {
       html += `<div class="${cls} obj-code" style="left:${obj.x || 0}px;top:${obj.y || 0}px;`
         + `width:${obj.w || 200}px;height:${obj.h || 200}px;${rot}">`
         + renderCodeBody({ ...obj, hell: true })
+        + '</div>';
+      continue;
+    }
+
+    /* ══════════════════════════════════════════════════════════════
+       FORMEN UND FORMELN SIND AUCH KEINE BILDER
+
+       Darunter stand `if (!obj.src) continue;` – und weder eine Form
+       noch eine Formel hat ein src. Beide wurden im Ausdruck also
+       stillschweigend weggelassen: das Rechteck um die wichtige Stelle,
+       der Pfeil im Diagramm, die Gleichung. Gemeldet wurde das nicht
+       einmal; der Hinweis ueber verlorene Inhalte gilt ausdruecklich nur
+       fuer Word.
+
+       Beides ist Auszeichnung, kein Bild – genau wie der Codekasten eine
+       Zeile hoeher, und deshalb auf demselben Weg. Die Formel braucht
+       dazu den KaTeX-Stil; der steht im Kopf des Dokuments (buildPdf). */
+    if (obj.kind === 'shape' && typeof renderShapeBody === 'function') {
+      html += `<div class="${cls} obj-shape" style="left:${obj.x || 0}px;top:${obj.y || 0}px;`
+        + `width:${obj.w || 200}px;height:${obj.h || 200}px;${rot}">`
+        + renderShapeBody(obj)
+        + '</div>';
+      continue;
+    }
+
+    if (obj.kind === 'formula' && typeof renderFormulaBody === 'function') {
+      html += `<div class="${cls} obj-formula" style="left:${obj.x || 0}px;top:${obj.y || 0}px;`
+        + `width:${obj.w || 200}px;height:${obj.h || 200}px;${rot}">`
+        + renderFormulaBody(obj)
         + '</div>';
       continue;
     }
@@ -1977,15 +2127,60 @@ function parsePageRange(text, total) {
 
    Beide kommen jetzt aus exportPageList(), und die Website gibt ohnehin
    schon flach aus – damit sind alle drei endlich einig. */
+/**
+ * @param {object} nb
+ * @param {object} [options]
+ * @param {Set<string>} [options.pageIds]
+ * @param {Map} [options.seitenBilder]
+ * @param {string} [options.formelStil] Der KaTeX-Stil mit eingebetteten
+ *   Schriften (window.api.katexPrintCss). Ohne ihn stuende eine Formel im
+ *   Ausdruck als unformatierte Zeichenfolge da.
+ */
 function buildPdf(nb, options = {}) {
   getSections(nb);
 
   const selected = options.pageIds instanceof Set ? options.pageIds : null;
 
+  /* ══════════════════════════════════════════════════════════════════
+     DAS BLATT RICHTET SICH NACH DER SEITE
+
+     Hier stand @page { size: A4 }, und main.js gab printToPDF ebenfalls
+     A4 mit – fest, obwohl page.w und page.h seit den Bildseiten und den
+     PDF-Vorlagen alles Moegliche sein koennen. Eine Querformatfolie wurde
+     dadurch auf die BREITE eines Hochformatblattes geschrumpft, mit einer
+     grossen leeren Flaeche darunter; Beschriftung und Handschrift kamen
+     kleiner heraus als vorgesehen.
+
+     Der Kommentar bei blattMass behauptete sogar, der Ausdruck bekomme
+     die Seite dadurch automatisch quer. Das stimmte nicht.
+
+     Jetzt bekommt jedes vorkommende Mass eine eigene @page-Regel, und die
+     Seiten verweisen ueber eine Klasse darauf. Ein Heft mit gemischten
+     Formaten – ein paar Folien zwischen gewoehnlichen Blaettern – kommt
+     damit ebenfalls richtig heraus. Damit Chromium diese Regeln auch
+     benutzt, setzt main.js preferCSSPageSize.
+     ══════════════════════════════════════════════════════════════════ */
+  const formate = new Map();          // "794x1123" -> Klassenname
+  const formatRegeln = [];
+
+  const formatKlasse = (page) => {
+    const w = Math.round(page.w || CFG.PAGE_W);
+    const h = Math.round(page.h || CFG.PAGE_H);
+    const schluessel = w + 'x' + h;
+    if (!formate.has(schluessel)) {
+      const name = 'fmt' + (formate.size + 1);
+      formate.set(schluessel, name);
+      formatRegeln.push('@page ' + name + ' { size: ' + w + 'px ' + h + 'px; margin: 0 }'
+        + ' .pg.' + name + ' { page: ' + name + ' }');
+    }
+    return formate.get(schluessel);
+  };
+
   let body = '';
   for (const entry of exportPageList(nb)) {
     if (selected && !selected.has(entry.page.id)) continue;
-    body += buildPdfPage(nb, entry.sec, entry.page, entry.pageNo, options.seitenBilder);
+    body += buildPdfPage(nb, entry.sec, entry.page, entry.pageNo, options.seitenBilder,
+      formatKlasse(entry.page));
   }
 
   if (!body) {
@@ -1993,10 +2188,19 @@ function buildPdf(nb, options = {}) {
       + `<div class="tx" style="line-height:32px;padding-top:19px;right:32px">${t('pdfEmpty') || 'Dieses Notizbuch enthält noch keine Inhalte.'}</div></div>`;
   }
 
+  /* Nur wenn ueberhaupt eine Formel dabei ist – der Stil traegt die
+     eingebetteten Schriften und ist ein paar hundert Kilobyte gross. */
+  const formelStil = (options.formelStil && /j-formula-obj/.test(body))
+    ? '<style>' + options.formelStil + '</style>' : '';
+
   return `<!DOCTYPE html><html><head><meta charset="UTF-8">
 <link href="https://fonts.googleapis.com/css2?family=Crimson+Pro:ital,wght@0,400;0,600;1,400&family=DM+Mono:wght@400&family=Cormorant+Garamond:ital,wght@0,400;1,400&display=swap" rel="stylesheet">
+${formelStil}
 <style>
-  @page { size: A4; margin: 0 }
+  /* Die Vorgabe fuer alles, was keine eigene Regel bekommt. Die
+     Regeln je Format stehen darunter – siehe buildPdf. */
+  @page { size: ${CFG.PAGE_W}px ${CFG.PAGE_H}px; margin: 0 }
+  ${formatRegeln.join('\n  ')}
   * { box-sizing: border-box; margin: 0; padding: 0 }
   body { background: #fff; font-family: 'Crimson Pro', Georgia, serif; -webkit-print-color-adjust: exact; print-color-adjust: exact }
 
@@ -2132,6 +2336,16 @@ function buildPdf(nb, options = {}) {
      Reihenfolge aus page.objects aus. */
   .obj { position: absolute; object-fit: contain; z-index: 2000 }
   .obj-code { overflow: hidden }
+
+  /* Formen sind SVG (canvas/shapes.js) und fuellen ihren Kasten ganz aus.
+     Formeln werden von renderFormulaBody selbst skaliert; hier bekommen
+     sie nur den Platz und den Ursprung dafuer. */
+  .obj-shape svg { display: block; width: 100%; height: 100% }
+  .obj-formula { overflow: visible }
+  .j-formula-obj { transform-origin: left top; display: inline-block;
+        font-size: 21px; color: #1a1510 }
+  .j-formula-obj.fehler { color: #c04040; font-family: 'DM Mono', monospace;
+        font-size: 13px }
 
   /* Der Code-Kasten (core/code.js) – im Ausdruck immer hell. */
   .j-code-obj { transform-origin: left top; display: flex; flex-direction: column;

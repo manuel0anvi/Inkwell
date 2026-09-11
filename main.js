@@ -1623,6 +1623,51 @@ ipcMain.handle('pick-document', async () => {
   };
 });
 
+/* ══════════════════════════════════════════════════════════════════════
+   DER KATEX-STIL FUER DEN AUSDRUCK
+
+   Das Export-HTML wird als temporaere Datei im TEMP-Ordner abgelegt und
+   dort geladen. Ein <link> auf lib/katex.min.css ginge damit ins Leere,
+   und die Schriftverweise darin erst recht – sie sind relativ.
+
+   Deshalb kommt der Stil von hier, mit den Schriften als data:-URI
+   darin. Nur woff2: die anderen beiden Fassungen derselben Schrift sind
+   fuer Chromium ueberfluessig und wuerden die Datei ohne Not verdoppeln.
+
+   Gelesen wird genau einmal – der Stil aendert sich nicht, solange die
+   App laeuft.
+   ══════════════════════════════════════════════════════════════════════ */
+let katexDruckStil = null;
+
+ipcMain.handle('katex-druckstil', async () => {
+  if (katexDruckStil !== null) return katexDruckStil;
+
+  try {
+    const cssPfad = path.join(__dirname, 'src', 'lib', 'katex.min.css');
+    let css = fs.readFileSync(cssPfad, 'utf-8');
+
+    // Die Fassungen, die Chromium nicht braucht, fallen weg
+    css = css.replace(/,\s*url\([^)]*\)\s*format\((['"])(woff|truetype|opentype)\1\)/g, '');
+
+    const ordner = path.dirname(cssPfad);
+    css = css.replace(/url\((['"]?)(fonts\/[^)'"]+)\1\)/g, (ganz, _q, rel) => {
+      try {
+        const datei = path.join(ordner, rel);
+        const daten = fs.readFileSync(datei).toString('base64');
+        return 'url(data:font/woff2;base64,' + daten + ')';
+      } catch (err) {
+        return ganz;      // fehlt sie, bleibt der Verweis stehen
+      }
+    });
+
+    katexDruckStil = css;
+  } catch (err) {
+    console.warn('[PDF] KaTeX-Stil nicht lesbar:', err.message);
+    katexDruckStil = '';
+  }
+  return katexDruckStil;
+});
+
 ipcMain.handle('export-pdf', async (_, html, defaultName) => {
   const r = await dialog.showSaveDialog(win, {
     // Der Heftname als Vorschlag – „inkwells.pdf" für jedes Heft war beim
@@ -1655,8 +1700,19 @@ ipcMain.handle('export-pdf', async (_, html, defaultName) => {
     `);
     await new Promise(res => setTimeout(res, 200));
 
+    /* ══════════════════════════════════════════════════════════════
+       DIE SEITENGROESSE STEHT IM DOKUMENT
+
+       Hier stand pageSize: 'A4', fest. Eine Querformatfolie wurde damit
+       auf die Breite eines Hochformatblattes geschrumpft, egal was das
+       Dokument sagte. preferCSSPageSize laesst Chromium die @page-Regeln
+       benutzen, die buildPdf je vorkommendem Mass schreibt – auch bei
+       gemischten Formaten in einem Heft.
+
+       pageSize bleibt als Rueckfall stehen: hat ein Dokument keine
+       brauchbare Angabe, kommt weiterhin A4 heraus. */
     const buf = await w.webContents.printToPDF({
-      printBackground: true, pageSize: 'A4',
+      printBackground: true, pageSize: 'A4', preferCSSPageSize: true,
       margins: { top: 0, bottom: 0, left: 0, right: 0 }
     });
     fs.writeFileSync(r.filePath, buf);
