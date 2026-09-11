@@ -18,9 +18,14 @@ const TRASH_FOLDER = 'Papierkorb';
 const TRASH_RETENTION_DAYS = 30;
 const TRASH_RETENTION_MS = TRASH_RETENTION_DAYS * 24 * 60 * 60 * 1000;
 
-// Diese Felder gelten nur auf dem Gerät, auf dem gelöscht wurde, und
-// gehören nicht in die gemeinsame Liste.
-const LOCAL_ONLY_FIELDS = ['originalPath', 'trashPath', 'snapshot'];
+/* Diese Felder gelten nur auf dem Gerät, auf dem gelöscht wurde, und
+   gehören nicht in die gemeinsame Liste.
+
+   `konto` steht mit dabei: welcher Anmeldung ein Eintrag zuzuordnen
+   ist, weiß jedes Gerät für sich, und in der gemeinsamen Liste eines
+   Kontos wäre die Angabe ohnehin für alle dieselbe. Sie bleibt dadurch
+   auch dann erhalten, wenn ein Eintrag aus der Wolke zurückkommt. */
+const LOCAL_ONLY_FIELDS = ['originalPath', 'trashPath', 'snapshot', 'konto'];
 
 function pickLocalFields(entry) {
   const out = {};
@@ -124,6 +129,47 @@ const Trash = {
      „auf einem anderen Gerät gelöscht". */
   _isTombstone(entry) {
     return !!(entry && (entry.purged || entry.restored));
+  },
+
+  /* ══════════════════════════════════════════════════════════════════
+     DER PAPIERKORB GEHOERT ZU EINEM KONTO
+
+     Die Einträge trugen keinen Kontoschlüssel, und syncWithCloud
+     verglich die GANZE örtliche Liste mit der gemeinsamen Liste des
+     gerade angemeldeten Kontos. Die Regel „stand schon in der
+     gemeinsamen Liste, ist dort aber weg → anderswo erledigt" traf
+     damit auch auf Einträge zu, die schlicht zu einem ANDEREN Konto
+     gehören.
+
+     Was dabei geschah: unter A ein Heft löschen und abgleichen, zu B
+     wechseln. Bei B gibt es eine Papierkorb-Liste, das A-Heft steht
+     naturgemäß nicht darin – also wurde die örtliche Sicherungsdatei
+     gelöscht und der Eintrag entfernt. Umgekehrt, wenn B noch gar keine
+     Liste hat, wanderten die A-Einträge in Bs Cloud.
+
+     Jetzt merkt sich jeder Eintrag, zu welchem Konto er gehört. Einträge
+     eines anderen Kontos werden beim Abgleich weder angefasst noch
+     hochgeladen – sie warten, bis ihr Konto wieder angemeldet ist.
+     ══════════════════════════════════════════════════════════════════ */
+  _kontoJetzt() {
+    try {
+      if (typeof CloudSync_ === 'undefined' || !CloudSync_) return '';
+      return (CloudSync_.kontoSchluessel && CloudSync_.kontoSchluessel()) || '';
+    } catch (err) {
+      return '';
+    }
+  },
+
+  /**
+   * Geht dieser Eintrag das gerade angemeldete Konto etwas an?
+   *
+   * Ein Eintrag ohne Kontoschlüssel stammt aus der Zeit davor. Er wird
+   * mitgenommen – aber die zerstörerische Regel („anderswo erledigt")
+   * greift bei ihm bewusst nicht, siehe syncWithCloud.
+   */
+  _gehoertZumKonto(entry, jetzt) {
+    const seins = (entry && entry.konto) || '';
+    return !seins || !jetzt || seins === jetzt;
   },
 
   getAll() {
@@ -268,6 +314,8 @@ const Trash = {
       // Notweg genommen: die Cloud-Datei ist gelöscht statt verschoben
       cloudDeleted: false,
       deletedAt: new Date().toISOString(),
+      // Zu welchem Konto der Eintrag gehoert – siehe _gehoertZumKonto
+      konto: this._kontoJetzt() || (notebook && notebook.cloudKonto) || '',
       // Sicherheitsnetz: falls die Datei fehlt, liegt der Inhalt hier
       snapshot: trashPath ? null : JSON.parse(JSON.stringify(notebook))
     };
@@ -348,8 +396,16 @@ const Trash = {
     const remoteById = new Map(remote.entries.map(e => [e.id, e]));
     const merged = [];
     let changed = false;
+    const jetzt = this._kontoJetzt();
 
     for (const local of this._entries) {
+      /* Einträge eines anderen Kontos gehen diesen Abgleich nichts an –
+         weder zum Wegräumen noch zum Hochladen (siehe _gehoertZumKonto). */
+      if (!this._gehoertZumKonto(local, jetzt)) {
+        merged.push(local);
+        continue;
+      }
+
       /* Grabsteine stehen bewusst NICHT in der gemeinsamen Liste (siehe
          _pushIndex). Sie dürfen hier deshalb nicht als „anderswo
          erledigt" weggeräumt werden – dann bliebe die Cloud-Seite wieder
@@ -371,12 +427,18 @@ const Trash = {
 
       if (inRemote) {
         // Beide kennen den Eintrag – lokale Pfade behalten, Rest aus der Wolke
-        merged.push({ ...inRemote, ...pickLocalFields(local), syncedToCloud: true });
+        merged.push({ ...inRemote, ...pickLocalFields(local),
+                      syncedToCloud: true, konto: local.konto || jetzt });
         remoteById.delete(local.id);
         continue;
       }
 
-      if (local.syncedToCloud && remote.exists) {
+      /* Nur wenn feststeht, dass der Eintrag zu DIESEM Konto gehört.
+         Ein Eintrag ohne Kontoschlüssel stammt aus der Zeit vor dieser
+         Unterscheidung – bei ihm lässt sich nicht sagen, aus wessen
+         Liste er verschwunden ist, und im Zweifel wird nichts gelöscht.
+         Beim nächsten Durchlauf trägt er einen und die Regel greift. */
+      if (local.syncedToCloud && remote.exists && local.konto && local.konto === jetzt) {
         // War schon in der gemeinsamen Liste, ist dort aber weg: anderswo
         // zurückgeholt oder endgültig gelöscht. Also auch hier entfernen.
         console.log('[Trash] Auf einem anderen Gerät erledigt:', local.name);
@@ -387,13 +449,14 @@ const Trash = {
         continue;
       }
 
-      merged.push({ ...local, syncedToCloud: true });
+      merged.push({ ...local, syncedToCloud: true, konto: local.konto || jetzt });
       changed = true;
     }
 
     // Was nur die Wolke kennt: auf diesem Gerät gelöschte Hefte anderer Geräte
     for (const remoteEntry of remoteById.values()) {
-      merged.push({ ...remoteEntry, originalPath: null, trashPath: null, syncedToCloud: true });
+      merged.push({ ...remoteEntry, originalPath: null, trashPath: null,
+                    syncedToCloud: true, konto: jetzt });
       changed = true;
     }
 
@@ -432,7 +495,10 @@ const Trash = {
     const stillInMainFolder = await CloudSync_.listRemoteNotebookIds?.();
 
     let changed = false;
+    const jetztKonto = this._kontoJetzt();
     for (const entry of [...this._entries]) {
+      // Fuer ein anderes Konto ist hier nichts nachzuholen
+      if (!this._gehoertZumKonto(entry, jetztKonto)) continue;
       /* Ohne Netz zurückgeholt: die Cloud-Datei liegt noch im
          Papierkorb-Ordner. Jetzt zurückschieben – gelingt es, ist der
          Eintrag erledigt und fällt beim Hochladen aus der gemeinsamen
@@ -757,8 +823,13 @@ const Trash = {
     if (typeof CloudSync_ === 'undefined' || !CloudSync_) return true;
     try {
       /* Grabsteine gehören NICHT in die gemeinsame Liste – sonst sähe das
-         andere Gerät ein Heft im Papierkorb, das es hier nicht mehr gibt. */
-      const sichtbar = this._entries.filter(e => !this._isTombstone(e));
+         andere Gerät ein Heft im Papierkorb, das es hier nicht mehr gibt.
+
+         Und Einträge eines anderen Kontos erst recht nicht: sonst lüde
+         ein Kontowechsel den Papierkorb von A in die Cloud von B. */
+      const jetzt = this._kontoJetzt();
+      const sichtbar = this._entries.filter(e =>
+        !this._isTombstone(e) && this._gehoertZumKonto(e, jetzt));
       return await CloudSync_.saveTrashIndex(sichtbar.map(stripLocalFields)) !== false;
     } catch (err) {
       console.warn('[Trash] Gemeinsame Liste nicht aktualisiert:', err.message);

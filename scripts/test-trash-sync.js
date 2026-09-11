@@ -68,6 +68,9 @@ function makeTrash(entries, index, inMainFolder = [], cloud = {}) {
       // Protokoll (siehe noteSyncDone in core/cloudSync.js)
       noteSyncDone: (v) => { vermerkt.push(v); },
       queueNotebook: (id, o) => { eingereiht.push({ id, action: (o || {}).action }); },
+      /* Wer gerade angemeldet ist. Der Papierkorb trennt danach, seit ein
+         Kontowechsel die Sicherungen des vorigen Kontos loeschen konnte. */
+      kontoSchluessel: () => cloud.konto || 'google:A',
       loadTrashIndex: async () => index,
       // canSaveIndex: ob sich die gemeinsame Liste schreiben lässt
       saveTrashIndex: async (list) => {
@@ -134,7 +137,7 @@ function makeTrash(entries, index, inMainFolder = [], cloud = {}) {
 }
 
 /** Ein Eintrag, der schon einmal in der gemeinsamen Liste stand. */
-function syncedEntry(id, name) {
+function syncedEntry(id, name, konto = 'google:A') {
   return {
     id, name, color: '#000', pageCount: 2,
     originalPath: `C:/Hefte/${name}.jrnl`,
@@ -142,6 +145,7 @@ function syncedEntry(id, name) {
     driveFileId: 'drive-' + id,
     cloudTrashed: true,
     syncedToCloud: true,
+    konto,
     deletedAt: new Date().toISOString()
   };
 }
@@ -185,6 +189,46 @@ function syncedEntry(id, name) {
   await emptied.Trash.syncWithCloud();
 
   check('Der Eintrag fliegt raus', emptied.Trash.getAll().map(e => e.id), []);
+
+  /* ══════════════════════════════════════════════════════════════════
+     DER PAPIERKORB GEHOERT ZU EINEM KONTO
+
+     Die Regel darueber – "stand in der gemeinsamen Liste, ist dort weg,
+     also anderswo erledigt" – verglich die GANZE oertliche Liste mit der
+     Liste des gerade angemeldeten Kontos. Unter Konto B war ein Eintrag
+     von A naturgemaess nicht in der Liste: die oertliche Sicherungsdatei
+     wurde geloescht und der Eintrag entfernt. Umgekehrt wanderten
+     A-Eintraege in Bs Cloud, wenn B noch gar keine Liste hatte.
+     ══════════════════════════════════════════════════════════════════ */
+
+  console.log('\nNach einem Kontowechsel');
+
+  const fremdesKonto = makeTrash(
+    [syncedEntry('nbA', 'Tagebuch', 'google:A'), syncedEntry('nbB', 'Rezepte', 'google:B')],
+    { entries: [{ id: 'nbB', name: 'Rezepte', deletedAt: new Date().toISOString() }], exists: true }
+  );
+  fremdesKonto.ctx.CloudSync_.kontoSchluessel = () => 'google:B';
+  await fremdesKonto.Trash.syncWithCloud();
+
+  check('Der Eintrag des anderen Kontos bleibt liegen',
+    fremdesKonto.Trash.getAll().map(e => e.id).sort(), ['nbA', 'nbB']);
+  check('Und seine oertliche Sicherung wird nicht angefasst',
+    fremdesKonto.deletedFiles, []);
+  check('In die gemeinsame Liste von B kommt nur, was B gehoert',
+    (fremdesKonto.saved.list || []).map(e => e.id), ['nbB']);
+
+  /* Und die Gegenprobe: unter A wirkt dieselbe Regel wie immer. */
+  const eigenesKonto = makeTrash(
+    [syncedEntry('nbA', 'Tagebuch', 'google:A'), syncedEntry('nbB', 'Rezepte', 'google:B')],
+    { entries: [], exists: true }
+  );
+  eigenesKonto.ctx.CloudSync_.kontoSchluessel = () => 'google:A';
+  await eigenesKonto.Trash.syncWithCloud();
+
+  check('Unter A fliegt der A-Eintrag raus, der B-Eintrag bleibt',
+    eigenesKonto.Trash.getAll().map(e => e.id), ['nbB']);
+  check('Geraeumt wird nur die Sicherung von A',
+    eigenesKonto.deletedFiles, ['C:/Hefte/.trash/Tagebuch.jrnl']);
 
   console.log('\nNoch nie hochgeladene Einträge');
 
