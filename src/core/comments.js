@@ -50,6 +50,33 @@ function getCommentAuthor() {
   return { uid: kennung, name: name || (typeof t === 'function' ? t('commentMe') : 'Ich') };
 }
 
+/* ══════════════════════════════════════════════════════════════════════
+   OHNE SCHREIBRECHT WIRD AUCH NICHT KOMMENTIERT
+
+   Die Textauswahl bot in einer Nur-Lese-Freigabe schon keinen
+   Kommentar-Knopf mehr an (ui/comments.js:580). Die Knöpfe an
+   BESTEHENDEN Kommentaren blieben aber stehen: Antworten und Erledigt
+   liefen durch, die Karte änderte sich sichtbar – und weil
+   Dirty-Markierung und Speichern bei S.readOnly abwinken, war beim
+   nächsten Öffnen alles wieder weg. Der Leser schrieb ins Leere und
+   merkte es erst später.
+
+   Schlimmer noch: bekommt er danach Schreibrecht, konnten die inzwischen
+   örtlich angesammelten Änderungen unbemerkt in einen Save geraten.
+
+   Die Prüfung steht hier und nicht nur an den Knöpfen: die Oberfläche
+   ist eine Höflichkeit, die Grenze gehört an die Stelle, die das Modell
+   anfasst.
+   ══════════════════════════════════════════════════════════════════════ */
+function darfKommentieren() {
+  if (typeof S === 'undefined' || !S || !S.readOnly) return true;
+  if (typeof toast === 'function') {
+    toast((typeof t === 'function' && t('saveSharedReadOnly'))
+      || 'Dieses Dokument darfst du nur lesen.', true);
+  }
+  return false;
+}
+
 /** Gehört dieser Kommentar mir? Nur dann darf ich ihn löschen. */
 function istMeinKommentar(c) {
   if (!c || !c.author) return false;
@@ -68,6 +95,7 @@ function istMeinKommentar(c) {
  * @returns {object|null}  der neue Kommentar
  */
 function addComment(pageId, text, zitat) {
+  if (!darfKommentieren()) return null;
   if (!pageId || !text) return null;
 
   const nb = typeof getNb === 'function' ? getNb() : null;
@@ -174,6 +202,7 @@ function notiereKommentarText(textDiv) {
 
 /** Kommentar erledigen oder wieder öffnen. */
 function toggleCommentResolved(commentId) {
+  if (!darfKommentieren()) return;
   const nb = typeof getNb === 'function' ? getNb() : null;
   if (!nb || !nb.comments) return;
 
@@ -192,6 +221,7 @@ function toggleCommentResolved(commentId) {
  * ursprüngliche.
  */
 function editComment(commentId, text) {
+  if (!darfKommentieren()) return false;
   const nb = typeof getNb === 'function' ? getNb() : null;
   if (!nb || !nb.comments) return false;
 
@@ -215,6 +245,7 @@ function editComment(commentId, text) {
 
 /** Eine eigene Antwort ändern. */
 function editReply(commentId, replyId, text) {
+  if (!darfKommentieren()) return false;
   const nb = typeof getNb === 'function' ? getNb() : null;
   if (!nb || !nb.comments) return false;
 
@@ -233,6 +264,7 @@ function editReply(commentId, replyId, text) {
 
 /** Auf einen Kommentar antworten. */
 function replyToComment(commentId, text) {
+  if (!darfKommentieren()) return null;
   const nb = typeof getNb === 'function' ? getNb() : null;
   if (!nb || !nb.comments || !text) return null;
 
@@ -259,6 +291,7 @@ function replyToComment(commentId, text) {
  * Heft jeder die Anmerkungen der anderen wegräumen.
  */
 function deleteComment(commentId) {
+  if (!darfKommentieren()) return;
   const nb = typeof getNb === 'function' ? getNb() : null;
   if (!nb || !nb.comments) return false;
 

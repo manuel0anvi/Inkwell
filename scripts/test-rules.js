@@ -886,6 +886,35 @@ function headData(overrides = {}) {
   await ok('Und wieder lesen',
     getDoc(doc(fsOf(READER), 'postfach/' + READER.uid)));
 
+  /* ══════════════════════════════════════════════════════════════════
+     ZWEI RECHNER LOESCHEN SICH NICHT MEHR GEGENSEITIG AUS
+
+     Der Stand wurde als ganze Liste geschrieben, mit { merge: true }
+     dahinter. Das Wort taeuscht: merge vereinigt die FELDER eines
+     Dokuments, nicht die Elemente eines Feldes. Wer als Zweiter schrieb,
+     ersetzte die Liste des Ersten – auf einem dritten Rechner tauchten
+     laengst geloeschte Nachrichten wieder auf.
+
+     Genau die Reihenfolge aus dem Befund: beide lesen denselben leeren
+     Stand, danach schreibt jeder seinen. Mit arrayUnion (so jetzt in
+     sichrePostfachStand) ueberlebt beides.
+     ══════════════════════════════════════════════════════════════════ */
+  await ok('Rechner A merkt sich eine gelesene Nachricht',
+    setDoc(doc(fsOf(READER), 'postfach/' + READER.uid),
+      { gelesen: arrayUnion('nachricht-A'), aktualisiert: serverTimestamp() },
+      { merge: true }));
+
+  await ok('Rechner B eine andere, ohne den Stand von A gesehen zu haben',
+    setDoc(doc(fsOf(READER), 'postfach/' + READER.uid),
+      { gelesen: arrayUnion('nachricht-B'), aktualisiert: serverTimestamp() },
+      { merge: true }));
+
+  await env.withSecurityRulesDisabled(async (ctx) => {
+    const d = (await getDoc(doc(ctx.firestore(), 'postfach/' + READER.uid))).data() || {};
+    gleich('Beide stehen danach drin', (d.gelesen || []).slice().sort(),
+      ['n1', 'nachricht-A', 'nachricht-B']);
+  });
+
   await denied('Fremde Staende bleiben zu',
     getDoc(doc(fsOf(STRANGER), 'postfach/' + READER.uid)));
 

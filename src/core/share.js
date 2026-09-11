@@ -4618,16 +4618,38 @@ async function ladePostfachStand() {
  * Immer den GESAMTEN vereinigten Stand, nicht nur das Neue: dadurch
  * bringt derselbe Aufruf auch das mit, was auf diesem Rechner oertlich
  * schon feststand, aber nach einem Kennungswechsel noch nie oben war.
+ *
+ * >>> Warum arrayUnion und nicht die fertige Liste <<<
+ * Hier standen beide Listen als GANZES, mit { merge: true } dahinter.
+ * Das Wort täuscht: merge vereinigt die FELDER eines Dokuments, nicht die
+ * Elemente eines Feldes. Der Inhalt des Feldes wurde ersetzt.
+ *
+ * Zwei Rechner löschten sich damit gegenseitig aus: A liest den leeren
+ * Stand, löscht Nachricht 1, schreibt [1]. B hatte denselben leeren Stand
+ * gelesen, liest Nachricht 2 und schreibt [2] – die 1 von A ist weg. Auf
+ * einem dritten Rechner tauchte sie wieder auf.
+ *
+ * arrayUnion hängt an, und zwar auf dem Server. Die Vereinigung geschieht
+ * dort, wo beide hinschreiben, und braucht deshalb weder eine Transaktion
+ * noch einen frisch gelesenen Stand. Dass die Listen nur wachsen, gilt
+ * damit auch serverseitig – bisher stand das nur im Kommentar.
  */
 async function sichrePostfachStand(stand) {
   const ich = currentIdentity();
   if (!ich || !ich.uid) return false;
+
+  const gelesen = ((stand && stand.gelesen) || []).filter(Boolean);
+  const geloescht = ((stand && stand.geloescht) || []).filter(Boolean);
+
+  /* arrayUnion() ohne Werte wirft – deshalb nur die Listen, die etwas
+     enthalten. Ein Stand ohne beides ist trotzdem ein gültiger Aufruf:
+     er setzt nur den Zeitstempel. */
+  const felder = { aktualisiert: serverTimestamp() };
+  if (gelesen.length) felder.gelesen = arrayUnion(...gelesen);
+  if (geloescht.length) felder.geloescht = arrayUnion(...geloescht);
+
   try {
-    await setDoc(doc(db, 'postfach', ich.uid), {
-      gelesen: (stand && stand.gelesen) || [],
-      geloescht: (stand && stand.geloescht) || [],
-      aktualisiert: serverTimestamp()
-    }, { merge: true });
+    await setDoc(doc(db, 'postfach', ich.uid), felder, { merge: true });
     return true;
   } catch (err) {
     console.warn('[Postfach] Stand nicht sicherbar:', err.message);

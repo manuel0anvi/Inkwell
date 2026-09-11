@@ -150,8 +150,9 @@
         z.appendChild(rn);
         z.appendChild(rt);
 
-        // Auch eine eigene Antwort laesst sich nachbessern
-        if (typeof istMeinKommentar === 'function' && istMeinKommentar(r)) {
+        // Auch eine eigene Antwort laesst sich nachbessern – aber nicht
+        // in einer Nur-Lese-Freigabe, siehe unten bei der Knopfreihe
+        if (!S.readOnly && typeof istMeinKommentar === 'function' && istMeinKommentar(r)) {
           const stift = document.createElement('button');
           stift.type = 'button';
           stift.className = 'comment-reply-edit';
@@ -172,6 +173,15 @@
         antworten.appendChild(z);
       }
       karte.appendChild(antworten);
+    }
+
+    /* Bei Nur-Lesen gar keine Knopfreihe. Die Funktionen dahinter
+       weisen seit darfKommentieren() ohnehin ab – ein Knopf, der nur eine
+       Absage bringt, ist aber schlechter als keiner. */
+    if (S.readOnly) {
+      karte.addEventListener('mouseenter', () => hebeHervor(c.id, true));
+      karte.addEventListener('mouseleave', () => hebeHervor(c.id, false));
+      return karte;
     }
 
     const reihe = document.createElement('div');
