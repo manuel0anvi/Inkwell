@@ -22,6 +22,19 @@
    src/core/share.js). Es entsteht also keine Lage, in der jemand
    schreiben dürfte, aber nicht in der Liste steht.
 
+   ── Aufräumen darf der Raumbesitzer ──────────────────────────────
+   presence, ops und chat hingen nur an der Rollenliste, und geschrieben
+   wurde ausschliesslich je Eintrag. Nach dem Aufheben der Freigabe kam
+   deshalb niemand mehr an sie heran: durch die Oberflaeche fuehrt kein
+   Weg mehr in ein Dokument, das es nicht mehr gibt – Chat und
+   Aenderungsstrom blieben liegen, samt Text.
+
+   Der Besitzer des Raums darf den GANZEN Zweig jetzt loeschen. Etwas
+   anderes laesst die Bedingung nicht zu: !newData.exists() trifft nur
+   auf das Wegnehmen des ganzen Knotens zu, fuer einzelne Eintraege
+   gelten weiterhin die Regeln darunter. core/share.js ruft das beim
+   Widerruf auf (raeumeRaumAuf).
+
    ── Gegen das Besetzen einer fremden Kennung ─────────────────────
    roles/{raum} darf anlegen, wer sich selbst als owner einträgt –
    danach nur noch dieser owner. Ein Fremder könnte also einen Raum
@@ -113,6 +126,7 @@
     "presence": {
       "$docId": {
         ".read": "auth != null && root.child('roles').child($docId).child('r').child(auth.uid).val() === true",
+        ".write": "auth != null && !newData.exists() && root.child('roles').child($docId).child('owner').val() === auth.uid",
         "$uid": {
           ".write": "auth != null && auth.uid === $uid && root.child('roles').child($docId).child('r').child(auth.uid).val() === true",
           ".validate": "newData.hasChildren(['uid', 'initials', 'name', 'color'])",
@@ -170,6 +184,7 @@
     "ops": {
       "$docId": {
         ".read": "auth != null && root.child('roles').child($docId).child('r').child(auth.uid).val() === true",
+        ".write": "auth != null && !newData.exists() && root.child('roles').child($docId).child('owner').val() === auth.uid",
         "$opId": {
           ".write": "auth != null && root.child('roles').child($docId).child('w').child(auth.uid).val() === true && (!data.exists() || data.child('by').val() === auth.uid || (!newData.exists() && data.child('at').isNumber() && data.child('at').val() < now - 600000))",
           ".validate": "newData.hasChildren(['k', 'p', 'by', 'at'])",
@@ -212,6 +227,7 @@
     "chat": {
       "$docId": {
         ".read": "auth != null && root.child('roles').child($docId).child('r').child(auth.uid).val() === true",
+        ".write": "auth != null && !newData.exists() && root.child('roles').child($docId).child('owner').val() === auth.uid",
         "m": {
           "$msgId": {
             ".write": "auth != null && root.child('roles').child($docId).child('r').child(auth.uid).val() === true && (!data.exists() || data.child('by').val() === auth.uid || (!newData.exists() && data.child('at').isNumber() && data.child('at').val() < now - 86400000))",

@@ -185,6 +185,18 @@ function headData(overrides = {}) {
       blockedEmails: []
     }));
     await setDoc(doc(db, 'docs/dok3/pages/p1'), { index: 0, text: '<p>Drei</p>', objects: [] });
+
+    /* ── Fuer die Meldungen ────────────────────────────────────────
+       Gemeldet wird aus einem geteilten Dokument heraus – seit die Regel
+       das auch prueft, brauchen die Meldungstests eines, in dem Melder
+       UND Gemeldeter wirklich drinstehen. Die anderen Hefte werden
+       zwischendurch umgebaut; dieses bleibt, wie es ist. */
+    await setDoc(doc(db, 'docs/dokm'), headData({
+      memberEmails: [MELDER.mail, GESPERRT.mail],
+      members: { [MELDER.mail]: 'view', [GESPERRT.mail]: 'view' },
+      memberVia: { [MELDER.mail]: 'invite', [GESPERRT.mail]: 'invite' },
+      blockedEmails: []
+    }));
     await setDoc(doc(db, 'docs/dok2/pages/p1'), { index: 0, text: '<p>Offen</p>', objects: [] });
     await setDoc(doc(db, 'doc_links/link2'), { docId: 'dok2', owner: OWNER.uid });
   });
@@ -899,7 +911,7 @@ function headData(overrides = {}) {
     melderEmail: MELDER.mail,
     gemeldetEmail: GESPERRT.mail,
     gemeldetName: 'Verwarnt',
-    docId: 'dok1',
+    docId: 'dokm',
     docTitel: 'Mathematik',
     ownerUid: OWNER.uid,
     gegenBesitzer: false,
@@ -1123,6 +1135,190 @@ function headData(overrides = {}) {
 
   await denied('Und niemand schreibt sich selbst etwas hinein',
     setDoc(doc(fsOf(GESPERRT), 'direktpost/' + GESPERRT.mail), { liste: [] }));
+
+  /* ══════════════════════════════════════════════════════════════════
+     EINE BEHAUPTETE ADRESSE IST KEINE ADRESSE
+
+     Mit "E-Mail/Passwort" legt jeder Browser ein Konto an und traegt als
+     Adresse ein, was er will. Bestaetigt wird dabei nichts. Wer die
+     Adresse eines Eingeladenen kannte, stand damit in dessen privaten
+     Heften – das hier ist die Gegenprobe.
+     ══════════════════════════════════════════════════════════════════ */
+
+  section('Eine unbestaetigte Adresse zaehlt nicht');
+
+  // Fremde Kennung, aber die Adresse des Bearbeiters, ueber Passwort
+  const ANGEMASST = person(env, 'uid-angemasst', EDITOR.mail, {
+    email_verified: false,
+    firebase: { sign_in_provider: 'password' }
+  }).firestore();
+
+  await denied('Er findet die privaten Hefte nicht ueber die Mitgliedschaft',
+    getDocs(query(collection(ANGEMASST, 'docs'),
+      where('memberEmails', 'array-contains', EDITOR.mail))));
+
+  await denied('Er liest den Kopf nicht',
+    getDoc(doc(ANGEMASST, 'docs/dokm')));
+
+  await denied('Er liest keine Seite',
+    getDoc(doc(ANGEMASST, 'docs/dokm/pages/p1')));
+
+  await denied('Er ueberschreibt auch keine',
+    setDoc(doc(ANGEMASST, 'docs/dokm/pages/p1'), { text: '<p>weg</p>' }, { merge: true }));
+
+  await denied('Und die Direktpost bleibt zu',
+    getDoc(doc(ANGEMASST, 'direktpost/' + GESPERRT.mail)));
+
+  /* Dieselbe Adresse mit bestaetigtem Anbieter kommt weiterhin durch –
+     sonst waere der Test auch gruen, wenn die Regel alle abweist. */
+  await ok('Der echte Bearbeiter dagegen schon',
+    getDoc(doc(fsOf(EDITOR), 'docs/dok1')));
+
+  /* ══════════════════════════════════════════════════════════════════
+     DIE HERKUNFT LAESST SICH NICHT FAELSCHEN
+
+     Wer ueber den Link hereinkommt, steht mit memberVia 'link' drin –
+     und genau die entfernt "Link aus" wieder. Traegt er sich stattdessen
+     als 'invite' ein, sieht er aus wie ausdruecklich eingeladen und
+     bleibt.
+     ══════════════════════════════════════════════════════════════════ */
+
+  section('Ueber den Link heisst ueber den Link');
+
+  await env.withSecurityRulesDisabled(async (ctx) => {
+    await setDoc(doc(ctx.firestore(), 'docs/dokl'), headData({
+      linkMode: 'edit', linkId: 'linkl',
+      memberEmails: [READER.mail], members: { [READER.mail]: 'view' },
+      memberVia: { [READER.mail]: 'invite' }, blockedEmails: []
+    }));
+  });
+
+  await denied('Kein Selbsteintrag als Eingeladener',
+    updateDoc(doc(fsOf(STRANGER), 'docs/dokl'),
+      'memberEmails', arrayUnion(STRANGER.mail),
+      new FieldPath('members', STRANGER.mail), 'edit',
+      new FieldPath('memberVia', STRANGER.mail), 'invite'));
+
+  await denied('Und die Herkunft anderer bleibt unangetastet',
+    updateDoc(doc(fsOf(STRANGER), 'docs/dokl'),
+      'memberEmails', arrayUnion(STRANGER.mail),
+      new FieldPath('members', STRANGER.mail), 'edit',
+      new FieldPath('memberVia', STRANGER.mail), 'link',
+      new FieldPath('memberVia', READER.mail), 'link'));
+
+  await ok('Als Linkbesucher schon',
+    updateDoc(doc(fsOf(STRANGER), 'docs/dokl'),
+      'memberEmails', arrayUnion(STRANGER.mail),
+      new FieldPath('members', STRANGER.mail), 'edit',
+      new FieldPath('memberVia', STRANGER.mail), 'link'));
+
+  /* ══════════════════════════════════════════════════════════════════
+     WER GESPERRT IST, AENDERT AUCH DIE STRUKTUR NICHT
+
+     Die Seiten selbst waren geschuetzt, pageOrder im Kopf nicht: eine
+     leere Reihenfolge leert das Heft genauso, nur dass die Seiten noch
+     dalagen.
+     ══════════════════════════════════════════════════════════════════ */
+
+  section('Die Sperre reicht bis in den Kopf');
+
+  await env.withSecurityRulesDisabled(async (ctx) => {
+    await setDoc(doc(ctx.firestore(), 'docs/doks'), headData({
+      linkMode: 'view', linkId: 'links',
+      memberEmails: [GESPERRT.mail], members: { [GESPERRT.mail]: 'edit' },
+      memberVia: { [GESPERRT.mail]: 'invite' }, blockedEmails: []
+    }));
+    // Nur "aus laufenden Freigaben heraus" – die anderen zwei nicht
+    await setDoc(doc(ctx.firestore(), 'sperren/' + GESPERRT.mail), {
+      email: GESPERRT.mail, bis: null, grund: 'Zerstoerung',
+      umfang: { neueFreigaben: false, selbstTeilen: false, laufendeRaus: true }
+    });
+  });
+
+  await denied('Der Gesperrte leert die Seitenreihenfolge nicht',
+    updateDoc(doc(fsOf(GESPERRT), 'docs/doks'), {
+      pageOrder: [], pageCount: 0, revision: 9, updatedAt: serverTimestamp()
+    }));
+
+  await denied('Und liest auch ueber den offenen Link nicht weiter',
+    getDoc(doc(fsOf(GESPERRT), 'docs/doks')));
+
+  await env.withSecurityRulesDisabled(async (ctx) => {
+    await deleteDoc(doc(ctx.firestore(), 'sperren/' + GESPERRT.mail));
+  });
+
+  await ok('Ohne Sperre schreibt derselbe die Reihenfolge fort',
+    updateDoc(doc(fsOf(GESPERRT), 'docs/doks'), {
+      pageOrder: ['p1'], pageCount: 1, revision: 9, updatedAt: serverTimestamp()
+    }));
+
+  /* ══════════════════════════════════════════════════════════════════
+     EINE MELDUNG GEHOERT ZU IHREM DOKUMENT
+     ══════════════════════════════════════════════════════════════════ */
+
+  section('Meldungen lassen sich nicht umleiten');
+
+  await denied('Der Empfaenger kommt aus dem Kopf, nicht aus dem Formular',
+    setDoc(doc(fsOf(MELDER), 'meldungen/mf1'),
+      meldung({ ownerUid: MELDER.uid })));
+
+  await denied('Und gemeldet wird nur, wer wirklich dabei ist',
+    setDoc(doc(fsOf(MELDER), 'meldungen/mf2'),
+      meldung({ gemeldetEmail: 'irgendwer@example.com' })));
+
+  await denied('Ein Fremder meldet nichts aus einem Dokument, in dem er nicht ist',
+    setDoc(doc(fsOf(STRANGER), 'meldungen/mf3'),
+      meldung({ melderEmail: STRANGER.mail })));
+
+  await denied('Erfundene Felder kommen nicht mit',
+    setDoc(doc(fsOf(MELDER), 'meldungen/mf4'),
+      meldung({ heimlich: 'x' })));
+
+  /* ══════════════════════════════════════════════════════════════════
+     RECHTEENTZUG REICHT BIS IN DEN LIVE-RAUM
+
+     Wer aus der Freigabe entfernt wird, verliert Firestore sofort – die
+     Realtime Database richtet sich aber allein nach roles/{raum}. Solange
+     seine Kennung dort steht, liest und schreibt er im Chat weiter.
+     ══════════════════════════════════════════════════════════════════ */
+
+  section('Realtime Database: hinaus heisst auch hinaus');
+
+  await ok('Der Leser liest den Chat, solange er in der Liste steht',
+    get(ref(rtOf(READER), 'chat/dok1')));
+
+  await denied('Ein Fremder raeumt den Raum nicht weg',
+    set(ref(rtOf(STRANGER), 'chat/dok1'), null));
+
+  await denied('Auch der Bearbeiter nicht',
+    set(ref(rtOf(EDITOR), 'chat/dok1'), null));
+
+  await ok('Der Besitzer nimmt dem Leser das Leserecht',
+    remove(ref(rtOf(OWNER), 'roles/dok1/r/' + READER.uid)));
+
+  await denied('Danach liest er den Chat nicht mehr',
+    get(ref(rtOf(READER), 'chat/dok1')));
+
+  await denied('Und schreibt auch nichts mehr hinein',
+    set(ref(rtOf(READER), 'chat/dok1/m/nRaus'),
+      { by: READER.uid, at: Date.now(), tx: 'doch noch da' }));
+
+  /* Und beim Widerruf raeumt der Besitzer den ganzen Raum weg –
+     danach kommt niemand mehr an Chat oder Aenderungsstrom. */
+  await ok('Der Besitzer raeumt den Chat weg',
+    set(ref(rtOf(OWNER), 'chat/dok1'), null));
+
+  await ok('Und den Aenderungsstrom',
+    set(ref(rtOf(OWNER), 'ops/dok1'), null));
+
+  await ok('Und die Anwesenheit',
+    set(ref(rtOf(OWNER), 'presence/dok1'), null));
+
+  await ok('Zuletzt die Rollenliste',
+    set(ref(rtOf(OWNER), 'roles/dok1'), null));
+
+  await denied('Der Bearbeiter kommt an den leeren Raum nicht mehr heran',
+    get(ref(rtOf(EDITOR), 'ops/dok1')));
 
   section('Realtime Database: alles Übrige bleibt zu');
 

@@ -851,7 +851,10 @@
 
       if (!await ensureDocument()) return;
 
-      await api.setMember(head.docId, email, role);
+      /* 'invite' schreibt die Herkunft ausdrücklich um: wer vorher über
+         den Link kam, ist ab jetzt eingeladen und fliegt beim Abschalten
+         des Links nicht mehr mit hinaus (setMember). */
+      await api.setMember(head.docId, email, role, 'invite');
       inviteMail.value = '';
       await loadHead(head.docId);
       statusEl.textContent = t('shareInvited').replace('{mail}', api.normalizeEmail(email));

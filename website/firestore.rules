@@ -208,10 +208,20 @@ service cloud.firestore {
 
        Kleinschreibung überall: die Oberfläche legt Adressen ebenfalls
        klein ab, sonst greift array-contains nicht. ────────────────── */
+    /* >>> Nur eine BESTAETIGTE Adresse zaehlt <<<
+       Hier stand die Adresse aus dem Token, ohne zu fragen, ob sie dem
+       Anmeldenden gehoert. Mit "E-Mail/Passwort" legt aber jeder Browser
+       ein Konto an und traegt als Adresse ein, was er will – bestaetigt
+       wird dabei nichts. Wer die Adresse eines Eingeladenen kannte, stand
+       damit in dessen privaten Heften, las die Direktpost und konnte als
+       Bearbeiter Seiten ueberschreiben.
+
+       Deshalb geht die Adresse jetzt durch isVerifiedUser(). Ohne
+       Bestaetigung bleibt sie leer – und alles, was an ihr haengt
+       (Mitgliedschaft, Inhalt, Direktpost, Sperren, Austreten), greift
+       nicht mehr. */
     function myEmail() {
-      return request.auth != null && request.auth.token.email != null
-        ? request.auth.token.email.lower()
-        : '';
+      return isVerifiedUser() ? request.auth.token.email.lower() : '';
     }
 
     /* Ist die Adresse vertrauenswürdig?
@@ -229,13 +239,22 @@ service cloud.firestore {
        Das Adminkonto meldet sich mit Passwort an und fällt hier ebenfalls
        durch – das ist beabsichtigt. Es hat mit dem Teilen von Heften
        nichts zu tun und braucht diese Rechte nicht. */
+    /* >>> Warum nur noch der ANBIETER zaehlt <<<
+       Hier stand zusaetzlich "oder email_verified == true". Das war als
+       Entgegenkommen gedacht, oeffnete aber nichts, was die App braucht:
+       angemeldet wird ausschliesslich ueber Google und Microsoft, und nur
+       deren Adressen sind vom Anbieter bestaetigt. Uebrig blieb der Weg
+       ueber "E-Mail/Passwort" – und den kann sich jeder Browser selbst
+       anlegen.
+
+       Nebenbei zaehlt jeder Ausdruck: myEmail() haengt seit der
+       Bestaetigungspflicht an dieser Funktion und wird in einer einzigen
+       Regel dutzendfach ausgerechnet. Firestore bricht bei 1000
+       Ausdruecken ab und weist dann ab, ohne dass etwas falsch waere. */
     function isVerifiedUser() {
       return request.auth != null
-        && request.auth.token.email != null
-        && (
-             request.auth.token.email_verified == true
-             || request.auth.token.firebase.sign_in_provider in ['google.com', 'microsoft.com']
-           );
+        && request.auth.token.email is string
+        && request.auth.token.firebase.sign_in_provider in ['google.com', 'microsoft.com'];
     }
 
     /* ══════════════════════════════════════════════════════════════════
@@ -287,14 +306,34 @@ service cloud.firestore {
       return /databases/$(database)/documents/sperren/$(email);
     }
 
+    function laeuftNoch(email) {
+      return get(sperrPfad(email)).data.get('bis', null) == null
+             || get(sperrPfad(email)).data.bis > request.time;
+    }
+
     function gesperrtFuer(was) {
       return myEmail() != ''
              && exists(sperrPfad(myEmail()))
              && get(sperrPfad(myEmail())).data.get('umfang', {}).get(was, false) == true
+             && laeuftNoch(myEmail());
+    }
+
+    /* Beide Sperrgruende in EINER Nachfrage.
+
+       An den Stellen, die ueber den offenen Link hereinlassen, stand
+       bisher nur 'neueFreigaben' – fuer zwei getrennte gesperrtFuer()
+       reichte das Ausdrucksbudget nicht. Wer 'laufendeRaus' verhaengt
+       bekam, las das Dokument deshalb ueber genau den Link weiter, den er
+       ohnehin schon hatte. Gemeinsam abgefragt kosten beide Gruende kaum
+       mehr als einer. */
+    function gesperrtFuerEines(was1, was2) {
+      return myEmail() != ''
+             && exists(sperrPfad(myEmail()))
              && (
-                  get(sperrPfad(myEmail())).data.get('bis', null) == null
-                  || get(sperrPfad(myEmail())).data.bis > request.time
-                );
+                  get(sperrPfad(myEmail())).data.get('umfang', {}).get(was1, false) == true
+                  || get(sperrPfad(myEmail())).data.get('umfang', {}).get(was2, false) == true
+                )
+             && laeuftNoch(myEmail());
     }
 
     /* ══════════════════════════════════════════════════════════════════
@@ -327,6 +366,22 @@ service cloud.firestore {
     match /meldungen/{meldungId} {
       function m() { return resource.data; }
 
+      /* Der Kopf des gemeldeten Dokuments. Ein zweites get() auf dasselbe
+         Dokument kostet keinen zweiten Lesevorgang – Firestore merkt es
+         sich innerhalb einer Auswertung. */
+      function gemeldetesDoc() {
+        return get(/databases/$(database)/documents/docs/$(request.resource.data.docId)).data;
+      }
+
+      /* Gemeldet wird aus einem geteilten Dokument heraus. Wer nicht
+         dazugehoert, hat darin auch niemanden zu melden – und wer nicht
+         dazugehoert, kann auch nicht gemeldet werden. */
+      function imDokument(email) {
+        return email != ''
+               && (email == gemeldetesDoc().ownerEmail.lower()
+                   || email in gemeldetesDoc().memberEmails);
+      }
+
       /* ══════════════════════════════════════════════════════════════
          WIRD DER BESITZER SELBST GEMELDET, SIEHT ER ES NICHT
 
@@ -348,7 +403,28 @@ service cloud.firestore {
                            && m().ownerUid == request.auth.uid
                            && m().get('gegenBesitzer', false) == false);
 
+      /* ══════════════════════════════════════════════════════════════
+         EINE MELDUNG GEHOERT ZU IHREM DOKUMENT
+
+         Geprueft wurde bisher nur, ob der Vermerk „gegenBesitzer" zur
+         „ownerEmail" des Dokuments passt. Alles andere stand frei: ein
+         Fremder ohne jedes Leserecht konnte zu einer ihm bekannten
+         Dokumentkennung eine Meldung ueber eine beliebige Adresse
+         anlegen und sich selbst als „ownerUid" eintragen. Damit ging die
+         Beschwerde nicht an den Besitzer, sondern an ihn – und der echte
+         Besitzer erfuhr nie davon. Umgekehrt liess sich der Verwaltung
+         jede Behauptung ueber ein echtes Dokument zustellen.
+
+         Jetzt muessen Empfaenger, Melder und Gemeldeter alle aus dem
+         Kopf des Dokuments hervorgehen, und es duerfen nur die Felder
+         vorkommen, die core/share.js auch schreibt.
+         ══════════════════════════════════════════════════════════════ */
       allow create: if isVerifiedUser()
+                    && request.resource.data.keys().hasOnly([
+                         'erstellt', 'melderEmail', 'gemeldetEmail', 'gemeldetName',
+                         'docId', 'docTitel', 'ownerUid', 'gegenBesitzer',
+                         'grund', 'notiz', 'erledigt'
+                       ])
                     && request.resource.data.melderEmail == myEmail()
                     && request.resource.data.gemeldetEmail is string
                     && request.resource.data.gemeldetEmail.size() > 0
@@ -356,7 +432,14 @@ service cloud.firestore {
                     && validGrund(request.resource.data.grund)
                     && request.resource.data.docId is string
                     && request.resource.data.docId.size() > 0
-                    && request.resource.data.ownerUid is string
+                    && request.resource.data.gemeldetName is string
+                    && request.resource.data.gemeldetName.size() <= 120
+                    && request.resource.data.docTitel is string
+                    && request.resource.data.docTitel.size() <= 200
+                    // Der Empfaenger steht im Kopf, nicht im Formular
+                    && request.resource.data.ownerUid == gemeldetesDoc().owner
+                    && imDokument(myEmail())
+                    && imDokument(request.resource.data.gemeldetEmail)
                     /* Der Vermerk muss stimmen: sonst koennte ein Melder
                        ihn auf true setzen und damit JEDE Meldung am
                        Besitzer vorbeischleusen – oder auf false, und der
@@ -568,7 +651,7 @@ service cloud.firestore {
                     || isMember()
                     || (linkIsOpen()
                         && !rausgeworfen()
-                        && !gesperrtFuer('neueFreigaben'));
+                        && !gesperrtFuerEines('neueFreigaben', 'laufendeRaus'));
 
       /* Auflisten nur über die Mitgliedschaft oder den eigenen Besitz –
          eine Liste ALLER Dokumente gibt es dadurch nicht, auch nicht für
@@ -634,8 +717,6 @@ service cloud.firestore {
                && !(myEmail() in head().blockedEmails)
                // Gesperrt heisst: in kein geteiltes Dokument mehr hinein
                && !gesperrtFuer('neueFreigaben')
-               && request.resource.data.diff(head()).affectedKeys()
-                    .hasOnly(['memberEmails', 'members', 'memberVia'])
                && myEmail() in request.resource.data.memberEmails
                && request.resource.data.memberEmails.size()
                     <= head().memberEmails.size() + 1
@@ -649,7 +730,27 @@ service cloud.firestore {
                   auf (mayWriteContent prüft beides), hier wird es gar
                   nicht erst möglich. */
                && request.resource.data.members.diff(head().members)
-                    .affectedKeys().hasOnly([myEmail()]);
+                    .affectedKeys().hasOnly([myEmail()])
+               /* ══════════════════════════════════════════════════════
+                  UND DIE HERKUNFT AUCH NICHT
+
+                  memberVia stand zwar in der Liste der erlaubten Felder,
+                  wurde aber von keiner Zeile geprueft. Ein Linkbesucher
+                  trug sich also mit der richtigen Rolle ein – und
+                  schrieb memberVia[seineAdresse] = 'invite' dazu. Damit
+                  sah er aus wie ausdruecklich eingeladen, und
+                  setLinkMode('off') liess ihn stehen: der Schalter
+                  entfernt nur, wer ueber den Link hereinkam. "Link aus"
+                  nahm ihm seine Rechte also gar nicht.
+
+                  Nebenbei durfte er die Herkunft FREMDER Adressen
+                  umschreiben: ein 'link' bei einem wirklich Eingeladenen,
+                  und der naechste Druck auf "Link aus" warf den hinaus.
+                  ══════════════════════════════════════════════════════ */
+               && request.resource.data.get('memberVia', {})
+                    .diff(head().get('memberVia', {}))
+                    .affectedKeys().hasOnly([myEmail()])
+               && request.resource.data.get('memberVia', {}).get(myEmail(), 'link') == 'link';
       }
 
       /* ── Die eigene Firebase-Kennung eintragen ────────────────────
@@ -669,8 +770,6 @@ service cloud.firestore {
                  .hasOnly(['memberUids'])
                && isVerifiedUser()
                && myEmail() in head().memberEmails
-               && request.resource.data.diff(head()).affectedKeys()
-                    .hasOnly(['memberUids'])
                /* Mit get(…, {}): beim ersten Eintrag gibt es das Feld noch
                   gar nicht, und ein Zugriff auf einen fehlenden Schlüssel
                   lässt die ganze Regel in einen Fehler laufen – sie würde
@@ -684,10 +783,18 @@ service cloud.firestore {
       /* Wer Bearbeitungsrecht hat, darf den Inhalt neu schreiben – am Kopf
          aber nur die Angaben, die dazugehören. Titel, Rechte und die
          Mitgliederliste bleiben Sache des Besitzers. */
+      /* >>> Die Sperre gehoert HIERHER, nicht nur an den Inhalt <<<
+         mayWriteContent() fragte nach 'laufendeRaus', editorUpdate() nicht.
+         Ein wegen Zerstoerung Gesperrter kam an keine Seite mehr heran –
+         wohl aber an pageOrder und pageCount im Kopf. Mit einer leeren
+         pageOrder war das Heft trotzdem leer: die Seiten lagen noch da,
+         nur zeigte sie niemand mehr an. Genau dagegen richtet sich die
+         Sperre. */
       function canEdit() {
         return myEmail() != ''
                && myEmail() in head().memberEmails
-               && head().members[myEmail()] == 'edit';
+               && head().members[myEmail()] == 'edit'
+               && !gesperrtFuer('laufendeRaus');
       }
 
       /* Seit der Inhalt in einzelne Seiten zerlegt ist, schreibt niemand
@@ -723,11 +830,9 @@ service cloud.firestore {
         // Dieselbe billige Vorfrage wie bei selfJoin – siehe dort
         return request.resource.data.diff(head()).affectedKeys()
                  .hasOnly(['memberEmails', 'members', 'memberVia'])
-               && request.auth != null
+               // myEmail() != '' setzt eine Anmeldung schon voraus
                && myEmail() != ''
                && myEmail() in head().memberEmails
-               && request.resource.data.diff(head()).affectedKeys()
-                    .hasOnly(['memberEmails', 'members', 'memberVia'])
                && !(myEmail() in request.resource.data.memberEmails)
                && request.resource.data.memberEmails.size()
                     == head().memberEmails.size() - 1
@@ -736,11 +841,44 @@ service cloud.firestore {
                // Beim Hinausgehen wird auch in der Rollentabelle nur der
                // eigene Eintrag angefasst.
                && request.resource.data.members.diff(head().members)
+                    .affectedKeys().hasOnly([myEmail()])
+               // Und in der Herkunftstabelle ebenso – siehe selfJoin()
+               && request.resource.data.get('memberVia', {})
+                    .diff(head().get('memberVia', {}))
                     .affectedKeys().hasOnly([myEmail()]);
       }
 
-      allow update: if ownerUpdate() || editorUpdate() || selfJoin() || selfLeave()
-                    || selfRegisterUid();
+      /* ══════════════════════════════════════════════════════════════
+         EINE VORFRAGE ENTSCHEIDET, WELCHE ERLAUBNIS UEBERHAUPT PASST
+
+         Hier standen fuenf Bedingungen mit || nebeneinander. Trifft keine
+         zu – der haeufigste Fall bei einem unerlaubten Zugriff –, wurden
+         alle fuenf ganz durchgerechnet, jede mit ihrem eigenen diff()
+         ueber die Mitgliederliste. Der Pruefstand meldete daraufhin
+         "maximum of 1000 expressions reached": Firestore bricht die
+         Auswertung ab und weist ab, ohne dass etwas falsch waere. Bei
+         einem Heft mit vielen Mitgliedern haette es auch den ERLAUBTEN
+         Fall treffen koennen.
+
+         Jetzt sagt ein einziger Blick auf die geaenderten Felder, worum
+         es geht, und nur die dazu passende Erlaubnis laeuft. Der
+         Selbsteintrag und das Aussteigen unterscheiden sich am
+         billigsten daran, ob die eigene Adresse nachher noch drinsteht.
+         ══════════════════════════════════════════════════════════════ */
+      allow update: if ownerUpdate()
+                    || (
+                         request.resource.data.diff(head()).affectedKeys()
+                           .hasOnly(['memberEmails', 'members', 'memberVia'])
+                         ? (myEmail() in request.resource.data.memberEmails
+                              ? selfJoin()
+                              : selfLeave())
+                         : (
+                             request.resource.data.diff(head()).affectedKeys()
+                               .hasOnly(['memberUids'])
+                             ? selfRegisterUid()
+                             : editorUpdate()
+                           )
+                       );
 
       allow delete: if isDocOwner();
 
@@ -783,7 +921,7 @@ service cloud.firestore {
                   aus demselben Grund wie dort. */
                || (docHead().linkMode in ['view', 'edit']
                    && !(myEmail() != '' && myEmail() in docHead().blockedEmails)
-                   && !gesperrtFuer('neueFreigaben'));
+                   && !gesperrtFuerEines('neueFreigaben', 'laufendeRaus'));
       }
 
       /* >>> Die Mitgliederliste MUSS mitgeprüft werden <<<
