@@ -41,6 +41,7 @@ window.markCurrentNotebookDirty = () => {};
 <script src="../../src/canvas/objects.js"></script>
 <!-- Formen sind Objekte: dieselbe Datei legt sie an und malt sie -->
 <script src="../../src/canvas/shapes.js"></script>
+<script src="../../src/core/formula.js"></script>
 <script>
 const out = [];
 window.onerror = (msg, src, line) => {
@@ -238,15 +239,15 @@ S.readOnly = false;
 
    Es gab nur Eckgriffe, und jeder rechnete die Hoehe aus der Breite:
    ein Rechteck liess sich nur als Ganzes aufblasen. Gemeldet wurde
-   genau das, zweimal – zuletzt fuer Bilder, die ihr Verhaeltnis
-   zunaechst auch an der Kante behielten.
+   genau das.
 
-   Geprueft wird an einem BILD, weil dort beides zusammenkommt: der
+   Geprueft wird an einer FORM, weil dort beides zusammenkommt: der
    Kantengriff muss die Breite allein aendern, und die Ecke muss
-   weiterhin beides im Gleichschritt bewegen.
+   weiterhin beides im Gleichschritt bewegen. Frueher war es ein Bild –
+   Bilder haben seit Abschnitt 12 aber gar keine Kanten mehr.
    ══════════════════════════════════════════════════════════════════ */
 deselect();
-const kb = { id: 'kb', kind: 'image', src: '', name: 'K', x: 100, y: 200, w: 200, h: 100, rot: 0 };
+const kb = { id: 'kb', kind: 'shape', shapeType: 'rect', x: 100, y: 200, w: 200, h: 100, rot: 0 };
 page.objects.push(kb);
 placeObject(layer, kb, page);
 const kbWrap = layer.querySelector('.obj-wrap[data-objid="kb"]');
@@ -286,6 +287,37 @@ zieheGriff('br', 40, 0);
 check('Die Ecke haelt das Verhaeltnis',
   Math.abs((kb.w / kb.h) - (vor3.w / vor3.h)) < 0.01, true);
 check('Und sie aendert dabei beides', kb.h > vor3.h + 5, true);
+
+/* ══════════════════════════════════════════════════════════════════
+   12. BILD UND FORMEL NUR AN DEN ECKEN – UND DIE GRIFFE WACHSEN MIT
+
+   Gemeldet: an Bildern und Formeln sollen die Griffe an den Seiten
+   weg, und ein Griff darf nicht so gross sein wie das Ding selbst.
+   ══════════════════════════════════════════════════════════════════ */
+deselect();
+const eb = { id: 'eb', kind: 'image', src: '', name: 'E', x: 100, y: 500, w: 240, h: 160, rot: 0 };
+const ef = { id: 'ef', kind: 'formula', latex: 'x^2', x: 420, y: 500, w: 30, h: 20, natW: 30, natH: 20, rot: 0 };
+page.objects.push(eb, ef);
+placeObject(layer, eb, page);
+placeObject(layer, ef, page);
+
+const huelle = (id) => layer.querySelector('.obj-wrap[data-objid="' + id + '"]');
+const nurEcken = (id) => ['tl', 'tr', 'bl', 'br'].every(k => !!huelle(id).querySelector('.obj-handle.' + k))
+  && ['t', 'r', 'b', 'l'].every(k => !huelle(id).querySelector('.obj-handle.' + k));
+check('Ein Bild hat nur Eckgriffe', nurEcken('eb'), true);
+check('Eine Formel auch', nurEcken('ef'), true);
+check('Eine Form behaelt ihre Kanten', !!kbWrap.querySelector('.obj-handle.t'), true);
+
+const griffK = (id) => {
+  huelle(id)._waehleObjekt();
+  return parseFloat(huelle(id).querySelector('.obj-chrome').style.getPropertyValue('--griff-k'));
+};
+check('Am grossen Bild bleiben die Griffe voll', griffK('eb'), 1);
+const kFormel = griffK('ef');
+check('An der kleinen Formel werden sie kleiner (' + kFormel + ')', kFormel < 1 && kFormel >= 0.5, true);
+huelle('ef')._waehleObjekt();
+const breiteKlein = huelle('ef').querySelector('.obj-handle.br').getBoundingClientRect().width;
+check('Und das sieht man auch (' + Math.round(breiteKlein) + ' px)', breiteKlein > 0 && breiteKlein < 12, true);
 
 window.__ergebnis = out.join('\n');
 </script>

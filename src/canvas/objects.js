@@ -505,10 +505,27 @@ function placeObject(objLayer, obj, page) {
      ══════════════════════════════════════════════════════════════════ */
   const verhaeltnisFest = obj.kind === 'formula';
 
+  /* ══════════════════════════════════════════════════════════════════
+     BILD UND FORMEL: NUR DIE ECKEN
+
+     Die Kanten kamen fuer Bilder auf Wunsch dazu (siehe oben) – und
+     gehen auch auf Wunsch wieder: an einem Foto oder einer Formel
+     standen acht Griffe, die Haelfte davon verzerrte nur, und an einem
+     kleinen Ding lagen sie so dicht, dass die Ecke kaum zu treffen war.
+     Gewuenscht ist „nur an den Ecken groesser machen".
+
+     Formen und Code-Kaesten behalten ihre Kanten: ein Rechteck flacher
+     oder einen Kasten breiter ziehen ist dort der eigentliche Zweck.
+     ══════════════════════════════════════════════════════════════════ */
+  const nurEcken = obj.kind === 'image' || obj.kind === 'formula';
+  const griffStellen = nurEcken
+    ? ['tl', 'tr', 'bl', 'br']
+    : ['tl', 'tr', 'bl', 'br', 't', 'r', 'b', 'l'];
+
   if (istLinie) {
     baueEndGriffe();
   } else {
-  ['tl', 'tr', 'bl', 'br', 't', 'r', 'b', 'l'].forEach(pos => {
+  griffStellen.forEach(pos => {
     // Eine Kante ist nur eine Richtung: waagerecht ODER senkrecht
     const nurBreite = pos === 'l' || pos === 'r';
     const nurHoehe = pos === 't' || pos === 'b';
@@ -843,7 +860,34 @@ function placeObject(objLayer, obj, page) {
      Höhe der Leiste; vorher stand dort die feste Zahl 64, und in einer
      Sprache mit längeren Beschriftungen stimmte sie nicht mehr.
      ══════════════════════════════════════════════════════════════════ */
+  /* ══ DIE GRIFFE WACHSEN MIT ═════════════════════════════════════════
+     Sie hatten feste Pixel – mit dem Finger 22, der Drehgriff 32. An
+     einer Formel von zwanzig Pixeln Hoehe war ein Griff damit so gross
+     wie die Formel selbst und deckte sie zu. Gemeldet genau so.
+
+     Gemessen wird an der kleineren Seite: dort stossen die Griffe zuerst
+     aneinander. Eine Linie hat keine kleinere Seite, bei ihr zaehlt die
+     Laenge. Ab GRIFF_VOLL_AB gilt die volle Groesse, darunter wird
+     verkleinert – nie unter die Haelfte, sonst trifft man sie nicht mehr.
+     Um den Zoom muss sich hier niemand kuemmern: Griffe und Objekt liegen
+     in derselben Seite und wachsen gemeinsam. Umgesetzt wird der Wert in
+     css/pages.css (scale: var(--griff-k)).
+
+     Aufgerufen aus placeBar(), weil das nach jeder Aenderung an Groesse,
+     Lage und Drehung ohnehin laeuft. */
+  const GRIFF_VOLL_AB = 90;
+  const GRIFF_MIN_K = 0.5;
+
+  function stelleGriffGroesse() {
+    const mass = istLinie
+      ? Math.hypot(obj.w || 0, obj.h || 0)
+      : Math.min(obj.w || 0, obj.h || 0);
+    const k = Math.max(GRIFF_MIN_K, Math.min(1, mass / GRIFF_VOLL_AB));
+    chrome.style.setProperty('--griff-k', k.toFixed(3));
+  }
+
   function placeBar() {
+    stelleGriffGroesse();
     const pw = (page && page.w) || (typeof CFG !== 'undefined' ? CFG.PAGE_W : 794);
     const bh = bar.offsetHeight || 40;
     const bw = bar.offsetWidth || 0;
