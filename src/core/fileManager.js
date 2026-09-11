@@ -24,6 +24,76 @@ class FileManager {
     return filePath;
   }
 
+  /* ══════════════════════════════════════════════════════════════════
+     ZWEI HEFTE, EINE DATEI
+
+     Der Pfad eines Hefts ohne Eintrag in der Übersicht entstand hier aus
+     nichts als seinem Namen: <Speicherort>\<Name>.jrnl. Ob dort schon
+     etwas lag, wurde nicht gefragt – und saveToPath ersetzt, was es
+     findet.
+
+     Zwei Wege führen genau dahin:
+       · Ein Heft „Heft" löschen, ein neues „Heft" anlegen, das alte aus
+         dem Papierkorb zurückholen. restore() merkt zwar, dass der alte
+         Pfad belegt ist, und verschiebt die Datei NICHT zurück – ruft
+         danach aber saveNotebook() auf, und hier wurde derselbe Pfad
+         wieder erfunden. Der Inhalt des neuen Hefts war überschrieben.
+       · Zwei gleichnamige Hefte aus der Cloud herunterladen. Beide
+         landeten in derselben Datei; im Speicher gab es zwei Hefte, auf
+         der Platte eines, und beim nächsten Start fehlte eines.
+
+     Danach zeigten zwei Kennungen der Übersicht auf denselben Pfad und
+     überschrieben sich bei jedem weiteren Speichern gegenseitig.
+
+     Die Regel ist jetzt einfach und ohne Ausnahme: ein Pfad, den ein
+     ANDERES Heft beansprucht oder unter dem schon eine Datei liegt, wird
+     nicht genommen. Stattdessen „Heft (2).jrnl". Lieber eine Datei zu
+     viel als eine überschriebene.
+     ══════════════════════════════════════════════════════════════════ */
+
+  /** Windows-Pfade unterscheiden keine Groß- und Kleinschreibung. */
+  _pfadGleich(a, b) {
+    return String(a || '').toLowerCase().replace(/\//g, '\\')
+        === String(b || '').toLowerCase().replace(/\//g, '\\');
+  }
+
+  /** Beansprucht ein ANDERES Heft der Übersicht diesen Pfad? */
+  _gehoertAnderem(pfad, nbId) {
+    try {
+      return Registry.getAll().some(e => e.id !== nbId && this._pfadGleich(e.path, pfad));
+    } catch (err) {
+      return false;
+    }
+  }
+
+  /**
+   * Ein Pfad, der garantiert niemandem sonst gehört.
+   *
+   * Auch eine Datei, die keinem Eintrag der Übersicht zuzuordnen ist,
+   * gilt als belegt: sie kann von einer verlorenen Übersicht stammen oder
+   * von Hand dort abgelegt worden sein. Was in ihr steht, weiß hier
+   * niemand – und darüber zu schreiben ist die einzige Entscheidung, die
+   * sich nicht zurücknehmen lässt.
+   */
+  async _freierPfad(ordner, wunschDatei, nbId) {
+    const basis = wunschDatei.replace(/\.jrnl$/i, '');
+
+    for (let n = 1; n <= 99; n++) {
+      const datei = n === 1 ? `${basis}.jrnl` : `${basis} (${n}).jrnl`;
+      const pfad = `${ordner}\\${datei}`;
+      if (this._gehoertAnderem(pfad, nbId)) continue;
+
+      let belegt = true;
+      try { belegt = await window.api.fileExists(pfad); }
+      catch (err) { belegt = false; }     // nicht nachsehen können heißt: frei
+      if (!belegt) return pfad;
+    }
+
+    /* Neunundneunzig gleichnamige Hefte sind kein Alltag – aber ohne
+       Notnagel käme hier null heraus, und das Speichern schlüge fehl. */
+    return `${ordner}\\${basis} (${String(nbId).slice(-6)}).jrnl`;
+  }
+
   // Ermittelt den Zielpfad und benennt die Datei mit um, wenn das Notizbuch
   // umbenannt wurde. Ohne das hieße die Datei auf der Festplatte für immer
   // wie beim Anlegen, während sie in Google Drive den neuen Namen trägt.
@@ -33,7 +103,8 @@ class FileManager {
     const desiredFile = `${this._sanitizeFilename(notebook.name || 'Unbenannt')}.jrnl`;
 
     if (!entry || !entry.path) {
-      return saveLocation ? `${saveLocation}\\${desiredFile}` : null;
+      if (!saveLocation) return null;
+      return await this._freierPfad(saveLocation, desiredFile, notebook.id);
     }
 
     const currentPath = entry.path;

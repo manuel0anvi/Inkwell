@@ -62,6 +62,9 @@ function loadData() {
   ctx.window = ctx;
   vm.createContext(ctx);
   vm.runInContext(fs.readFileSync(path.join(root, 'src/core/data.js'), 'utf8'), ctx);
+  /* Das PDF-Modell gehört dazu: seit eine PDF-Seite nur noch ein VERWEIS
+     auf eine Datei im Heft ist, muss beim Übertragen die Datei mit. */
+  vm.runInContext(fs.readFileSync(path.join(root, 'src/core/pdfSeiten.js'), 'utf8'), ctx);
   return ctx;
 }
 
@@ -621,6 +624,97 @@ function makeNotebook(ctx, name, n) {
     ctx.insertPageInto(nb, null, frei);
     check('Auch ohne Etikett landet sie im Heft', ctx.pageNumberOf(nb, frei.id), 5);
     ok('Und bekommt keins aufgedrängt', !frei.secId);
+  }
+
+  /* ══════════════════════════════════════════════════════════════════
+     EINE PDF-SEITE OHNE IHRE DATEI IST EIN LEERES BLATT
+
+     Die Datei liegt EINMAL im Heft (nb.pdfs), die Seite trägt nur einen
+     Verweis. Übertragen wurde lange nur die Seite: im Ziel zeigte der
+     Verweis ins Leere. Beim Verschieben der letzten Seite eines PDFs
+     räumte der nächste Speichervorgang des Ausgangshefts die Datei
+     zusätzlich weg – danach hatte sie keines von beiden Heften mehr.
+     ══════════════════════════════════════════════════════════════════ */
+
+  console.log('\nPDF-Seiten mitsamt ihrer Datei');
+
+  /** Ein Heft mit einem zweiseitigen PDF darin. */
+  function heftMitPdf(ctx, name) {
+    const nb = {
+      id: name, name, defaultBg: 'ruled',
+      pdfs: { [name + '-d1']: { name: 'Skript.pdf', daten: 'BASE64-' + name } },
+      pages: [
+        { id: name + '-p1', bg: 'blank', textContent: '', inkStrokes: [], objects: [],
+          pdfRef: { datei: name + '-d1', seite: 1 } },
+        { id: name + '-p2', bg: 'blank', textContent: '', inkStrokes: [], objects: [],
+          pdfRef: { datei: name + '-d1', seite: 2 } }
+      ],
+      sections: [{ id: name + '-s1', name: 'A', pgIds: [name + '-p1', name + '-p2'],
+                   defaultBg: 'ruled' }]
+    };
+    nb.activeSecId = nb.sections[0].id;
+    ctx.normalizeNotebook(nb);
+    ctx.S.notebooks.push(nb);
+    return nb;
+  }
+
+  {
+    const ctx = loadData();
+    const from = heftMitPdf(ctx, 'Q');
+    const to = ctx.S.notebooks[0] ? makeNotebook(ctx, 'Z', 1) : null;
+
+    ctx.transferPages(from, ['Q-p1'], to, { copy: true });
+
+    const kopie = to.pages[to.pages.length - 1];
+    ok('Die Kopie hat einen PDF-Verweis', !!(kopie.pdfRef && kopie.pdfRef.datei));
+    ok('Und das Ziel hat die Datei dazu',
+      !!(to.pdfs && to.pdfs[kopie.pdfRef.datei]));
+    check('Es sind dieselben Daten',
+      to.pdfs[kopie.pdfRef.datei].daten, 'BASE64-Q');
+    check('Die Seitenzahl im PDF bleibt', kopie.pdfRef.seite, 1);
+    ok('Das Ausgangsheft behält seine Datei', !!(from.pdfs && from.pdfs['Q-d1']));
+  }
+
+  {
+    const ctx = loadData();
+    const from = heftMitPdf(ctx, 'Q');
+    const to = makeNotebook(ctx, 'Z', 1);
+
+    // ALLE Seiten des PDFs verschieben – der gefährliche Fall
+    ctx.transferPages(from, ['Q-p1', 'Q-p2'], to, { copy: false });
+
+    const verschoben = to.pages.filter(p => p.pdfRef);
+    check('Beide Seiten sind angekommen', verschoben.length, 2);
+    ok('Beide zeigen auf eine Datei, die es im Ziel gibt',
+      verschoben.every(p => !!(to.pdfs && to.pdfs[p.pdfRef.datei])));
+    check('Und zwar auf DIESELBE – nicht zweimal abgelegt',
+      Object.keys(to.pdfs).length, 1);
+
+    /* Und jetzt das, was der nächste Speichervorgang täte. Vorher nahm es
+       dem Ausgangsheft die Datei weg, während das Ziel nie eine hatte. */
+    ctx.PdfSeiten.raeumeAuf(from);
+    ctx.PdfSeiten.raeumeAuf(to);
+    ok('Nach dem Aufräumen hat das Ziel sie immer noch',
+      !!(to.pdfs && Object.keys(to.pdfs).length === 1));
+    ok('Und das leergeräumte Ausgangsheft schleppt sie nicht mit', !from.pdfs);
+  }
+
+  {
+    /* Dieselbe Kennung, andere Datei: im Ziel darf nichts überschrieben
+       werden. PdfSeiten.lege() vergleicht den Inhalt und vergibt dann
+       eine neue Kennung. */
+    const ctx = loadData();
+    const from = heftMitPdf(ctx, 'Q');
+    const to = heftMitPdf(ctx, 'Z');
+    to.pdfs['Q-d1'] = { name: 'Fremd.pdf', daten: 'GANZ-ANDERE-DATEN' };
+
+    ctx.transferPages(from, ['Q-p1'], to, { copy: true });
+
+    const kopie = to.pages[to.pages.length - 1];
+    check('Die fremde Datei unter derselben Kennung bleibt unangetastet',
+      to.pdfs['Q-d1'].daten, 'GANZ-ANDERE-DATEN');
+    check('Die Kopie zeigt auf ihre eigene',
+      to.pdfs[kopie.pdfRef.datei].daten, 'BASE64-Q');
   }
 
   if (failed > 0) {

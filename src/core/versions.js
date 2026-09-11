@@ -74,13 +74,21 @@ const Versions = {
      sie vorher frisch gelesen und nur das eigene Feld ersetzt – sonst
      überschriebe der eine Teil die Änderungen des anderen. */
   async _speichern() {
-    try {
-      const data = (await window.api.loadRegistry()) || {};
-      data.versions = this._entries;
-      await window.api.saveRegistry(data);
-    } catch (err) {
-      console.error('[Versions] Merkzettel konnte nicht geschrieben werden:', err);
-    }
+    /* Durch dieselbe Schlange wie Registry.save() – sonst lesen beide
+       denselben alten Stand und der Zweite schreibt den Ersten weg.
+       Die Begründung steht ausführlich in core/registry.js. */
+    const lauf = async () => {
+      try {
+        const data = (await window.api.loadRegistry()) || {};
+        data.versions = this._entries;
+        await window.api.saveRegistry(data);
+      } catch (err) {
+        console.error('[Versions] Merkzettel konnte nicht geschrieben werden:', err);
+      }
+    };
+    return (typeof RegistryDatei !== 'undefined' && RegistryDatei)
+      ? RegistryDatei.nacheinander(lauf)
+      : lauf();
   },
 
   /** Alle Stände eines Hefts, der neueste zuerst. */
@@ -262,23 +270,121 @@ const Versions = {
     return `${sicher}__${wann.replace(/[:.]/g, '-')}__${kennung}.jrnl`;
   },
 
-  /* Woran erkannt wird, ob sich etwas getan hat. Bewusst grob: Text,
-     Zahl der Striche und Zahl der Objekte je Seite. Bilddaten fließen
-     nicht ein – die ändern sich nur zusammen mit den Objekten, und ein
-     Hash über einige Megabyte bei jedem Speichern wäre spürbar. */
+  /* ══════════════════════════════════════════════════════════════════
+     WORAN ERKANNT WIRD, OB SICH ETWAS GETAN HAT
+
+     Hier stand ein bewusst grober Abdruck: Name, Zahl der Abschnitte und
+     je Seite die LÄNGE des Textes sowie die ZAHL der Striche und Objekte.
+     Grob war er aus einem guten Grund – ein Hash über einige Megabyte
+     Bilddaten bei jedem Speichern wäre spürbar. Der Grund gilt weiter.
+
+     Nur: „gleich lang" ist nicht „gleich". Aus AAAA wird BBBB, und der
+     Abdruck bleibt derselbe. Ein Objekt verschieben, eine Farbe ändern,
+     einen Abschnitt umbenennen, einen Strich anders ziehen – für diesen
+     Abdruck war das alles dasselbe Heft.
+
+     Das wäre halb so schlimm, wenn er nur den Versionsverlauf sparsam
+     hielte. CloudSync nahm ihn aber als BEWEIS dafür, dass zwei Fassungen
+     denselben Inhalt haben (_pruefeKonflikt): die Konfliktwarnung blieb
+     aus, die unterliegende Fassung wurde nicht gesichert – und der
+     Versionsverlauf übersprang dieselbe Änderung gleich mit. Das
+     Sicherheitsnetz versagte also genau dann, wenn man es braucht.
+
+     Jetzt geht der ganze Text hinein, dazu Geometrie, Farben, Formeln,
+     Code, Seitenhintergrund, PDF-Verweise und Kommentare. Was NICHT
+     hineingeht, sind die Nutzdaten von Bildern und PDFs – von ihnen nur
+     die Länge, und die ändert sich beim Austauschen praktisch immer mit.
+
+     Die Punkte der Striche gehen als ZAHLEN ein, nicht über String():
+     eine Seite dichter Handschrift hat schnell hunderttausend Punkte, und
+     hunderttausend Zeichenkettenumwandlungen wären genau die Bremse, die
+     der grobe Abdruck vermeiden wollte. Ganzzahliges Mischen kostet
+     nichts.
+     ══════════════════════════════════════════════════════════════════ */
   _abdruck(notebook) {
-    const teile = [notebook.name || '', (notebook.sections || []).length];
-    for (const page of (notebook.pages || [])) {
-      teile.push(page.id, (page.textContent || '').length,
-        (page.inkStrokes || []).length, (page.objects || []).length);
-    }
-    const roh = teile.join('|');
     let hash = 0x811c9dc5;
-    for (let i = 0; i < roh.length; i++) {
-      hash ^= roh.charCodeAt(i);
-      hash = (hash * 0x01000193) >>> 0;
+    let laenge = 0;
+
+    const mischZahl = (n) => {
+      hash ^= (n | 0);
+      hash = Math.imul(hash, 0x01000193) >>> 0;
+    };
+
+    const text = (wert) => {
+      const s = wert == null ? '' : String(wert);
+      laenge += s.length + 1;
+      for (let i = 0; i < s.length; i++) {
+        hash ^= s.charCodeAt(i);
+        hash = Math.imul(hash, 0x01000193) >>> 0;
+      }
+      mischZahl(0x1f);   // Trenner: „ab"+„c" darf nicht wie „a"+„bc" aussehen
+    };
+
+    /* Zahlen auf drei Nachkommastellen: dieselbe Zahl darf nicht einmal
+       als 1 und einmal als 1.0000000001 durchkommen, nur weil sie einmal
+       gerechnet und einmal aus JSON gelesen wurde. */
+    const zahl = (wert) => {
+      const n = Number(wert);
+      text(Number.isFinite(n) ? n.toFixed(3) : '');
+    };
+
+    text(notebook.name);
+
+    for (const sec of (notebook.sections || [])) {
+      text('S'); text(sec.id); text(sec.name);
+      text(sec.color); text(sec.defaultBg);
+      text((sec.pgIds || []).join(','));
     }
-    return hash.toString(36) + ':' + roh.length;
+
+    // Die eingebetteten PDFs: nur Kennung und Größe, nicht die Daten
+    for (const key of Object.keys(notebook.pdfs || {}).sort()) {
+      const eintrag = notebook.pdfs[key];
+      text('D'); text(key);
+      zahl(typeof eintrag === 'string'
+        ? eintrag.length
+        : String((eintrag && (eintrag.daten || eintrag.data)) || '').length);
+    }
+
+    for (const page of (notebook.pages || [])) {
+      text('P'); text(page.id); text(page.bg);
+      zahl(page.w); zahl(page.h);
+      text(page.textContent);                       // der eigentliche Text
+      zahl(page.bgImg ? String(page.bgImg).length : 0);
+      if (page.pdfRef) { text(page.pdfRef.datei); zahl(page.pdfRef.seite); }
+
+      for (const o of (page.objects || [])) {
+        text('O'); text(o.kind); text(o.layer);
+        zahl(o.x); zahl(o.y); zahl(o.w); zahl(o.h); zahl(o.rot);
+        text(o.shapeType); text(o.fill); text(o.stroke);
+        zahl(o.strokeWidth); zahl(o.fillOpacity);
+        text(o.latex); text(o.display ? '1' : '');
+        text(o.code); text(o.sprache); text(o.name);
+        if (o.p1) { zahl(o.p1.x); zahl(o.p1.y); }
+        if (o.p2) { zahl(o.p2.x); zahl(o.p2.y); }
+        zahl(o.src ? String(o.src).length : 0);
+      }
+
+      for (const st of (page.inkStrokes || [])) {
+        text('I'); text(st.color); zahl(st.width); zahl(st.alpha);
+        text((st.isHL ? 'H' : '') + (st.isEraser ? 'E' : '')
+             + (st.isGeometric ? 'G' : ''));
+        const pfad = st.path || [];
+        mischZahl(pfad.length);
+        laenge += pfad.length;
+        for (const pt of pfad) {
+          mischZahl(Math.round((Number(pt.x) || 0) * 8));
+          mischZahl(Math.round((Number(pt.y) || 0) * 8));
+        }
+      }
+    }
+
+    for (const k of (notebook.comments || [])) {
+      text('K'); text(k.id); text(k.pageId); text(k.text);
+      text(k.resolved ? '1' : '');
+      for (const r of (k.replies || [])) { text(r.id); text(r.text); }
+    }
+
+    return hash.toString(36) + ':' + laenge;
   },
 
   /**

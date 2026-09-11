@@ -1,6 +1,44 @@
 // Notebook Registry - Persists which notebooks appear in the overview
 // Stored in inkwells-registry.json in userData folder
 
+/* ══════════════════════════════════════════════════════════════════════
+   EINE DATEI, EINE SCHLANGE
+
+   Übersicht, Papierkorb und Versionsverlauf stehen alle drei in
+   inkwells-registry.json, und jeder von ihnen schreibt nach demselben
+   Muster: Datei lesen → das eigene Feld ersetzen → ganze Datei schreiben.
+   Das ist kein atomares Ändern eines Feldes. Laufen zwei davon
+   gleichzeitig – Hintergrund-Speichern legt einen Versionsstand an,
+   während nebenan ein Heft angelegt oder gelöscht wird –, lesen beide
+   denselben alten Stand, und der Zweite schreibt die Änderung des Ersten
+   wieder weg.
+
+   Was dabei herauskommt: ein Heft, dessen Datei auf der Platte liegt, das
+   aber aus der Übersicht verschwunden ist. Oder ein Versionsindex, der
+   auf einen Stand von vorhin zurückspringt.
+
+   Dass der Hauptprozess jede einzelne Schreiboperation synchron ausführt,
+   hilft nicht: die Lücke liegt ZWISCHEN Lesen und Schreiben, und dazwischen
+   liegt ein IPC-Aufruf. Deshalb laufen alle Lesen-Ändern-Schreiben-Folgen
+   an dieser Datei jetzt hintereinander durch dieselbe Schlange.
+   ══════════════════════════════════════════════════════════════════════ */
+const RegistryDatei = {
+  _kette: Promise.resolve(),
+
+  /**
+   * Führt eine Lesen-Ändern-Schreiben-Folge aus, sobald die vorige fertig
+   * ist. Ein Fehlschlag hält die Schlange nicht an – sonst bliebe nach
+   * einem einzigen Fehler alles Weitere ungeschrieben.
+   */
+  nacheinander(arbeit) {
+    const naechste = this._kette.then(arbeit, arbeit);
+    this._kette = naechste.then(() => {}, () => {});
+    return naechste;
+  }
+};
+
+window.RegistryDatei = RegistryDatei;
+
 const Registry = {
   _entries: [],
   _loaded: false,
@@ -34,18 +72,21 @@ const Registry = {
      hineingeschrieben hat, bleibt unangetastet, auch wenn hier niemand
      davon weiß. */
   async save() {
-    try {
-      const vorhanden = (await window.api.loadRegistry()) || {};
-      const trash = (typeof Trash !== 'undefined' && Trash._loaded)
-        ? Trash._entries
-        : (Array.isArray(vorhanden.trash) ? vorhanden.trash : this._rawTrash);
+    // Lesen und Schreiben gehören zusammen – siehe RegistryDatei oben
+    return RegistryDatei.nacheinander(async () => {
+      try {
+        const vorhanden = (await window.api.loadRegistry()) || {};
+        const trash = (typeof Trash !== 'undefined' && Trash._loaded)
+          ? Trash._entries
+          : (Array.isArray(vorhanden.trash) ? vorhanden.trash : this._rawTrash);
 
-      await window.api.saveRegistry({ ...vorhanden, notebooks: this._entries, trash });
-      this._rawTrash = trash;
-      console.log('[Registry] Saved', this._entries.length, 'entries,', trash.length, 'im Papierkorb');
-    } catch (err) {
-      console.error('[Registry] Save error:', err);
-    }
+        await window.api.saveRegistry({ ...vorhanden, notebooks: this._entries, trash });
+        this._rawTrash = trash;
+        console.log('[Registry] Saved', this._entries.length, 'entries,', trash.length, 'im Papierkorb');
+      } catch (err) {
+        console.error('[Registry] Save error:', err);
+      }
+    });
   },
 
   getAll() {

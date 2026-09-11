@@ -2125,10 +2125,11 @@ class CloudSyncManager {
           und anderswo nur heruntergeladen wurde, trägt zwei frische
           Zeitstempel und denselben Inhalt.
 
-     Der Vergleich läuft über denselben groben Abdruck wie der
-     Versionsverlauf (core/versions.js): Name, Abschnitte, je Seite die
-     Textlänge und die Zahl der Striche und Objekte. Er ist billig und
-     verlässt das Gerät nie.
+     Der Vergleich läuft über denselben Abdruck wie der Versionsverlauf
+     (core/versions.js). Er sah früher nur LÄNGEN an – zwei verschiedene
+     Fassungen gleicher Länge galten damit als derselbe Inhalt, und genau
+     dann blieb die Warnung aus. Inzwischen geht der Text selbst hinein.
+     Billig ist er weiterhin, und er verlässt das Gerät nie.
      ══════════════════════════════════════════════════════════════════ */
   async _pruefeKonflikt(existing, remoteNotebook, localTime, remoteTime) {
     if (typeof Conflicts === 'undefined' || !Conflicts) return;

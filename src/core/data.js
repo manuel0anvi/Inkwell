@@ -518,6 +518,36 @@ function transferPages(fromNb, pageIds, toNb, options = {}) {
     return ziel;
   };
 
+  /* ══════════════════════════════════════════════════════════════════
+     DIE PDF-DATEI MUSS MIT
+
+     Seit dem zerlegten PDF-Modell liegt die Datei EINMAL im Heft
+     (nb.pdfs[kennung]); die Seite trägt nur einen Verweis darauf
+     (page.pdfRef). Hier wanderte aber nur die Seite. Im Zielheft zeigte
+     ihr Verweis damit auf eine Datei, die es dort gar nicht gibt: die
+     Vorlage fehlte, übrig blieb allenfalls die unsichtbare Textebene.
+
+     Beim VERSCHIEBEN war es schlimmer. Hatte die letzte Seite eines PDFs
+     das Ausgangsheft verlassen, zeigte dort niemand mehr darauf – und der
+     nächste ganz gewöhnliche Speichervorgang räumte die Datei über
+     PdfSeiten.raeumeAuf() weg. Danach hatte sie keines von beiden Heften
+     mehr.
+
+     PdfSeiten.lege() vergleicht den INHALT: dieselbe Datei zweimal
+     einzufügen legt sie nicht zweimal ab, und eine Kennung, die im Ziel
+     schon anders belegt ist, bekommt dabei von selbst eine neue.
+     ══════════════════════════════════════════════════════════════════ */
+  const nimmPdfMit = (seite) => {
+    if (!seite || !seite.pdfRef || !seite.pdfRef.datei) return;
+    if (typeof PdfSeiten === 'undefined' || !PdfSeiten) return;
+
+    const quelle = (fromNb.pdfs || {})[seite.pdfRef.datei];
+    if (!quelle || !quelle.daten) return;
+
+    const neueKennung = PdfSeiten.lege(toNb, quelle.daten, quelle.name);
+    if (neueKennung) seite.pdfRef = { ...seite.pdfRef, datei: neueKennung };
+  };
+
   /* In der Reihenfolge des Ausgangshefts, nicht in der des Anklickens –
      sonst stünden die Seiten im Ziel durcheinander. */
   const wanted = new Set(pageIds.map(String));
@@ -528,6 +558,7 @@ function transferPages(fromNb, pageIds, toNb, options = {}) {
     if (copy) {
       const kopie = clonePage(page);
       delete kopie.secId;                   // insertPageInto setzt das richtige
+      nimmPdfMit(kopie);
       insertPageInto(toNb, sec, kopie);
     } else {
       // Beim Verschieben behält die Seite ihre Kennung: sie gibt es
@@ -535,6 +566,7 @@ function transferPages(fromNb, pageIds, toNb, options = {}) {
       fromNb.pages = (fromNb.pages || []).filter(p => p.id !== page.id);
       if (S.strokeHistory) delete S.strokeHistory[page.id];
       delete page.secId;                    // das Etikett des alten Hefts gilt hier nicht
+      nimmPdfMit(page);
       insertPageInto(toNb, sec, page);
     }
 

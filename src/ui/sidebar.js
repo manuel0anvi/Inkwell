@@ -637,8 +637,26 @@ async function openPageTransfer(preselectedPageIds = []) {
      deckt Datei, Live-Raum und geteiltes Dokument ab (core/autoSave.js);
      je Seite anzustoßen erzeugte ebenso viele Speichervorgänge. */
   if (typeof AutoSave !== 'undefined' && AutoSave) {
-    if (!choice.copy) AutoSave.markDirty(nb.id);
+    /* ══════════════════════════════════════════════════════════════
+       DAS ZIEL ZUERST, UND ABGEWARTET
+
+       Beide nur schmutzig zu markieren genügt nicht, wenn eine PDF-Seite
+       dabei ist. Verlässt die letzte Seite eines PDFs das Ausgangsheft,
+       räumt dessen nächster Speichervorgang die Datei weg
+       (PdfSeiten.raeumeAuf) – und schlüge in diesem Augenblick das
+       Speichern des Ziels fehl, hätte sie keines von beiden mehr.
+
+       Erst das Ziel auf der Platte, dann das Ausgangsheft anstoßen.
+       markDirty davor bleibt: daran hängen Live-Raum und geteiltes
+       Dokument, und die sollen es sofort erfahren.
+       ══════════════════════════════════════════════════════════════ */
     AutoSave.markDirty(choice.toNb.id);
+    try {
+      await AutoSave.saveNow(choice.toNb.id);
+    } catch (err) {
+      console.warn('[Seiten] Zielheft nicht sofort gesichert:', err);
+    }
+    if (!choice.copy) AutoSave.markDirty(nb.id);
   }
 
   // Das Ausgangsheft ist das offene – nur dort muss neu gezeichnet werden.
