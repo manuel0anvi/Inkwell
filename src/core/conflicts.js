@@ -93,6 +93,33 @@ const Conflicts = {
 
   /* ── Die Entscheidung ────────────────────────────────────────────── */
 
+  /* ══════════════════════════════════════════════════════════════════
+     NACH DER ENTSCHEIDUNG MUSS AUCH DER EDITOR SIE SEHEN
+
+     Versions.stelleHer() ersetzt das Heft in S.notebooks und schreibt es
+     auf die Platte. Aktualisiert wurde hier aber nur die Startseite –
+     der offene Editor zeigte weiter den alten Text, und in S.strokeHistory
+     lag der alte Zeichenverlauf.
+
+     Das ist nicht bloss eine falsche Anzeige: der naechste syncAll()
+     schreibt genau diesen alten DOM-Text und diese alten Striche in das
+     gerade zurueckgeholte Heft zurueck. Die eben bestaetigte Entscheidung
+     war damit im naechsten Augenblick wieder rueckgaengig.
+
+     Der gewoehnliche Versionsdialog macht es richtig (ui/notebookActions.js):
+     er ruft openNotebook(). Dasselbe hier.
+     ══════════════════════════════════════════════════════════════════ */
+  _zeigeNeu(nbId) {
+    if (typeof renderHomeGrid === 'function') renderHomeGrid();
+    if (typeof S === 'undefined' || S.activeNbId !== nbId) return;
+    if (typeof openNotebook !== 'function') return;
+    try {
+      openNotebook(nbId);
+    } catch (err) {
+      console.warn('[Konflikt] Heft konnte nicht neu aufgebaut werden:', err);
+    }
+  },
+
   /**
    * Die eigene Fassung gewinnt.
    *
@@ -111,7 +138,7 @@ const Conflicts = {
     }
 
     this._erledigt(nbId);
-    if (typeof renderHomeGrid === 'function') renderHomeGrid();
+    this._zeigeNeu(nbId);
     if (typeof toast === 'function') toast(t('conflictKeptMine'));
     return true;
   },
@@ -135,7 +162,7 @@ const Conflicts = {
     }
 
     this._erledigt(nbId);
-    if (typeof renderHomeGrid === 'function') renderHomeGrid();
+    this._zeigeNeu(nbId);
     if (typeof toast === 'function') toast(t('conflictKeptCloud'));
     return true;
   },

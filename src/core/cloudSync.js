@@ -1548,7 +1548,26 @@ class CloudSyncManager {
       if (nbName) existing.nbName = nbName;
       if (options.immediate) this.immediateUploads.add(nbId);
     } else if (!existing) {
-      this.syncQueue.push({ nbId, nbName, action, queuedAt: new Date().toISOString() });
+      /* ══════════════════════════════════════════════════════════════
+         EINE AUFGABE GEHOERT ZU EINEM KONTO
+
+         Die Bremse oben (fremdesKonto) greift beim EINSTELLEN. Ohne
+         Anmeldung liefert sie absichtlich false – sonst ginge offline
+         gar nichts mehr in die Schlange. Genau das war die Luecke: von
+         Konto A abmelden, ein A-Heft bearbeiten, bei B anmelden. Die
+         Anmeldung bewahrt die Schlange (_resetCloudState mit keepQueue),
+         und beim Ausfuehren fragte niemand mehr nach. Das Heft landete in
+         der Cloud von B und wurde oertlich auch noch B zugeschrieben.
+
+         Deshalb haelt der Eintrag fest, wohin er gehoert: das gerade
+         angemeldete Konto, sonst das des Hefts. Ein frisch angelegtes
+         Heft hat keines und darf ueberall hinauf – das ist richtig so.
+         ══════════════════════════════════════════════════════════════ */
+      this.syncQueue.push({
+        nbId, nbName, action,
+        konto: this.kontoSchluessel() || (nb && nb.cloudKonto) || '',
+        queuedAt: new Date().toISOString()
+      });
     } else {
       // Alter String-Eintrag → umwandeln
       const idx = this.syncQueue.indexOf(nbId);
@@ -1715,8 +1734,13 @@ class CloudSyncManager {
       }
     }
 
-    const due = this.syncQueue.filter(e => this._isUploadDue(e.nbId));
+    const jetztKonto = this.kontoSchluessel() || '';
+    const due = this.syncQueue.filter(e =>
+      this._gehoertZumKonto(e, jetztKonto) && this._isUploadDue(e.nbId));
     if (due.length === 0) return;
+
+    // Kam waehrend eines Uploads etwas Neues dazu? Dann bleibt der Auftrag
+    let nachtragOffen = false;
 
     this.syncing = true;
     this._notify();
@@ -1748,7 +1772,30 @@ class CloudSyncManager {
           // Hochladen. Auch ein 'restore' landet hier: das Heft lebt
           // wieder und muss deshalb in die Cloud - nur heisst der Vorgang
           // fuer den Nutzer eben "wiederhergestellt".
-          await this._syncNotebook(nbId);
+          const stand = await this._syncNotebook(nbId);
+
+          /* ══════════════════════════════════════════════════════════
+             WAS WAEHREND DES UPLOADS DAZUKAM, BLEIBT IN DER SCHLANGE
+
+             _syncNotebook nimmt zu Beginn eine Momentaufnahme. Dauert
+             der Upload laenger als die zwei Sekunden bis zum naechsten
+             automatischen Speichern – bei einem groesseren Heft der
+             Normalfall –, schrieb der Nutzer inzwischen weiter.
+             queueNotebook fand den Eintrag derselben Kennung schon vor
+             und legte keinen neuen an; hier unten wurde er dann allein
+             anhand der Kennung entfernt.
+
+             Ergebnis: oertlich die neue Fassung, in der Cloud die alte,
+             und eine leere Schlange, die meldet, alles sei erledigt.
+             Auch flushPending() fand danach nichts mehr zu tun.
+             ══════════════════════════════════════════════════════════ */
+          if (stand && stand.nachtrag) {
+            nachtragOffen = true;
+            this.immediateUploads.add(nbId);
+            this.lastUploadAt.set(nbId, Date.now());
+            continue;          // Eintrag NICHT entfernen
+          }
+
           this._addSyncHistoryEntry({
             nbId, nbName,
             /* Die Art wird UEBERNOMMEN, nicht auf 'upload' festgenagelt.
@@ -1804,6 +1851,12 @@ class CloudSyncManager {
 
     this.syncing = false;
 
+    /* Der Nachtrag aus einem laufenden Upload soll nicht bis zum naechsten
+       Anlass warten – der kann der Programmschluss sein. */
+    if (nachtragOffen) {
+      setTimeout(() => { this._processQueue(); }, 1200);
+    }
+
     // Der Rückstand aus der Offline-Zeit ist abgearbeitet – einmal Bescheid
     // geben, sonst bleibt unklar, ob die Änderungen angekommen sind.
     if (this._hadOfflineBacklog && this.syncQueue.length === 0) {
@@ -1819,6 +1872,17 @@ class CloudSyncManager {
     this._notify();
   }
 
+  /** Gehoert diese Aufgabe zu dem Konto, das gerade angemeldet ist? */
+  _gehoertZumKonto(eintrag, jetztKonto) {
+    const gehoert = (typeof eintrag === 'string' ? '' : (eintrag.konto || ''));
+    return !gehoert || gehoert === jetztKonto;
+  }
+
+  /**
+   * @returns {Promise<{nachtrag:boolean}|undefined>} nachtrag=true heisst:
+   *   waehrend des Uploads kam oertlich etwas Neues dazu, der Auftrag ist
+   *   also NICHT erledigt.
+   */
   async _syncNotebook(nbId) {
     const notebook = getNb(nbId);
     if (!notebook) {
@@ -1826,9 +1890,45 @@ class CloudSyncManager {
       return;
     }
 
+    /* Die Pruefung aus queueNotebook noch einmal, hier am ausfuehrenden
+       Weg: zwischen Einstellen und Ausfuehren kann ein Kontowechsel
+       liegen (siehe dort). Der Eintrag bleibt liegen, bis das richtige
+       Konto wieder angemeldet ist. */
+    if (typeof fremdesKonto === 'function' && fremdesKonto(notebook)) {
+      console.warn('[CloudSync] Heft gehoert einem anderen Konto – Upload ausgesetzt:', nbId);
+      return { nachtrag: true };
+    }
+    if (typeof isSharedNotebook === 'function' && isSharedNotebook(notebook)) {
+      console.warn('[CloudSync] Fremdes Dokument wird nicht hochgeladen:', nbId);
+      this._removeFromQueue(nbId);
+      return;
+    }
+
     const localCopy = this._normalizeNotebook(notebook);
     localCopy.updatedAt = localCopy.updatedAt || new Date().toISOString();
     delete localCopy.syncedAt;   // reine Merkhilfe dieses Geräts
+
+    /* ══════════════════════════════════════════════════════════════════
+       ERST NACHSEHEN, DANN SCHREIBEN
+
+       Hier ging es geradewegs zum Upsert. Beim Start arbeitet
+       _catchUpAfterStart zuerst die ganze Warteschlange ab und laedt erst
+       DANACH die Gegenseite – wer offline weitergearbeitet hatte,
+       ueberschrieb damit die Arbeit des anderen Geraets, bevor sie
+       ueberhaupt gelesen wurde. Hinterher sah er seine eigene Fassung
+       oben stehen und meldete folgerichtig keinen Konflikt.
+
+       Jetzt wird vorher gefragt, ob sich die Gegenseite seit dem letzten
+       Abgleich geruehrt hat. Wenn ja, wird sie geholt und durch dieselbe
+       Konfliktpruefung geschickt wie beim Herunterladen: beide Fassungen
+       landen im Versionsverlauf, das Band fragt nach. Danach darf
+       hochgeladen werden – die unterliegende Fassung ist gesichert und
+       mit einem Klick zurueckzuholen.
+       ══════════════════════════════════════════════════════════════════ */
+    if (await this._pruefeFremdenStand(notebook) === 'abbrechen') {
+      this._removeFromQueue(nbId);
+      return;
+    }
 
     await this._upsertRemoteNotebook(localCopy);
 
@@ -1859,6 +1959,54 @@ class CloudSyncManager {
     }
 
     await Settings.update({ cloudLastSync: new Date().toISOString() });
+
+    /* Hat sich das Heft waehrend des Uploads geaendert? Dann ist oben die
+       Fassung von vorhin, und der Auftrag gilt nicht als erledigt. */
+    const jetzt = getNb(nbId);
+    const nachtrag = !!(jetzt && this._toTime(jetzt.updatedAt) > this._toTime(localCopy.updatedAt));
+    if (nachtrag) {
+      console.log('[CloudSync] Waehrend des Uploads weitergeschrieben – Auftrag bleibt:', nbId);
+    }
+    return { nachtrag };
+  }
+
+  /**
+   * Hat sich die Cloud-Fassung seit unserem letzten Abgleich geaendert?
+   * Dann wird sie geholt und der Konflikt gemeldet, BEVOR wir darueber
+   * schreiben. Ein Fehler hier haelt den Upload nicht auf: ohne Antwort
+   * ist "keine Aenderung" die einzige Annahme, die weiterfuehrt.
+   */
+  async _pruefeFremdenStand(notebook) {
+    const syncedTime = this._toTime(notebook.syncedAt);
+    if (!syncedTime) return 'weiter';   // war noch nie oben – nichts zu vergleichen
+
+    try {
+      const datei = await this._findRemoteFile(notebook);
+      if (!datei) return 'weiter';        // gibt es dort (noch) nicht
+
+      const fremdZeit = this._toTime(datei.modifiedTime);
+      if (!fremdZeit || fremdZeit <= syncedTime) return 'weiter';   // unveraendert
+
+      const json = await this.provider.downloadFile(this._http, datei.id);
+      const fremd = this._denormalizeNotebook(json, datei);
+      if (!fremd || fremd.id !== notebook.id) return 'weiter';
+
+      /* Die Gegenseite ist weiter, hier ist seit dem letzten Abgleich
+         nichts dazugekommen: dann gibt es schlicht nichts hochzuladen.
+         Der Auftrag ist ein Ueberbleibsel, und ihn auszufuehren hiesse,
+         die fremde Arbeit mit einem alten Stand zu ueberschreiben.
+         Heruntergeladen wird sie gleich danach (refreshRemote). */
+      if (this._toTime(notebook.updatedAt) <= syncedTime) {
+        console.log('[CloudSync] Gegenseite ist neuer, hier nichts Neues – kein Upload:', notebook.id);
+        return 'abbrechen';
+      }
+
+      await this._pruefeKonflikt(notebook, fremd,
+        this._toTime(notebook.updatedAt), this._toTime(fremd.updatedAt));
+    } catch (err) {
+      console.warn('[CloudSync] Gegenseite vor dem Upload nicht lesbar:', err?.message || err);
+    }
+    return 'weiter';
   }
 
   /* ══════════════════════════════════════════════════════════════════
@@ -1973,11 +2121,21 @@ class CloudSyncManager {
         // Hefte eines anderen Kontos bleiben, wo sie sind (queueNotebook)
         if (typeof fremdesKonto === 'function' && fremdesKonto(localNb)) continue;
 
+        /* ══════════════════════════════════════════════════════════
+           KEIN ZWEITER WEG IN DIE SCHLANGE
+
+           Hier wurde von Hand in syncQueue geschoben – an queueNotebook
+           vorbei und damit an dessen beiden Bremsen. Die zweite fehlte
+           dadurch ganz: isSharedNotebook. Ein geoeffnetes FREMDES
+           Dokument steht als origin:'shared' in S.notebooks, und ein
+           vollstaendiger Abgleich legte davon eine private Kopie im
+           eigenen Drive ab. Sie bleibt dort auch dann liegen, wenn die
+           Freigabe laengst entzogen ist, und veraltet vor sich hin –
+           obwohl im Code ausdruecklich steht, dass genau das nicht
+           geschehen soll.
+           ══════════════════════════════════════════════════════════ */
         if (!remoteNb || localTime > remoteTime) {
-          const inQueue = this.syncQueue.some(e => {
-            return (typeof e === 'string' ? e : e.nbId) === localNb.id;
-          });
-          if (!inQueue) this.syncQueue.push({ nbId: localNb.id, nbName: localNb.name, action: 'upload', queuedAt: new Date().toISOString() });
+          this.queueNotebook(localNb.id, { nbName: localNb.name, silent: true });
         }
       }
       this._persistQueue();
@@ -2048,7 +2206,30 @@ class CloudSyncManager {
 
     if (existing && AutoSave?.isDirty?.(existing.id)) return;
 
-    if (existing && this._shouldKeepLocalNotebook(existing, remoteNotebook)) {
+    /* ══════════════════════════════════════════════════════════════════
+       WER SEIT DEM LETZTEN ABGLEICH NICHTS GETAN HAT, HAT NICHTS ZU
+       VERTEIDIGEN
+
+       Die Faustregel darunter – "die reichhaltigere Fassung gewinnt" –
+       ist ein Notnagel fuer den Fall, dass niemand sagen kann, welche
+       Seite recht hat. Sie stand aber ohne Bedingung da, und damit auch
+       dann, wenn die Sache voellig klar ist: auf Geraet A wurde eine
+       Seite geloescht und hochgeladen, auf B seit dem letzten Abgleich
+       nichts angefasst. B behielt die Seite trotzdem, dauerhaft – und
+       eine spaetere Aenderung dort schickte sie wieder hinauf und damit
+       zurueck auf A. Mit Loeschen liessen sich zwei Geraete also gar
+       nicht gleich halten.
+
+       Hat sich hier seit dem letzten Abgleich nichts getan und ist die
+       Gegenseite neuer, dann ist ihre Fassung die Wahrheit – auch eine
+       kuerzere.
+       ══════════════════════════════════════════════════════════════════ */
+    const syncedTime = this._toTime(existing && existing.syncedAt);
+    const hierUnveraendert = !!syncedTime && localTime <= syncedTime
+      && !(AutoSave?.isDirty?.(existing.id));
+
+    if (existing && !hierUnveraendert
+        && this._shouldKeepLocalNotebook(existing, remoteNotebook)) {
       console.warn('[CloudSync] Lokale Fassung ist reichhaltiger, nicht überschrieben:', existing.id);
       return;
     }
@@ -2606,6 +2787,27 @@ class CloudSyncManager {
       // Erneuerbar? Dann still auffrischen statt abmelden.
       if (this.provider.supportsRefresh && await this._refreshSession()) {
         // weiter unten die Sitzung aufbauen
+      } else if (this._erneuernScheitertAmNetz) {
+        /* ══════════════════════════════════════════════════════════════
+           OHNE NETZ IST NIEMAND ABGEMELDET
+
+           _refreshSession unterscheidet sauber zwischen "kein Netz" und
+           "die Anmeldung gilt nicht mehr" und setzt dafuer eigens
+           _erneuernScheitertAmNetz. Hier wurde die Unterscheidung wieder
+           weggeworfen: JEDER misslungene Versuch loeschte das Token und
+           setzte cloudSessionLost.
+
+           Wer die App nach laengerer Pause ohne Internet startete, stand
+           damit als abgemeldet da, obwohl sein Refresh-Token voellig in
+           Ordnung war. Kontogebundene Ansichten verloren ihre Zuordnung,
+           und fremdesKonto() zeigte plotzlich alle oertlichen Hefte an.
+
+           Das Token bleibt jetzt liegen. Die Sitzung gilt als offline und
+           wird beim naechsten erfolgreichen Versuch still erneuert.
+           ══════════════════════════════════════════════════════════════ */
+        console.log('[CloudSync] Erneuern am Netz gescheitert – Anmeldung bleibt bestehen');
+        this._session = null;
+        return;
       } else {
         console.log('[CloudSync] Gespeichertes Token ist abgelaufen');
         this._session = null;
