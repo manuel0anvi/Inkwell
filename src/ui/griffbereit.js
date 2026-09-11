@@ -917,7 +917,9 @@
       url: adresse,
       rangeChunkSize: 256 * 1024,
       disableAutoFetch: true,
-      disableStream: true
+      disableStream: true,
+      // Kein eval – die Begruendung steht in core/importExport.js
+      isEvalSupported: false
     }).promise;
     if (!gueltig()) { try { doc.destroy(); } catch (err) { /* egal */ } return; }
     satz._pdf = doc;

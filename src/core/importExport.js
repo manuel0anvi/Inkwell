@@ -8,7 +8,8 @@ async function parsePdfToImages(pdfDataUrl) {
   const bytes = new Uint8Array(len);
   for (let i = 0; i < len; i++) bytes[i] = binaryString.charCodeAt(i);
 
-  const loadingTask = pdfjsLib.getDocument({ data: bytes });
+  // Kein eval – die Begruendung steht bei fillNotebookFromPdfText
+  const loadingTask = pdfjsLib.getDocument({ data: bytes, isEvalSupported: false });
   const pdf = await loadingTask.promise;
   const images = [];
 
@@ -1036,7 +1037,26 @@ async function fillNotebookFromPdfText(nb, dataUrl, onFortschritt) {
   const bytes = new Uint8Array(roh.length);
   for (let i = 0; i < roh.length; i++) bytes[i] = roh.charCodeAt(i);
 
-  const pdf = await pdfjsLib.getDocument({ data: bytes }).promise;
+/* ══════════════════════════════════════════════════════════════════════
+   WARUM JEDES PDF MIT isEvalSupported: false GEOEFFNET WIRD
+
+   Die hier eingebettete Fassung von pdf.js ist 3.11.174. Fuer sie ist
+   CVE-2024-4367 bekannt: ueber ein praepariertes Schriftobjekt laesst
+   sich beim Anzeigen Javascript ausfuehren. Behoben ist das ab 4.2.67 –
+   fuer aeltere Fassungen nennt Mozilla ausdruecklich diese Einstellung
+   als Gegenmittel: ohne eval gibt es den Weg nicht.
+
+   Die CSP der App erlaubt ohnehin kein unsafe-eval, und ein
+   erfolgreicher Angriff wurde hier nie gezeigt. Auf eine einzige
+   Schranke sollte man sich aber nicht verlassen: sie steht in
+   src/index.html und gilt nicht fuer jeden Zusammenhang, in dem pdf.js
+   laeuft (der Worker etwa hat seine eigene Herkunft). Diese Einstellung
+   haengt dagegen am Dokument selbst.
+
+   Sie ersetzt die Aktualisierung der Bibliothek nicht – sie deckt den
+   bekannten Weg, bis sie geschieht.
+   ══════════════════════════════════════════════════════════════════════ */
+  const pdf = await pdfjsLib.getDocument({ data: bytes, isEvalSupported: false }).promise;
 
   const bg = nb.defaultBg || 'ruled';
 

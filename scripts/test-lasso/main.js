@@ -58,6 +58,13 @@ setTimeout(() => { zeilen.push('ABBRUCH: Zeitgrenze erreicht'); fertig(2); }, 12
 
 const warte = ms => new Promise(r => setTimeout(r, ms));
 
+
+/* Die Oberflaeche fragt beim Hochfahren nach einer beim Start
+   mitgegebenen Datei (main.js, get-pending-file). Hier gibt es keine -
+   ohne diesen Griff protokolliert Electron aber einen Fehler, der mit
+   dem Geprueften nichts zu tun hat. */
+try { ipcMain.handle('get-pending-file', () => null); } catch (e) {}
+
 app.on('ready', async () => {
   try {
     /* Quer, damit sich die Seite nicht einpasst und der Zoom bei 1,2

@@ -116,6 +116,13 @@ function fertig() {
 
 setTimeout(() => { pruefe('Zeitgrenze', false, 'nach 120 s nicht fertig'); fertig(); }, 120000);
 
+
+/* Die Oberflaeche fragt beim Hochfahren nach einer beim Start
+   mitgegebenen Datei (main.js, get-pending-file). Hier gibt es keine -
+   ohne diesen Griff protokolliert Electron aber einen Fehler, der mit
+   dem Geprueften nichts zu tun hat. */
+try { ipcMain.handle('get-pending-file', () => null); } catch (e) {}
+
 app.on('ready', async () => {
   const win = new BrowserWindow({
     width: 1300, height: 900, show: false, backgroundColor: '#12121a',

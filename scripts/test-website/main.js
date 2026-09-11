@@ -22,7 +22,7 @@
    Aufruf:  npm run test:web
    ══════════════════════════════════════════════════════════════════════ */
 
-const { app, BrowserWindow } = require('electron');
+const { app, BrowserWindow, ipcMain } = require('electron');
 const path = require('path');
 const http = require('http');
 const fs = require('fs');
@@ -100,6 +100,13 @@ const SEITEN = [
   ['Der Datenschutz', '/datenschutz/'],
   ['Die Verwaltung', '/admin/']
 ];
+
+
+/* Die Oberflaeche fragt beim Hochfahren nach einer beim Start
+   mitgegebenen Datei (main.js, get-pending-file). Hier gibt es keine -
+   ohne diesen Griff protokolliert Electron aber einen Fehler, der mit
+   dem Geprueften nichts zu tun hat. */
+try { ipcMain.handle('get-pending-file', () => null); } catch (e) {}
 
 app.on('ready', () => {
   server.listen(0, '127.0.0.1', async () => {

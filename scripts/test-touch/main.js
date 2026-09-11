@@ -63,6 +63,13 @@ function fertig(code) {
 
 setTimeout(() => { zeilen.push('ABBRUCH: Zeitgrenze erreicht'); fertig(2); }, 150000);
 
+
+/* Die Oberflaeche fragt beim Hochfahren nach einer beim Start
+   mitgegebenen Datei (main.js, get-pending-file). Hier gibt es keine -
+   ohne diesen Griff protokolliert Electron aber einen Fehler, der mit
+   dem Geprueften nichts zu tun hat. */
+try { ipcMain.handle('get-pending-file', () => null); } catch (e) {}
+
 app.on('ready', async () => {
   try {
     /* ── Erst die Medienabfrage im Stilblock selbst ────────────────────
