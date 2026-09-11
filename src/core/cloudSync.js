@@ -1790,8 +1790,11 @@ class CloudSyncManager {
              Auch flushPending() fand danach nichts mehr zu tun.
              ══════════════════════════════════════════════════════════ */
           if (stand && stand.nachtrag) {
-            nachtragOffen = true;
-            this.immediateUploads.add(nbId);
+            // Ein ruhender Auftrag wartet auf sein Konto, nicht auf einen Takt
+            if (!stand.ruht) {
+              nachtragOffen = true;
+              this.immediateUploads.add(nbId);
+            }
             this.lastUploadAt.set(nbId, Date.now());
             continue;          // Eintrag NICHT entfernen
           }
@@ -1896,7 +1899,11 @@ class CloudSyncManager {
        Konto wieder angemeldet ist. */
     if (typeof fremdesKonto === 'function' && fremdesKonto(notebook)) {
       console.warn('[CloudSync] Heft gehoert einem anderen Konto – Upload ausgesetzt:', nbId);
-      return { nachtrag: true };
+      /* ruht: der Auftrag bleibt stehen, aber es hat keinen Sinn, ihn
+         gleich noch einmal zu versuchen – erst ein Kontowechsel aendert
+         etwas daran. Ohne diese Unterscheidung liefe der Nachtrag-Takt
+         unten alle 1,2 Sekunden ins Leere, bis die App zugeht. */
+      return { nachtrag: true, ruht: true };
     }
     if (typeof isSharedNotebook === 'function' && isSharedNotebook(notebook)) {
       console.warn('[CloudSync] Fremdes Dokument wird nicht hochgeladen:', nbId);
