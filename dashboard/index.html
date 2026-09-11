@@ -15,6 +15,10 @@
 <!-- Crimson Pro + DM Mono werden für die App-identische Seitendarstellung gebraucht -->
 <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;1,300;1,400&family=Cormorant+Infant:ital,wght@0,300;1,300&family=Jost:wght@300;400;500&family=Crimson+Pro:ital,wght@0,400;0,600;1,400&family=DM+Mono:wght@400&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="../css/style.css">
+<!-- Wie eine Seite aussieht: dieselben Regeln wie in der App, erzeugt von
+     npm run sync-share. MUSS vor notebook.css stehen. -->
+<link rel="stylesheet" href="../lib/katex.min.css">
+<link rel="stylesheet" href="../css/pages.css">
 <link rel="stylesheet" href="../css/notebook.css">
 <style>
 /* ── Volltextsuche über alle Hefte ──────────────────────────────────
@@ -426,6 +430,14 @@
 <!-- Bereinigt fremden Seitentext, bevor er ins DOM geht. MUSS vor
      viewer.js stehen: dort wird sanitizePageHtml() aufgerufen. -->
 <script src="../js/sanitize.js"></script>
+<!-- Was außer Text und Handschrift auf einer Seite liegt: Formeln, Formen,
+     Code-Kästen, PDF-Seiten. Dieselben Dateien wie in der App, erzeugt von
+     npm run sync-share. MÜSSEN vor viewer.js stehen. -->
+<script src="../lib/katex.min.js"></script>
+<script src="../js/formula.js"></script>
+<script src="../js/shapes.js"></script>
+<script src="../js/code.js"></script>
+<script src="../js/pdfSeiten.js"></script>
 <script src="../js/viewer.js"></script>
 <script src="../js/config.js"></script>
 <script src="../js/providers.js"></script>

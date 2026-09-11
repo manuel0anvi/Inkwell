@@ -1,0 +1,3214 @@
+/* ══════════════════════════════════════════════════════════════════════
+   ⚠  ERZEUGTE DATEI – NICHT HIER BEARBEITEN
+
+   Wortgleiche Kopie von src/css/pages.css. Die App wird ohne den
+   Ordner website/ ausgeliefert (siehe electron-builder.config.js),
+   deshalb braucht die Website ein eigenes Exemplar.
+
+   Änderungen gehören nach src/css/pages.css. Danach:
+       npm run sync-share
+   Vor dem Veröffentlichen der Website läuft das von selbst.
+   ══════════════════════════════════════════════════════════════════════ */
+
+/* Module: Page Content & Drawing */
+
+.j-page {
+  position: relative;
+  width: 794px;
+  min-height: 1123px;
+  box-shadow: var(--shad);
+  flex-shrink: 0;
+  overflow: hidden
+}
+
+.j-page.bg-ruled {
+  background: var(--paper)
+}
+
+.j-page.bg-grid {
+  background: var(--paper)
+}
+
+.j-page.bg-dots {
+  background: var(--paper)
+}
+
+.j-page.bg-blank {
+  background: #fff
+}
+
+.j-page.bg-craft {
+  background: #f0e8d5
+}
+
+.j-page.bg-ruled::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 1;
+  background-image: repeating-linear-gradient(to bottom, transparent, transparent 31px, var(--pl) 31px, var(--pl) 32px);
+  background-position: 0 83px
+}
+
+.j-page.bg-grid::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 1;
+  background-image: linear-gradient(to bottom, var(--pg) 1px, transparent 1px), linear-gradient(to right, var(--pg) 1px, transparent 1px);
+  background-size: 24px 24px;
+  background-position: 0 75px, 0 0
+}
+
+.j-page.bg-dots::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 1;
+  background-image: radial-gradient(circle, var(--pg) 1.2px, transparent 1.2px);
+  background-size: 24px 24px;
+  background-position: 0 63px
+}
+
+.j-page.bg-ruled::after {
+  content: '';
+  position: absolute;
+  left: 64px;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: var(--pm);
+  pointer-events: none;
+  z-index: 1
+}
+
+/* Der Farbstreifen des Abschnitts. Der Kopf hatte schon einen unteren
+   Rand – er wird eingefaerbt, statt ein neues Element einzufuehren. */
+.j-page-hdr.has-sec {
+  border-bottom-color: var(--sec-color, var(--pl))
+}
+
+.j-page-hdr {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 56px;
+  border-bottom: 2px solid var(--pl);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 0 72px;
+  z-index: 1300;
+  pointer-events: none;
+}
+
+/* Das Datum bleibt rechts, wo es war – nur eben VOR den Knoepfen statt
+   unter ihnen. Bei sehr schmalen Seiten gibt es nach, nicht die Knoepfe. */
+.j-page-date {
+  margin-left: auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap
+}
+
+.j-page-num,
+.j-page-date {
+  font-family: 'DM Mono', 'Consolas', 'Courier New', monospace;
+  font-size: 9px;
+  color: #b0a898;
+  letter-spacing: .5px
+}
+
+/* Seitenzahl und Freigabe-Zeichen als eine Einheit links im Kopf */
+.j-page-left {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0
+}
+
+/* Das Heft ist freigegeben: Mensch = andere schreiben mit, Auge = nur lesen.
+   Zurückhaltend gehalten – es soll auffindbar sein, nicht ablenken. */
+.j-share-mark {
+  display: flex;
+  align-items: center;
+  color: #b0a898;
+  /* Der Kopf selbst lässt Klicks durch; für den Tooltip braucht es sie */
+  pointer-events: auto
+}
+
+.j-share-mark svg {
+  width: 11px;
+  height: 11px;
+  display: block
+}
+
+.j-canvas {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 1100;
+  display: block;
+  touch-action: pan-y;
+
+  /* ══ IM SEITENKOPF STEHT NIE EIN STRICH ══════════════════════════
+     Der Kopf (56 px + 2 px Linie) liegt ueber der Zeichenflaeche, dort
+     laesst sich also nicht ANFANGEN. Wer aber weiter unten ansetzt und
+     nach oben zieht, zog den Strich mitten durch Seitenzahl und Datum:
+     der Kopf hat keinen eigenen Hintergrund, er ist nur Text auf dem
+     Papier. Gemeldet wurde genau das.
+
+     Abgeschnitten statt die Punkte zu beschneiden: ein beschnittener
+     Punkt schoebe den Strich waagerecht an der Kante entlang, und das
+     sieht schlechter aus als ein sauberer Schnitt. Der Strich selbst
+     bleibt vollstaendig gespeichert – wer die Seite spaeter tiefer
+     schiebt, hat ihn wieder.
+
+     Dieselbe Grenze gilt beim Export (core/importExport.js,
+     core/docx.js) und fuer Bilder und Formen (canvas/objects.js);
+     die Zahl steht in CFG.HDR (core/state.js). */
+  clip-path: inset(58px 0 0 0)
+}
+
+/* Zeichnet der Finger, darf der Browser die Seite nicht gleichzeitig
+   scrollen – sonst bricht er den Strich nach wenigen Pixeln mit
+   pointercancel ab. Genau das war der Grund, warum sich mit dem Finger
+   ueberhaupt nicht zeichnen liess: core/zoom.js schrieb hier zusaetzlich
+   ein touch-action als INLINE-Stil hin, und der schlaegt jede Regel von
+   hier. Die Zeile dort setzt jetzt nur noch beim Vergroesserten.
+
+   Die Klasse haengt am gewaehlten Werkzeug, nicht am Schalter allein
+   (ui/toolbar.js, updateTouchDrawUI). Zwei Finger bewegen und zoomen die
+   Seite weiterhin – das faengt app.js selbst ab. */
+body.touch-draw .j-canvas {
+  touch-action: none
+}
+
+.j-text {
+  position: absolute;
+  top: 64px;
+  left: 72px;
+  right: 32px;
+  bottom: 24px;
+  z-index: 1000;
+  outline: none;
+  font-family: 'Crimson Pro', Georgia, 'Times New Roman', serif;
+  font-size: 17px;
+  line-height: 32px;
+  padding-top: 19px;
+  color: var(--ptx);
+  caret-color: #c0693a;
+  word-break: break-word;
+  overflow: visible;
+  pointer-events: none;
+  margin: 0;
+  /* Ueber beschreibbarem Text markiert Chromium mit dem Stift, statt zu
+     scrollen – der Text bedeckt fast die ganze Seite, damit stand sie
+     fest. pan-y gibt das Schieben zurueck; markiert wird mit langem
+     Halten, genau wie mit dem Finger. Dieselbe Regel hat .j-canvas. */
+  touch-action: pan-y
+}
+
+.j-text * {
+  line-height: inherit
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   TABELLEN AUF DEM PAPIER
+
+   Absichtlich `table-layout: auto`: die Spalte wächst mit dem, was
+   darin steht – genau das erwartet man von Word. Eine feste Breite
+   müsste beim Tippen nachgerechnet werden und säße nach jedem Abgleich
+   wieder anders.
+
+   Die Breite ist auf 100 % gedeckelt, sonst schöbe eine lange Zeile die
+   Tabelle über den Blattrand hinaus, wo sie abgeschnitten wird
+   (.j-page hat overflow: hidden).
+
+   ══ DIE TABELLE DARF DAS LINIENRASTER NICHT VERSCHIEBEN ══════════════
+   Alles auf dieser Seite sitzt in einem Raster von einer Zeilenhöhe
+   (--lh, meist 32 px). Was eine Tabelle an Höhe einnimmt, muss deshalb
+   ein VIELFACHES davon sein – sonst rutscht jede Zeile darunter neben
+   die Linien des Papiers, und zwar für den Rest der Seite. Gemeldet
+   wurde genau das: eine Tabelle über dem Text, und der Text sitzt nicht
+   mehr auf den Linien.
+
+   Zwei Dinge standen dem im Weg:
+
+     1. `margin: 6px 0` – zwölf Pixel, die durch nichts teilbar sind.
+        Gemessen sass der Text darunter danach 14 px zu tief. Jetzt 0;
+        wer Luft will, lässt eine Zeile frei, und die ist 32 px hoch.
+
+     2. Der RAND der Zellen. Ein Rand nimmt Platz ein: eine Zeile mit
+        32 px Inhalt und 1 px Rand ist 33 px hoch, und bei n Zeilen
+        stimmt es um n+1 Pixel nicht mehr. `height` an der Zelle half
+        nicht – der Inhalt ist schon eine volle Zeilenhöhe hoch, und
+        weniger wird eine Zelle davon nicht.
+
+   Deshalb wird der Rand als `box-shadow: inset` gemalt statt als
+   `border`. Ein Schatten liegt IM Element und kostet keinen Platz;
+   gemessen ist eine Zeile damit auf den Pixel genau eine Zeilenhöhe
+   hoch, auch wenn eine Zelle umbricht und über mehrere Zeilen geht.
+
+   Rechts und unten je Zelle, oben und links einmal an der Tabelle –
+   sonst lägen zwischen zwei Zellen zwei Striche nebeneinander und die
+   Linie wäre doppelt so dick.
+   ══════════════════════════════════════════════════════════════════════ */
+.j-text table.j-table {
+  /* Der obere und der linke Rand der ganzen Tabelle. Als eigener Wert,
+     weil box-shadow ERSETZT und nicht ergänzt: wer der Tabelle sonst
+     einen Schatten gibt, nimmt ihr damit zwei Ränder. Genau so ist es
+     der frei gesetzten Tabelle ergangen (siehe unten). */
+  --tbl-rand: inset 1px 1px 0 0 rgba(28, 20, 10, .72);
+  border-collapse: collapse;
+  table-layout: auto;
+  max-width: 100%;
+  margin: 0;
+  font-size: inherit;
+  box-shadow: var(--tbl-rand)
+}
+
+/* >>> Sobald Spaltenbreiten gesetzt sind, gilt fest <<<
+   Bei `table-layout: auto` ist eine Breite an <col> nur ein Vorschlag: der
+   Browser verteilt nach Inhalt und überging das Ziehen fast vollständig –
+   die Spalte sprang zurück. Erst `fixed` macht die gezogene Breite
+   verbindlich. Es gilt nur für Tabellen, an denen wirklich gezogen wurde
+   (die haben ein <colgroup>); alle anderen wachsen weiter mit dem Inhalt. */
+/* Kein width:100% – die Spaltenbreiten in <colgroup> ergeben die Breite
+   selbst (core/tables.js verteilt sie beim ersten Anfassen). Mit 100 %
+   verteilte der Browser zusätzlich um, und die gezogene Breite stimmte
+   danach nicht mehr mit der angezeigten überein. */
+.j-text table.j-table:has(colgroup) {
+  table-layout: fixed
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   EINE FREI GESETZTE TABELLE
+
+   Sie steht nicht mehr IM Text, sondern auf ihm – dort, wo man sie
+   losgelassen hat. Gemeldet wurde beides: „beim Loslassen geht sie
+   einfach zurück" und „sie sollte nicht mit Zeilen eingeschränkt sein,
+   das gleiche gilt für den Text in der Tabelle".
+
+   Erkannt wird sie am Attribut x. Die Lage steht dort und nicht im
+   style: von einem style bliebe beim Bereinigen allein die Farbe stehen
+   (core/sanitize.js). Auf left/top überträgt sie core/tables.js.
+
+   Eine Tabelle OHNE x bleibt im Textfluss, mit allem, was weiter unten
+   dafür steht – frei wird sie erst beim ersten Verschieben.
+   ══════════════════════════════════════════════════════════════════════ */
+/* >>> Nur die STELLE ändert sich, sonst nichts <<<
+   Hier standen zusätzlich eigene Zeilenhöhen und Abstände für die Zellen
+   („der Inhalt gehört der Zelle, nicht dem Papier"). Damit schrumpfte die
+   Tabelle im Augenblick des Anfassens sichtbar zusammen – gemeldet als
+   „wenn ich sie verschiebe, wird sie kleiner". Inhalt, Maßstab und Größe
+   bleiben jetzt genau, wie sie waren; frei ist allein die Lage.
+
+   Auch kein max-width: none – die Deckelung auf die Textbreite gilt im
+   Fluss wie hier, sonst wäre sie danach anders breit. */
+.j-text table.j-table[x] {
+  position: absolute;
+  z-index: 2;
+  /* Sie deckt den Text darunter zu, wie ein Bild „vor dem Text" */
+  background: var(--paper);
+  /* Der eigene Rand MUSS mitstehen: hier stand nur der Schatten, und
+     damit verlor eine verschobene Tabelle ihre obere und ihre linke
+     Linie – „beim Verschieben verliert sie die Linien am Rand". */
+  box-shadow: var(--tbl-rand), 0 1px 8px rgba(28, 20, 10, .12)
+}
+
+/* Solange sie in der Luft ist */
+.j-tbl-zieht .j-text table.j-table[x] {
+  box-shadow: var(--tbl-rand), 0 8px 26px rgba(0, 0, 0, .3);
+  opacity: .95
+}
+
+/* Die Greifzone an der Spaltengrenze. Ein paar Pixel breit reichen der
+   Maus, dem Finger nicht – deshalb ein eigener, unsichtbarer Streifen
+   statt eines Zeigerwechsels am Rand (core/tables.js). */
+.j-text table.j-table td,
+.j-text table.j-table th {
+  position: relative
+}
+
+.j-tbl-griff {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  right: -4px;
+  width: 9px;
+  cursor: col-resize;
+  /* Über dem waagerechten Streifen: die beiden kreuzen sich an jeder
+     Ecke, und dort muss einer gewinnen. Die Spaltenbreite wird öfter
+     gezogen als die Zeilenhöhe – und ohne diese Entscheidung griff man
+     an der halben Spaltengrenze eines zweizeiligen Rasters immer die
+     Zeile, obwohl der Zeiger den Doppelpfeil zur Seite zeigte. */
+  z-index: 4;
+  /* >>> Der Streifen gehoert dem Finger ────────────────────────────
+     .j-text traegt touch-action: pan-y, damit sich ueber dem Text
+     scrollen laesst. Genau das nahm dem Ziehen aber den Finger weg: der
+     Browser machte aus der Bewegung ein Scrollen und brach den Zug mit
+     pointercancel ab. Mit der Maus ging es, mit dem Finger nie – und
+     eine Tabelle bedient man auf einem Tablet nun einmal mit dem
+     Finger. Auf dem Streifen selbst gibt es nichts zu scrollen, also
+     kostet none hier auch nichts. */
+  touch-action: none;
+  /* ══════════════════════════════════════════════════════════════════
+     MAN SIEHT IHN NICHT – MAN MERKT IHN AM ZEIGER
+
+     Hier standen goldene Striche an jeder Grenze, damit man das Ziehen
+     auch mit dem Finger findet. Sie sahen aus wie Knöpfe, die zur
+     Tabelle gehören, und genau so wurden sie gemeldet („diese gelben
+     Buttons sollte es nicht geben"). Wie in Word gibt es deshalb nur
+     noch den Zeigerwechsel beim Darüberfahren; beim Ziehen selbst zeigt
+     eine dünne Linie, welche Kante gerade wandert.
+     ══════════════════════════════════════════════════════════════════ */
+  background: transparent
+}
+
+.j-tbl-griff.j-zieht {
+  background: linear-gradient(to right,
+      transparent 4px, var(--gold, #c9a227) 4px,
+      var(--gold, #c9a227) 5px, transparent 5px)
+}
+
+/* Und derselbe Streifen waagerecht, an der Unterkante jeder Zeile
+   (core/tables.js). Er sitzt in der ERSTEN Zelle der Zeile – dieselbe
+   Sparsamkeit wie oben, wo die senkrechten nur in der ersten Zeile
+   stehen. */
+.j-tbl-zeilengriff {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -4px;
+  height: 9px;
+  cursor: row-resize;
+  z-index: 3;
+  /* Wie beim senkrechten Streifen – und hier noch wichtiger: gezogen
+     wird nach oben und unten, also genau in die Richtung, in die
+     .j-text sonst scrollt. */
+  touch-action: none;
+  background: transparent
+}
+
+.j-tbl-zeilengriff.j-zieht {
+  background: linear-gradient(to bottom,
+      transparent 4px, var(--gold, #c9a227) 4px,
+      var(--gold, #c9a227) 5px, transparent 5px)
+}
+
+@media (any-pointer: coarse) {
+  .j-tbl-griff {
+    right: -7px;
+    width: 15px
+  }
+
+  .j-tbl-zeilengriff {
+    bottom: -7px;
+    height: 15px
+  }
+}
+
+.j-text table.j-table td,
+.j-text table.j-table th {
+  /* >>> Warum nicht var(--pl) <<<
+     Das ist die Farbe der Papierlinien. Eine Tabelle war damit von der
+     Linierung nicht zu unterscheiden – gemeldet als „man sieht nichts".
+     Ein Tabellenrand ist gezogen, kein Papier: er gehoert dunkel.
+
+     >>> Und warum box-shadow statt border <<<
+     Weil ein Rand Platz einnimmt und damit das Linienraster der Seite
+     verschiebt. Die lange Begruendung steht oben am Tabellen-Block. */
+  border: 0;
+  box-shadow: inset -1px -1px 0 0 rgba(28, 20, 10, .72);
+  padding: 0 7px;
+  vertical-align: middle;
+  /* Ohne das reisst ein langes Wort die Spalte auf, statt umzubrechen */
+  word-break: break-word;
+  overflow-wrap: break-word;
+  min-width: 28px;
+
+  /* >>> Zeilenhoehe statt 1.2em <<<
+     Bei einer Tabellenzelle wirkt `height` als MINDESTmass. Es stand auf
+     1.2em (= 20,4 px bei 17 px Schrift), die Zeilenhoehe der Seite ist
+     aber 24 oder 32 px (canvas/text.js lhForBg). Eine leere Zelle war
+     damit 20 px hoch – und in dem Augenblick, in dem die Schreibmarke
+     hineinfuhr, entstand eine Zeilenbox von 32 px und die ganze Tabelle
+     sprang auf. Genau das war „beim Draufdruecken wird sie groesser".
+
+     --lh setzt app.js zusammen mit der line-height. Damit ist eine
+     Tabellenzeile genau eine Textzeile hoch, die Tabelle sitzt auf der
+     Linierung, und sie waechst erst, wenn wirklich umgebrochen wird. */
+  height: var(--lh, 32px)
+}
+
+.j-text table.j-table th {
+  font-weight: 600;
+  text-align: left;
+  background: rgba(28, 20, 10, .07)
+}
+
+/* Beim Ziehen an einer Spaltengrenze (core/tables.js) */
+.j-text table.j-table.j-tbl-resizing {
+  cursor: col-resize;
+  user-select: none
+}
+
+.j-tbl-resize-hint {
+  position: fixed;
+  z-index: 1255;
+  width: 2px;
+  background: var(--gold, #c9a227);
+  pointer-events: none
+}
+
+/* Die Leiste an der Tabelle – dieselbe Machart wie die am Bild, aber am
+   Fenster statt an der Seite: so bleibt sie im Hochformat bedienbar,
+   statt mit dem Zoom zu schrumpfen. */
+.j-table-bar {
+  position: fixed;
+  z-index: 1260;
+  display: flex;
+  gap: 2px;
+  padding: 3px;
+  border-radius: 8px;
+  background: var(--sc);
+  border: 1px solid var(--sb2);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, .45)
+}
+
+.j-table-btn {
+  width: 30px;
+  height: 30px;
+  padding: 5px;
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  color: var(--md);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center
+}
+
+.j-table-btn svg {
+  width: 100%;
+  height: 100%
+}
+
+.j-table-btn:hover {
+  background: var(--sh2);
+  color: var(--hi)
+}
+
+@media (any-pointer: coarse) {
+
+  .j-table-btn {
+    width: 38px;
+    height: 38px
+  }
+}
+
+/* ── Mathematische Formeln (KaTeX) ────────────────────────────────── */
+
+/* Inline-Formel: fließt im Text mit, etwas vergrößert für Lesbarkeit.
+   KaTeX setzt eigene Schriftarten – deshalb kein font-family hier. */
+.j-text .j-formula {
+  display: inline;
+  cursor: pointer;
+  transition: background .12s
+}
+
+.j-text .j-formula:hover {
+  background: rgba(0, 0, 0, .04);
+  border-radius: 3px
+}
+
+/* Block-Formel: eigene Zeile, zentriert. Das <p> trägt .j-formula-block,
+   das innere <span> unverändert .j-formula. */
+.j-text p.j-formula-block {
+  text-align: center;
+  margin: 10px 0
+}
+
+.j-text p.j-formula-block .j-formula {
+  display: block
+}
+
+/* Die KaTeX-eigene Block-Darstellung innerhalb von .j-formula-block */
+.j-text .j-formula-block .katex-display {
+  margin: 0
+}
+
+/* ── Die Formel als Objekt (core/formula.js) ──────────────────────────
+   Größer und kleiner über transform: scale statt über eine gestreckte
+   Schrift – so bleibt sie in jeder Größe scharf. Der Ursprung liegt oben
+   links, damit das Skalieren nicht von der Mitte aus wegläuft. */
+.j-formula-obj {
+  transform-origin: top left;
+  display: inline-block;
+  white-space: nowrap;
+  color: var(--ptx, #1a1510);
+  user-select: none;
+  pointer-events: none
+}
+
+.j-formula-obj .katex-display {
+  margin: 0
+}
+
+.j-formula-obj.fehler {
+  border: 2px dashed #c04040;
+  border-radius: 3px;
+  padding: 2px 4px;
+  font-family: 'DM Mono', 'Consolas', monospace;
+  font-size: 13px;
+  color: #c04040
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   Formel-Editor (ui/formula.js)
+   ══════════════════════════════════════════════════════════════════ */
+.formula-preview {
+  min-height: 40px;
+  padding: 12px 14px;
+  background: var(--sp);
+  border: 1px solid var(--sb2);
+  border-radius: 8px;
+  overflow-x: auto;
+  display: flex;
+  align-items: center;
+  justify-content: center
+}
+
+.formula-display-row {
+  display: flex;
+  gap: 16px;
+  margin: 8px 0 0
+}
+
+/* ── Zeichen-Palette ──────────────────────────────────────────────── */
+.formula-palette {
+  margin: 0 0 12px
+}
+
+.formula-palette-tabs {
+  display: flex;
+  gap: 2px;
+  flex-wrap: wrap;
+  margin-bottom: 6px
+}
+
+.formula-palette-tab {
+  font-size: 12px;
+  padding: 4px 9px;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--md);
+  cursor: pointer
+}
+
+.formula-palette-tab:hover {
+  background: var(--sh2);
+  color: var(--hi)
+}
+
+.formula-palette-tab.active {
+  background: var(--sh2);
+  border-color: var(--sb2);
+  color: var(--gold)
+}
+
+.formula-palette-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+  padding: 7px;
+  background: var(--sp);
+  border: 1px solid var(--sb2);
+  border-radius: 8px;
+  max-height: 132px;
+  overflow-y: auto
+}
+
+.formula-sym {
+  min-width: 34px;
+  height: 32px;
+  padding: 2px 6px;
+  background: var(--sc);
+  border: 1px solid var(--sb2);
+  border-radius: 5px;
+  color: var(--hi);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  line-height: 1
+}
+
+.formula-sym:hover {
+  background: var(--sh2);
+  border-color: var(--gold)
+}
+
+/* KaTeX malt die Zeichen – es darf den Knopf nicht sprengen */
+.formula-sym .katex {
+  font-size: 1em
+}
+
+/* ── Normale Schreibweise ─────────────────────────────────────────── */
+.formula-simple-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin: 8px 0 0;
+  font-size: 13px;
+  color: var(--md);
+  cursor: pointer
+}
+
+.formula-simple-row input[type="checkbox"] {
+  accent-color: var(--gold)
+}
+
+.formula-translated {
+  margin: 6px 0 0;
+  padding: 5px 9px;
+  background: var(--sp);
+  border: 1px dashed var(--sb2);
+  border-radius: 5px;
+  font-family: 'DM Mono', 'Consolas', monospace;
+  font-size: 12px;
+  color: var(--lo);
+  word-break: break-all
+}
+
+@media (any-pointer: coarse) {
+
+  .formula-sym {
+    min-width: 40px;
+    height: 38px
+  }
+
+  .formula-palette-tab {
+    padding: 7px 11px
+  }
+
+  .formula-palette-grid {
+    max-height: 150px
+  }
+}
+
+.formula-display-label {
+  font-size: 13px;
+  color: var(--md);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 4px
+}
+
+.formula-display-label input[type="radio"] {
+  accent-color: var(--gold)
+}
+
+#formula-latex {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 10px 12px;
+  background: var(--sp);
+  border: 1px solid var(--sb2);
+  border-radius: 6px;
+  color: var(--hi);
+  font-family: 'DM Mono', 'Consolas', 'Courier New', monospace;
+  font-size: 14px;
+  line-height: 1.6;
+  resize: vertical
+}
+
+#formula-latex:focus {
+  border-color: var(--gd);
+  outline: none
+}
+
+/* ── Formen-Vorschau (Aufziehen) ──────────────────────────────────── */
+.shape-preview {
+  pointer-events: none;
+  z-index: 5500
+}
+
+/* Form-SVG im Objektrahmen: füllt die ganze Hülle aus */
+.obj-body > svg {
+  display: block;
+  width: 100%;
+  height: 100%
+}
+
+/* ── Ausrichtung eines Absatzes ───────────────────────────────────────
+   Die Klasse setzt ui/toolbar.js, erlaubt wird sie in core/sanitize.js.
+   Ohne Klasse bleibt es links – deshalb gibt es für „linksbündig" auch
+   keine Regel: das ist schlicht der Zustand ohne Auszeichnung.
+
+   Am .j-text festgemacht, damit die Regel nicht in fremde Bereiche der
+   Seite hineinwirkt. Das !important ist kein Vorrat, sondern nötig: zwei
+   Regeln weiter unten richten selbst aus und sind genauer als eine
+   einzelne Klasse – die Kopfzelle einer Tabelle (linksbündig) und die
+   Block-Formel (zentriert). Eine aus Word übernommene, zentrierte
+   Kopfzelle bliebe sonst links stehen. */
+.j-text .j-align-center { text-align: center !important }
+.j-text .j-align-right { text-align: right !important }
+.j-text .j-align-justify { text-align: justify !important }
+
+/* ── Der Abstandshalter ──────────────────────────────────────────────
+   Was ein Klick rechts neben schon geschriebenen Text setzt: keine
+   vierzig Leerzeichen, sondern ein Element mit einer Breite
+   (canvas/text.js). Die Breite steht am Element selbst.
+
+   inline-block, damit die Breite überhaupt gilt – ein leeres <span>
+   ohne Inhalt hat sonst keine. user-select: none, damit er sich beim
+   Markieren nicht wie ein Zeichen anfühlt; löschen lässt er sich
+   trotzdem mit einem Rückschritt, denn im Text steht er ja doch. */
+.j-text .j-luecke {
+  display: inline-block;
+  height: 1px;
+  vertical-align: baseline;
+  user-select: none
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   EIN ABSATZ, DER FREI AUF DEM BLATT STEHT
+
+   Er entsteht, wenn jemand auf eine freie Stelle klickt und dort
+   schreibt (canvas/text.js). Seine Lage steht in left und top, in
+   Seiten-Pixeln – die Seite selbst wird über transform gezoomt, also
+   stimmt sie in jeder Vergrösserung.
+
+   >>> Warum absolut und nicht im Fluss <<<
+   Im Fluss braucht jeder Absatz seine Zeile, und alles darunter rückt
+   nach. Genau das war gemeldet: „beim Klick verschiebt sich alles, was
+   darunter ist, eine Zeile nach unten". Ein Blatt Papier tut das nicht.
+
+   Keine Breite gesetzt: ein absolut gesetzter Kasten ohne width ist so
+   breit wie sein Inhalt, höchstens aber bis zum rechten Rand des
+   Blattes. Damit bricht eine lange Zeile dort um, wo sie es auch im
+   Fluss täte – und ein Klick RECHTS neben den Text trifft nicht mehr
+   den Kasten, sondern freie Fläche.
+   ══════════════════════════════════════════════════════════════════════ */
+.j-text p.j-frei {
+  position: absolute;
+  margin: 0;
+
+  /* ══════════════════════════════════════════════════════════════════
+     EIN PIXEL, DAMIT DIE SCHREIBMARKE ZU SEHEN IST
+
+     Ohne diese Zeile war die Marke nach einem Klick auf freie Fläche
+     unsichtbar. Man klickte hin, nichts blinkte, und erst der erste
+     Buchstabe zeigte, dass die Marke die ganze Zeit dort stand. Genau
+     so wurde es gemeldet.
+
+     Der Grund: ein absolut gesetzter Kasten ohne width ist so breit wie
+     sein Inhalt. Ein frisch angelegter Absatz enthält nur ein <br> –
+     also NULL Pixel breit. Chromium schneidet die Marke am Kasten ab,
+     und bei Breite null bleibt von ihr nichts übrig. Sobald ein
+     Buchstabe darin steht, wird der Kasten breit und die Marke
+     erscheint; deshalb sah es aus, als käme sie erst beim Tippen.
+
+     Gemessen: sechs Aufnahmen über zwei Sekunden, Bildpunkte in der
+     Farbe der Marke im Ausschnitt um den Absatz. Ohne die Zeile 0 in
+     allen sechs, mit ihr 88 im Wechsel mit 0 – das Blinken.
+
+     Ein Pixel genügt, und mehr darf es auch nicht sein: die Breite
+     bleibt sonst am Inhalt (siehe oben), und ein Klick rechts neben den
+     Text soll weiter freie Fläche treffen. Wo Kästen gegeneinander
+     geprüft werden, zählen ohnehin nur solche breiter als 1 px
+     (canvas/input.js, beschriebeneKaesten).
+     ══════════════════════════════════════════════════════════════════ */
+  min-width: 1px
+}
+
+.j-text h1,
+.j-text p.j-title-1 {
+  font-family: 'Cormorant Garamond', 'Crimson Pro', Georgia, serif;
+  font-weight: 400;
+  font-style: italic;
+  color: #2a1f14;
+  display: block;
+  line-height: inherit;
+  margin: 0;
+  padding: 0;
+  border-bottom: 1px solid var(--pl)
+}
+
+.j-text h2,
+.j-text p.j-title-2 {
+  font-family: 'Crimson Pro', serif;
+  font-weight: 600;
+  color: #2a1f14;
+  display: block;
+  line-height: inherit;
+  margin: 0;
+  padding: 0
+}
+
+.j-text h3,
+.j-text p.j-title-3 {
+  font-family: 'Crimson Pro', serif;
+  font-weight: 600;
+  font-style: italic;
+  color: #3a2e22;
+  display: block;
+  line-height: inherit;
+  margin: 0;
+  padding: 0
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   AUFZÄHLUNGEN UND NUMMERIERUNGEN
+
+   Der Browser gibt einer Liste von sich aus einen Abstand nach oben
+   und unten (margin: 1em). Auf liniertem Papier ist das der Unterschied
+   zwischen „steht auf der Linie" und „schwebt irgendwo dazwischen":
+   jede Zeile muss genau eine Zeilenhoehe hoch sein, sonst laeuft der
+   ganze Text darunter aus dem Raster. Deshalb margin 0 und ueberall
+   die geerbte Zeilenhoehe.
+
+   Der Einzug steckt im padding-left. Er gilt je Ebene neu, damit eine
+   eingerueckte Liste weiter einrueckt – 32 px entsprechen etwa dem,
+   was Word im ersten Schritt tut.
+
+   Welche Marke gemalt wird, entscheidet die Klasse `j-list-…`
+   (core/lists.js). Ueber eine Klasse und nicht ueber style, weil
+   core/sanitize.js von einem style nur die Farbe stehen laesst – in
+   einem geteilten Heft waere die Form sonst beim naechsten Oeffnen weg.
+
+   >>> ACHTUNG: Dieser Block steht ein zweites Mal in
+       website/css/notebook.css <<<
+   Die Website zeigt geteilte Hefte mit einer eigenen Fassung der
+   .j-text-Stile an. Sie wird NICHT von `npm run sync-share` erzeugt –
+   das Skript haelt nur share.js, docx.js und sanitize.js gleich – und
+   website/ steht in .gitignore. Eine Aenderung hier erreicht den anderen
+   Rechner also nur ueber diesen Hinweis.
+
+   Wer hier etwas aendert, muss es dort von Hand nachziehen. Fehlt der
+   Block drueben, sieht eine Liste im Browser voellig anders aus als beim
+   Schreiben: der Browser gibt ihr dann seine eigenen Abstaende, und jede
+   Zeile darunter rutscht aus dem Linienraster.
+   ══════════════════════════════════════════════════════════════════ */
+
+.j-text ul,
+.j-text ol {
+  margin: 0;
+  padding: 0 0 0 32px;
+  line-height: inherit
+}
+
+.j-text li {
+  margin: 0;
+  padding: 0;
+  line-height: inherit
+}
+
+/* Punkte */
+.j-text ul.j-list-disc {
+  list-style-type: disc
+}
+
+.j-text ul.j-list-circle {
+  list-style-type: circle
+}
+
+.j-text ul.j-list-square {
+  list-style-type: square
+}
+
+.j-text ul.j-list-dash {
+  list-style-type: '– '
+}
+
+.j-text ul.j-list-arrow {
+  list-style-type: '➤ '
+}
+
+/* Die Ankreuzliste steht weiter unten – dort ist das ✓ ein echtes
+   Kaestchen zum Anklicken und kein blosses Aufzaehlungszeichen. */
+
+/* Nummern */
+.j-text ol.j-list-decimal {
+  list-style-type: decimal
+}
+
+.j-text ol.j-list-lower-alpha {
+  list-style-type: lower-alpha
+}
+
+.j-text ol.j-list-upper-alpha {
+  list-style-type: upper-alpha
+}
+
+.j-text ol.j-list-lower-roman {
+  list-style-type: lower-roman
+}
+
+.j-text ol.j-list-upper-roman {
+  list-style-type: upper-roman
+}
+
+/* „1)" statt „1." – dafuer reicht list-style-type nicht, die Klammer
+   muss ueber den Zaehler selbst kommen. list-style-type bleibt trotzdem
+   gesetzt, damit ohne ::marker-Unterstuetzung wenigstens Zahlen da sind. */
+.j-text ol.j-list-paren {
+  list-style-type: decimal
+}
+
+.j-text ol.j-list-paren>li::marker {
+  content: counter(list-item) ') '
+}
+
+.j-text ol.j-list-alpha-paren {
+  list-style-type: lower-alpha
+}
+
+.j-text ol.j-list-alpha-paren>li::marker {
+  content: counter(list-item, lower-alpha) ') '
+}
+
+/* Wie in Word wechselt die VOREINGESTELLTE Form mit jeder Ebene: aus
+   ● wird ○ und dann ▪, aus 1. wird a. und dann i. Wer eine Form selbst
+   gewaehlt hat, behaelt sie auch tiefer – dann trifft keine dieser
+   Regeln, weil die Klasse eine andere ist. */
+.j-text ul.j-list-disc ul.j-list-disc {
+  list-style-type: circle
+}
+
+.j-text ul.j-list-disc ul.j-list-disc ul.j-list-disc {
+  list-style-type: square
+}
+
+.j-text ol.j-list-decimal ol.j-list-decimal {
+  list-style-type: lower-alpha
+}
+
+.j-text ol.j-list-decimal ol.j-list-decimal ol.j-list-decimal {
+  list-style-type: lower-roman
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   DIE STAFFELUNG EINER SEITE
+
+   Die Zahlen sind bewusst weit auseinander. Bilder brauchen zwischen
+   Papier und Text sowie oberhalb des Kopfes je ein ganzes Band, in dem
+   sie untereinander eine Reihenfolge haben (canvas/objects.js):
+
+        1  Papier, Linien, Seitenbild
+      100  BILDER HINTER DEM TEXT   (100 + Stelle)
+      900  Sperrbänder der Mitschreiber
+     1000  Text
+     1100  Handschrift
+     1150  Zeilenumbruch-Hilfe
+     1200  Marken der Mitschreiber
+     1250  Schreibmarken
+     1300  Seitenkopf
+     2000  BILDER VOR DEM TEXT      (2000 + Stelle)
+     5000  Griffe und Leiste des ausgewählten Bildes
+     6000  Fanglinien
+
+   Alles davon steckt im eigenen Stapel von .pages-wrap (layout.css) und
+   kann deshalb nicht mit der übrigen Oberfläche kollidieren.
+   ══════════════════════════════════════════════════════════════════ */
+
+/* Ohne eigenes z-index reicht die Ebene ihre Bilder in den Stapel der
+   Seite durch – nur so kann ein Bild überhaupt HINTER den Text rutschen.
+   Die Zahl steht an jedem .obj-body, siehe canvas/objects.js. */
+.j-objects {
+  position: absolute;
+  inset: 0;
+  z-index: auto;
+  pointer-events: none
+}
+
+/* Nur Lage und Größe. Weder z-index noch transform – beides machte einen
+   eigenen Stapel auf und sperrte Griffe und Leiste mit dem Bild unter den
+   Text. Die beiden Kinder tragen ihre Zahl selbst. */
+.obj-wrap {
+  position: absolute;
+  user-select: none;
+  pointer-events: none;
+}
+
+/* Das Bild. Liegt vor oder hinter dem Text, je nach Ebene. */
+.obj-body {
+  position: absolute;
+  inset: 0;
+  transform-origin: 50% 50%;
+  cursor: default;
+  pointer-events: auto;
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   EINE FORM IST DUENN – DER FINGER BRAUCHT MEHR RAND
+
+   Ein Bild ist eine Flaeche; eine Form ist ein Strich von zwei Pixeln.
+   Zwar faengt das SVG die ganze Huelle ab, aber die Huelle einer kleinen
+   Form ist selbst nur zwei Zentimeter gross. Mit dem Finger – der
+   ungefaehr einen Zentimeter breit aufsetzt und dessen Mittelpunkt der
+   Nutzer nicht sieht – war das schwer zu treffen. Genau so wurde es
+   gemeldet.
+
+   Der unsichtbare Ring vergroessert die Huelle nach aussen. Er erbt
+   pointer-events von .obj-body und ist damit genau dann da, wenn die
+   Form ueberhaupt anfassbar ist: im Zeigermodus (ui/toolbar.js,
+   applyMode). Beim Stift ist er weg und stoert das Zeichnen nicht.
+
+   Zwei Weiten, weil zwei Hände gemeint sind. Die Maus trifft auf den
+   Pixel genau; ihr reichen acht, und mehr wären schädlich, weil der Ring
+   sonst den Text dicht neben der Form verschluckt. Der Finger bekommt
+   zweiundzwanzig – gut einen halben Zentimeter. Was gerade benutzt wird,
+   steht an body.touch-input und wechselt mit der ersten Mausbewegung
+   (core/state.js).
+
+   Die Griffe liegen darüber (.obj-chrome, z-index 5000) und bleiben
+   deshalb treffbar. Bilder bekommen den Ring nicht – die sind gross
+   genug.
+   ══════════════════════════════════════════════════════════════════════ */
+.obj-body[data-kind="shape"]::after {
+  content: '';
+  position: absolute;
+  inset: -8px
+}
+
+body.touch-input .obj-body[data-kind="shape"]::after {
+  inset: -22px
+}
+
+/* ── Das AUSGEWAEHLTE Bild gehoert dem Finger ────────────────────────
+   Ohne das entschied der Browser bei einem gezogenen Finger auf Scrollen:
+   die Seite lief weg, das Bild blieb liegen. Nur am ausgewaehlten, weil
+   ein Bild schnell die halbe Seite fuellt – darueber muss sich weiter
+   scrollen lassen, solange niemand es anfassen will. Die erste
+   Beruehrung waehlt deshalb nur aus (canvas/objects.js). */
+.obj-wrap.selected .obj-body {
+  touch-action: none
+}
+
+/* Waehrend ein Bild geschoben wird, darf es ueber den Seitenrand
+   hinausragen – sonst verschwindet es am Ende der Seite unter dem
+   Schnitt, und niemand sieht, dass es gerade auf die naechste Seite
+   wandert. Die Seite kommt dabei nach vorn, sonst deckte die folgende
+   das ueberstehende Stueck zu. */
+.j-page.obj-dragging {
+  overflow: visible;
+  z-index: 5
+}
+
+/* Griffe und Leiste – immer über allem, unabhängig von der Ebene des
+   Bildes. Der Rahmen selbst lässt Klicks durch, sonst läge er als
+   unsichtbare Scheibe über dem Text. */
+.obj-chrome {
+  position: absolute;
+  inset: 0;
+  transform-origin: 50% 50%;
+  pointer-events: none;
+  outline: 1.5px solid var(--gold);
+  outline-offset: 2px;
+  box-shadow: 0 0 0 4px rgba(200, 169, 110, .14)
+}
+
+/* ══ DER RAHMEN BESTIMMT, NICHT DAS BILD ═══════════════════════════════
+   Hier stand object-fit: contain. Damit blieb das Bild in seinem eigenen
+   Verhaeltnis und legte sich mit Luft oben und unten in den Rahmen –
+   solange der nur an den Ecken gezogen werden konnte, fiel das nie auf.
+   Seit die Kanten Breite und Hoehe einzeln ziehen, waere es genau der
+   Fehler, der gemeldet wurde: man zieht in die Laenge, und das Bild
+   bleibt stehen.
+
+   fill ist ausserdem das, was ohnehin gilt: beim Export wird das Bild in
+   den Rahmen gezeichnet (core/importExport.js, core/docx.js), ohne
+   Ruecksicht auf sein Verhaeltnis. Auf dem Schirm sah es bisher anders
+   aus als auf dem Papier. */
+.obj-body img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: fill;
+  border-radius: 2px
+}
+
+.obj-handle {
+  pointer-events: auto;
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  background: #fff;
+  border: 1.5px solid var(--gold);
+  border-radius: 50%;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, .35);
+  z-index: 10;
+  touch-action: none;
+  transition: transform .1s ease
+}
+
+.obj-handle:hover {
+  transform: scale(1.25)
+}
+
+/* Anfang und Ende einer Linie. Sie sitzen NICHT an den Ecken des
+   Rechtecks, sondern dort, wo die Linie wirklich anfängt und aufhört –
+   die Stelle rechnet canvas/objects.js (baueEndGriffe). Deshalb ein
+   eigener Versatz um die halbe Griffgröße statt fester Ecken. */
+.obj-handle.end {
+  width: 14px;
+  height: 14px;
+  margin-left: -7px;
+  margin-top: -7px;
+  cursor: move;
+  background: var(--gold);
+  border-color: #fff
+}
+
+@media (any-pointer: coarse) {
+
+  .obj-handle.end {
+    width: 20px;
+    height: 20px;
+    margin-left: -10px;
+    margin-top: -10px
+  }
+}
+
+.obj-handle.tl {
+  top: -6px;
+  left: -6px;
+  cursor: nwse-resize
+}
+
+.obj-handle.tr {
+  top: -6px;
+  right: -6px;
+  cursor: nesw-resize
+}
+
+.obj-handle.bl {
+  bottom: -6px;
+  left: -6px;
+  cursor: nesw-resize
+}
+
+.obj-handle.br {
+  bottom: -6px;
+  right: -6px;
+  cursor: nwse-resize
+}
+
+/* ── Die vier Kantengriffe ───────────────────────────────────────────
+   Sie ziehen nur EINE Richtung: Breite oder Hoehe. Damit man sie nicht
+   fuer Ecken haelt, sind sie laenglich statt rund – die Form sagt
+   schon, wohin sie sich bewegen lassen (canvas/objects.js). */
+.obj-handle.t,
+.obj-handle.b {
+  left: 50%;
+  margin-left: -9px;
+  width: 18px;
+  height: 8px;
+  border-radius: 4px;
+  cursor: ns-resize
+}
+
+.obj-handle.t {
+  top: -4px
+}
+
+.obj-handle.b {
+  bottom: -4px
+}
+
+.obj-handle.l,
+.obj-handle.r {
+  top: 50%;
+  margin-top: -9px;
+  width: 8px;
+  height: 18px;
+  border-radius: 4px;
+  cursor: ew-resize
+}
+
+.obj-handle.l {
+  left: -4px
+}
+
+.obj-handle.r {
+  right: -4px
+}
+
+.obj-handle.rot {
+  top: auto;
+  bottom: -34px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--gold);
+  border-color: var(--gb);
+  color: #241b10;
+  border-radius: 50%;
+  cursor: grab;
+  width: 22px;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  line-height: 1
+}
+
+.obj-handle.rot:hover {
+  transform: translateX(-50%) scale(1.12)
+}
+
+/* Steht die Leiste ausnahmsweise unten, muss der Drehgriff nach oben –
+   sonst liegen beide übereinander. */
+.obj-chrome:has(.obj-bar.below) .obj-handle.rot {
+  top: -34px;
+  bottom: auto
+}
+
+/* ── Schwebende Leiste über dem ausgewählten Bild ───────────────────
+   Sie hängt am Bild, dreht sich aber nicht mit: canvas/objects.js setzt
+   die Gegendrehung auf transform. Deshalb steht hier KEIN transform,
+   das dort nicht auch wieder gesetzt wird. */
+.obj-bar {
+  pointer-events: auto;
+  position: absolute;
+  bottom: calc(100% + 12px);
+  left: 50%;
+  transform: translateX(-50%);
+  transform-origin: 50% 100%;
+  display: flex;
+  align-items: center;
+  gap: 1px;
+  padding: 4px;
+  background: rgba(28, 26, 34, .96);
+  border: 0.5px solid rgba(200, 169, 110, .32);
+  border-radius: 9px;
+  box-shadow: 0 8px 22px rgba(0, 0, 0, .5);
+  z-index: 12;
+  white-space: nowrap;
+  cursor: default
+}
+
+/* Am Seitenanfang ist über dem Bild kein Platz – dann darunter */
+.obj-bar.below {
+  bottom: auto;
+  top: calc(100% + 12px);
+  transform-origin: 50% 0
+}
+
+.obj-bar-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  color: #ddd3c2;
+  cursor: pointer;
+  transition: background .12s, color .12s
+}
+
+.obj-bar-btn svg {
+  width: 16px;
+  height: 16px;
+  display: block
+}
+
+.obj-bar-btn:hover {
+  background: rgba(200, 169, 110, .16);
+  color: var(--gold)
+}
+
+/* Welche Ebene gerade gilt, muss man sehen können, ohne zu klicken */
+.obj-bar-btn.active {
+  background: rgba(200, 169, 110, .22);
+  color: var(--gold)
+}
+
+.obj-bar-btn.danger:hover {
+  background: rgba(217, 83, 79, .2);
+  color: #e8837e
+}
+
+.obj-bar-sep {
+  width: 1px;
+  height: 16px;
+  margin: 0 3px;
+  background: rgba(255, 255, 255, .12)
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   AUSGEWÄHLTER STRICH (canvas/strokeSelect.js)
+
+   Über der Handschrift (1100), aber unter dem Seitenkopf (1300).
+   ══════════════════════════════════════════════════════════════════════ */
+.ink-sel {
+  position: absolute;
+  z-index: 1210;
+  border: 1.5px dashed var(--gold, #c9a227);
+  border-radius: 3px;
+  background: rgba(201, 162, 39, .07);
+  cursor: move;
+  touch-action: none
+}
+
+/* Bei einer geraden Linie zählt die Linie, nicht das Rechteck – der
+   Rahmen tritt zurück und die beiden Endgriffe übernehmen. */
+.ink-sel.gerade {
+  border-style: solid;
+  border-color: rgba(201, 162, 39, .35);
+  background: transparent
+}
+
+.ink-sel-end {
+  position: absolute;
+  width: 14px;
+  height: 14px;
+  margin-left: -7px;
+  margin-top: -7px;
+  border-radius: 50%;
+  background: var(--gold, #c9a227);
+  border: 1.5px solid #fff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, .4);
+  cursor: move;
+  touch-action: none;
+  transition: transform .1s ease
+}
+
+.ink-sel-end:hover {
+  transform: scale(1.25)
+}
+
+.ink-sel-bar {
+  position: fixed;
+  /* Ueber allem, was auf der Seite liegt: der Seitenkopf und die
+     Aufklapper der Werkzeugleiste stehen auf 1300, und mit 1262 rutschte
+     die Leiste darunter - bei einer Form am oberen Rand war sie halb
+     verdeckt. Unter den Meldungen (2000) und den Fenstern bleibt sie. */
+  z-index: 1400;
+  display: flex;
+  gap: 2px;
+  padding: 3px;
+  border-radius: 8px;
+  background: var(--sc);
+  border: 1px solid var(--sb2);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, .45)
+}
+
+.ink-sel-btn {
+  width: 30px;
+  height: 30px;
+  padding: 6px;
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  color: var(--md);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center
+}
+
+.ink-sel-btn svg {
+  width: 100%;
+  height: 100%
+}
+
+.ink-sel-btn:hover {
+  background: var(--sh2);
+  color: var(--hi)
+}
+
+.ink-sel-btn.danger:hover {
+  background: rgba(198, 40, 40, .2);
+  color: #ff8a80
+}
+
+/* Farbe und Dicke des ausgewaehlten Strichs (canvas/strokeSelect.js).
+   Dieselbe Sprache wie an der Form: ein Farbfeld und die Staerken als
+   Striche, der geltende hervorgehoben. */
+.ink-sel-farbe {
+  width: 15px;
+  height: 15px;
+  border-radius: 4px;
+  display: block;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, .35) inset
+}
+
+.ink-sel-btn.active {
+  background: rgba(200, 169, 110, .22);
+  color: var(--gold)
+}
+
+/* Trennt das Aussehen vom Verdoppeln und Loeschen – das eine aendert
+   den Strich, das andere seine Zahl. */
+.ink-sel-trenner {
+  width: 1px;
+  align-self: stretch;
+  margin: 2px 3px;
+  background: var(--sb2)
+}
+
+@media (any-pointer: coarse) {
+
+  .ink-sel-btn {
+    width: 38px;
+    height: 38px
+  }
+
+  .ink-sel-end {
+    width: 20px;
+    height: 20px;
+    margin-left: -10px;
+    margin-top: -10px
+  }
+}
+
+/* ── Füllung und Linienfarbe einer Form ─────────────────────────────
+   Als Farbfelder statt als Umschalter: der Umschalter davor kannte nur
+   „an" und „aus" und schaltete zwischen zweimal „aus" hin und her. */
+.obj-fill-row {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 0 3px;
+  border-left: 1px solid rgba(255, 255, 255, .12);
+  margin-left: 3px
+}
+
+.obj-fill-sw {
+  width: 15px;
+  height: 15px;
+  border-radius: 4px;
+  border: 1.5px solid rgba(255, 255, 255, .25);
+  cursor: pointer;
+  padding: 0;
+  flex-shrink: 0
+}
+
+.obj-fill-sw:hover {
+  border-color: rgba(255, 255, 255, .6)
+}
+
+.obj-fill-sw.active {
+  border-color: var(--gold);
+  box-shadow: 0 0 0 1px var(--gold)
+}
+
+/* „Ohne Füllung": der durchgestrichene Kreis, wie überall sonst auch */
+.obj-fill-sw.keine {
+  background:
+    linear-gradient(to bottom right,
+      transparent 42%, #d05050 42%, #d05050 58%, transparent 58%),
+    var(--sh2)
+}
+
+/* ── Deckkraft der Füllung ────────────────────────────────────────────
+   Ein schmaler Schieber in der Leiste über der Form (canvas/shapes.js).
+   Die Bahn zeigt, worum es geht: von durchsichtig nach deckend – mit dem
+   Karo darunter, an dem man „durchsichtig" überall erkennt. */
+.obj-alpha {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 46px;
+  height: 15px;
+  margin: 0 1px;
+  padding: 0;
+  background: transparent;
+  cursor: pointer;
+  flex-shrink: 0
+}
+
+.obj-alpha::-webkit-slider-runnable-track {
+  height: 7px;
+  border-radius: 4px;
+  border: 0.5px solid rgba(255, 255, 255, .25);
+  background:
+    linear-gradient(to right, rgba(255, 255, 255, 0), rgba(255, 255, 255, .95)),
+    repeating-conic-gradient(#8a8a8a 0% 25%, #4a4a4a 0% 50%) 0 0 / 6px 6px
+}
+
+.obj-alpha::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 11px;
+  height: 11px;
+  margin-top: -2.5px;
+  border-radius: 50%;
+  background: #fff;
+  border: 1.5px solid var(--gold);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, .45)
+}
+
+/* Die Linienfarbe ist rund – damit man sie nicht mit der Füllung verwechselt */
+.obj-stroke-sw {
+  border-radius: 50%
+}
+
+/* Nativer Farbwähler in der Formen-Leiste – als Rainbow-Knopf statt
+   sieben einzelner Farbfelder. Derselbe Aufbau wie in der Werkzeugleiste:
+   ein unsichtbarer input über einem sichtbaren Anzeigefeld. */
+.obj-color-picker {
+  width: 15px;
+  height: 15px;
+  border-radius: 4px;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+  flex-shrink: 0;
+  background: conic-gradient(red, yellow, lime, aqua, blue, magenta, red);
+  -webkit-appearance: none;
+  appearance: none
+}
+.obj-color-picker::-webkit-color-swatch-wrapper { padding: 0 }
+.obj-color-picker::-webkit-color-swatch { border: none; border-radius: 3px }
+.obj-bar .obj-color-picker::-webkit-color-swatch { border-radius: 3px }
+
+@media (any-pointer: coarse) {
+
+  .obj-fill-sw {
+    width: 21px;
+    height: 21px
+  }
+
+  /* Mit dem Finger braucht der Schieber Weg und einen groesseren Griff */
+  .obj-alpha {
+    width: 66px;
+    height: 21px
+  }
+
+  .obj-alpha::-webkit-slider-thumb {
+    width: 17px;
+    height: 17px;
+    margin-top: -5.5px
+  }
+}
+
+/* ── Die Knoepfe am Seitenkopf ───────────────────────────────────────
+   Frueher sass der Drei-Punkte-Knopf allein und absolut am rechten Rand.
+   Seit ein zweiter dazugekommen ist (Abschnitt festlegen), stehen beide
+   in einer Gruppe – so braucht es keine Pixelrechnerei, wenn spaeter noch
+   einer dazukommt. */
+/* >>> Warum das NICHT absolut positioniert ist <<<
+   Es stand auf `position:absolute; right:8px` – damit war die Gruppe aus
+   dem Fluss genommen und der Kopf verteilte nur noch Seitenzahl und
+   Datum. Das Datum sass also am rechten Rand, die Knoepfe darueber.
+   Solange sie schmaler als der 72px-Rand waren, fiel das nicht auf; auf
+   Beruehrungsschirmen sind sie groesser, und dann lagen sie auf dem
+   Datum.
+
+   Jetzt stehen sie im Fluss: das Datum wird von ihnen nach links
+   geschoben, ueberlappen kann nichts mehr. Der negative Aussenrand holt
+   die Gruppe in den Seitenrand hinein, damit sie sitzt wie bisher
+   (72px Innenrand − 64px = 8px vom Blattrand). */
+.j-page-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
+  margin-right: -64px;
+  pointer-events: auto
+}
+
+.pg-menu-btn,
+.pg-sec-btn {
+  pointer-events: auto;
+  background: transparent;
+  border: none;
+  color: #b0a898;
+  cursor: pointer;
+  font-size: 16px;
+  padding: 2px 8px;
+  border-radius: 4px;
+  transition: all .12s;
+  display: flex;
+  align-items: center
+}
+
+.pg-menu-btn:hover,
+.pg-sec-btn:hover {
+  background: rgba(0, 0, 0, .08);
+  color: #4a3d2e
+}
+
+/* Traegt die Seite ein Etikett, faerbt sich das Symbol danach – so sieht
+   man beim Blaettern, wozu die Seite gehoert, ohne irgendwo nachzusehen. */
+.j-page-hdr.has-sec .pg-sec-btn {
+  color: var(--sec-color, #b0a898)
+}
+
+/* ── „Die letzte Seite ist noch leer" ─────────────────────────────────
+   Sitzt genau da, wo der Knopf „Neue Seite" sass, und sieht auch so aus:
+   an dieser Stelle sucht das Auge am Ende des Hefts ohnehin schon.
+
+   Nichts daran ist anklickbar – es ist eine Auskunft, kein Angebot. */
+.letzte-leer {
+  display: flex;
+  justify-content: center;
+  padding: 16px;
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  z-index: 100;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity .25s ease;
+  /* Kein Verlauf im Ruecken. Der Knopf hatte einen, weil er sich vom
+     Blatt abheben musste, um als anklickbar zu gelten. Diese Zeile will
+     nichts von einem - sie soll dastehen und den Blattrand in Ruhe
+     lassen. Der Kasten selbst hat Rand und Schatten genug. */
+  background: none
+}
+
+.letzte-leer span {
+  max-width: 420px;
+  text-align: center;
+  background: var(--sp);
+  border: 1px solid var(--sb2);
+  border-radius: 10px;
+  color: var(--md);
+  padding: 12px 24px;
+  font-size: 13px;
+  line-height: 1.5;
+  font-family: 'Crimson Pro', serif;
+  font-style: italic;
+  box-shadow: 0 12px 24px rgba(0, 0, 0, .6)
+}
+
+.snap-line {
+  position: absolute;
+  pointer-events: none;
+  z-index: 6000;
+}
+
+.snap-line.v {
+  width: 1px;
+  background: #e91e63;
+  height: 100%;
+  top: 0;
+}
+
+.snap-line.h {
+  height: 1px;
+  background: #e91e63;
+  width: 100%;
+  left: 0;
+}
+
+.ws-debug-layer {
+  position: absolute;
+  margin: 0;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  color: rgba(120, 120, 120, .55);
+  pointer-events: none;
+  user-select: none;
+  z-index: 1150;
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   KOMMENTARE
+
+   Die Karten liegen im leeren Rand rechts neben dem Blatt, nicht in einer
+   eigenen Leiste – dort war ohnehin Platz, und eine Leiste hätte dem
+   Blatt welchen weggenommen.
+   ══════════════════════════════════════════════════════════════════════ */
+.comment-layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 1200
+}
+
+.comment-layer .comment-card {
+  position: absolute;
+  pointer-events: auto;
+  transition: top .16s ease, border-color .15s
+}
+
+.comment-card {
+  background: var(--sc);
+  border: 1px solid var(--sb2);
+  border-radius: 8px;
+  padding: 8px 10px;
+  cursor: pointer;
+  box-shadow: 0 3px 12px rgba(0, 0, 0, .3)
+}
+
+.comment-card:hover,
+.comment-card.aktiv {
+  border-color: var(--gold)
+}
+
+.comment-card.resolved {
+  opacity: .45
+}
+
+/* Solange eine Tabelle in der Luft ist, gehört die Bewegung ihr: kein
+   Scrollen, keine Textmarkierung, kein Zoomen nebenher (core/tables.js). */
+.j-tbl-zieht,
+.j-tbl-zieht .j-text,
+.j-tbl-zieht .pg-scroll {
+  touch-action: none;
+  user-select: none
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   DIE KOMMENTAR-LEISTE
+
+   Sie ist der Rand, wenn es keinen gibt: auf einem kleinen Bildschirm und
+   im Hochformat liegt das Blatt Kante an Kante im Fenster, und die Karten
+   daneben hatten keinen Platz mehr – zu sehen war gar nichts.
+
+   Gebaut wie die Navigation links (css/sidebar.css): ein Flex-Kind, das
+   von 0 auf seine Breite wächst. Damit schiebt es das Blatt zur Seite,
+   statt sich darüberzulegen – auf einem schmalen Schirm will man beides
+   nebeneinander lesen, nicht das eine unter dem anderen.
+   ══════════════════════════════════════════════════════════════════════ */
+.comment-panel {
+  display: flex;
+  flex-shrink: 0;
+  background: var(--sp);
+  border-left: 1px solid var(--sb)
+}
+
+.comment-panel-inner {
+  width: 0;
+  overflow: hidden;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  transition: width .2s ease
+}
+
+.comment-panel.open .comment-panel-inner {
+  width: 268px
+}
+
+.comment-panel-head {
+  padding: 9px 10px 7px 12px;
+  border-bottom: 1px solid var(--sb);
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  min-width: 268px;
+  color: var(--md);
+  font-size: 12px;
+  letter-spacing: .04em;
+  text-transform: uppercase
+}
+
+.comment-panel-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 10px;
+  min-width: 268px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px
+}
+
+.comment-panel-list .comment-card {
+  box-shadow: none
+}
+
+.comment-panel-leer {
+  color: var(--md);
+  font-size: 12px;
+  line-height: 1.5;
+  padding: 10px 4px;
+  opacity: .7
+}
+
+/* Der Griff an der Kante. Fest am Fenster: so kostet er keine
+   Blattbreite und bleibt beim Rollen liegen, wo der Daumen ihn sucht. */
+.comment-tab {
+  position: fixed;
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 1240;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 10px 6px;
+  border: 1px solid var(--sb2);
+  border-right: none;
+  border-radius: 9px 0 0 9px;
+  background: var(--sc);
+  color: var(--md);
+  cursor: pointer;
+  box-shadow: -3px 0 12px rgba(0, 0, 0, .35)
+}
+
+.comment-tab:hover {
+  color: var(--hi)
+}
+
+.comment-tab-icon {
+  font-size: 14px;
+  line-height: 1
+}
+
+.comment-tab-count {
+  font-family: 'DM Mono', 'Consolas', monospace;
+  font-size: 10px;
+  line-height: 1
+}
+
+@media (any-pointer: coarse) {
+
+  .comment-tab {
+    padding: 14px 9px
+  }
+}
+
+/* Die einzelne schwebende Karte, wenn der Rand zu schmal ist */
+.comment-card.schwebend {
+  position: fixed;
+  z-index: 1290;
+  box-shadow: 0 6px 22px rgba(0, 0, 0, .5)
+}
+
+.comment-card-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 4px
+}
+
+.comment-card-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0
+}
+
+.comment-card-author {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--hi);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap
+}
+
+.comment-card-time {
+  font-size: 10px;
+  color: var(--lo);
+  margin-left: auto;
+  flex-shrink: 0
+}
+
+.comment-card-text {
+  font-size: 12.5px;
+  line-height: 1.4;
+  color: var(--hi);
+  white-space: pre-wrap;
+  word-break: break-word
+}
+
+.comment-replies {
+  margin-top: 5px;
+  padding-top: 5px;
+  border-top: 1px solid var(--sb2)
+}
+
+.comment-reply {
+  display: flex;
+  gap: 5px;
+  font-size: 11.5px;
+  padding: 2px 0
+}
+
+.comment-reply-author {
+  font-weight: 600;
+  color: var(--md);
+  flex-shrink: 0
+}
+
+.comment-reply-text {
+  color: var(--hi);
+  word-break: break-word
+}
+
+.comment-reply-edit {
+  background: none;
+  border: none;
+  color: var(--lo);
+  cursor: pointer;
+  font-size: 11px;
+  padding: 0 2px;
+  margin-left: auto;
+  flex-shrink: 0
+}
+
+.comment-reply-edit:hover {
+  color: var(--gold)
+}
+
+.comment-card-edited {
+  font-size: 10px;
+  color: var(--lo);
+  font-style: italic
+}
+
+.comment-card-btns {
+  display: flex;
+  gap: 3px;
+  margin-top: 6px;
+  flex-wrap: wrap
+}
+
+.comment-card-btns .sm-action {
+  font-size: 10.5px;
+  padding: 2px 7px;
+  border: 1px solid var(--sb2);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--md);
+  cursor: pointer
+}
+
+.comment-card-btns .sm-action:hover {
+  background: var(--sh2);
+  color: var(--hi)
+}
+
+.comment-card-btns .sm-action.danger:hover {
+  background: rgba(198, 40, 40, .18);
+  border-color: #c62828;
+  color: #ff8a80
+}
+
+/* ── Der Knopf an der Auswahl ─────────────────────────────────────── */
+.comment-add-pop {
+  position: fixed;
+  z-index: 1295;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 11px;
+  border-radius: 7px;
+  background: var(--sc);
+  border: 1px solid var(--sb2);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, .45);
+  color: var(--hi);
+  font-size: 12px;
+  cursor: pointer
+}
+
+.comment-add-pop:hover {
+  border-color: var(--gold)
+}
+
+.comment-add-pop-icon {
+  font-size: 13px;
+  line-height: 1
+}
+
+/* ── Die markierte Stelle im Text ─────────────────────────────────────
+   >>> Warum sie im Ruhezustand fast unsichtbar ist <<<
+   Eine dauerhaft gelb hinterlegte Stelle liest sich wie ein Fehler im
+   Text. Sichtbar bleibt nur ein feiner Strich darunter – damit man sie
+   ueberhaupt findet. Farbe bekommt sie erst, wenn man darueber schwebt
+   oder mit der Schreibmarke darin steht (.j-aktiv / .j-cursor, gesetzt
+   in ui/comments.js). */
+.j-text .j-comment-mark {
+  background: transparent;
+  border-bottom: 1px solid rgba(190, 140, 40, .45);
+  border-radius: 2px;
+  cursor: pointer;
+  transition: background .14s, border-color .14s
+}
+
+.j-text .j-comment-mark:hover,
+.j-text .j-comment-mark.j-aktiv,
+.j-text .j-comment-mark.j-cursor {
+  background: rgba(255, 196, 61, .42);
+  border-bottom-color: rgba(214, 158, 46, .9)
+}
+
+.j-text .j-comment-mark.j-resolved {
+  border-bottom-color: rgba(120, 150, 120, .4)
+}
+
+.j-text .j-comment-mark.j-resolved:hover,
+.j-text .j-comment-mark.j-resolved.j-aktiv,
+.j-text .j-comment-mark.j-resolved.j-cursor {
+  background: rgba(120, 170, 120, .28)
+}
+
+@media (any-pointer: coarse) {
+  .comment-card-btns .sm-action {
+    padding: 5px 9px
+  }
+
+  .comment-add-pop {
+    padding: 9px 14px;
+    font-size: 13px
+  }
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   VERWEISE IM SEITENTEXT
+
+   Sie sehen aus wie im Web – unterstrichen und in der Goldfarbe der App –
+   aber sie verhalten sich wie TEXT: ein gewoehnlicher Klick setzt die
+   Schreibmarke, geoeffnet wird mit Strg und Klick (ui/links.js). Der
+   Zeiger wechselt deshalb auch erst dann; ein Zeigefinger, der nichts
+   tut, waere ein Versprechen, das keiner einloest.
+   ══════════════════════════════════════════════════════════════════════ */
+
+/* ── Ein Verweis ist blau ────────────────────────────────────────────
+   Das kennt jeder, und es soll auch so bleiben.
+
+   >>> Was daran einmal falsch war, und wo es behoben ist <<<
+   Nicht die Farbe – das Weiterschreiben. Wer hinter einem Verweis
+   weitertippte, schrieb in Blau weiter statt in seiner eigenen Farbe.
+   Der Grund lag nicht hier, sondern in ui/toolbar.js: queryCommandValue
+   liefert die BERECHNETE Farbe an der Marke, und die ist neben einem
+   Verweis eben dieses Blau. Die App hielt es fuer die gewaehlte
+   Textfarbe und schrieb damit weiter.
+
+   Kurz: die Farbe hier ist Darstellung, keine Textfarbe. Wer sie
+   ausliest, muss den Verweis ueberspringen – siehe farbeUnterMarke(). */
+.j-text a[href] {
+  color: #2a5fa8;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  text-decoration-thickness: 1px;
+  cursor: text;
+}
+
+/* Mit gedruecktem Strg tut ein Klick etwas – dann darf man es auch
+   sehen. */
+.links-aktiv .j-text a[href] {
+  cursor: pointer;
+  background: rgba(42, 95, 168, .12);
+  border-radius: 2px;
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   DER ZÄHLER UNTEN LINKS  (ui/wordCount.js)
+
+   >>> Er liegt NIE auf dem Blatt <<<
+   Zuerst hing er frei in der linken unteren Ecke der Blattspalte – und
+   damit je nach Fensterbreite, Zoom und geöffneter Navigation halb über
+   dem weissen Papier. Genau so wurde es gemeldet.
+
+   Eine Rechnung wäre nicht zu halten gewesen: „links neben das Blatt,
+   wenn dort Platz ist" hängt an Fensterbreite, Zoom, Navigation und
+   Kommentarleiste zugleich, und bei einem schmalen Fenster gibt es den
+   Rand gar nicht. Irgendwann läge das Schild wieder auf dem Papier.
+
+   Deshalb steht es JETZT ausserhalb: eine eigene, schmale Zeile UNTER
+   dem Rollbereich. Sie gehört zur Spalte, nicht zur Seite – damit kann
+   sie das Blatt gar nicht mehr berühren, in keiner Stellung. Sie kostet
+   das Blatt ein paar Bildpunkte Höhe; das ist der Preis dafür, dass die
+   Frage ein für alle Mal beantwortet ist.
+
+   Ruhig gehalten: halbdurchsichtig, bis man mit dem Zeiger hingeht. Sie
+   steht neben dem Text und darf beim Lesen nicht mitreden.
+   ══════════════════════════════════════════════════════════════════════ */
+/* Die Zeile sitzt am Fuss der Blattspalte. Damit der Knopf „Neue Seite"
+   nicht auf ihr liegt, hängt er ab jetzt an DIESER Spalte statt am
+   ganzen Fenster (er hatte nie einen gesetzten Vorfahren) und steht um
+   die Höhe der Zeile darüber. Nebenbei sitzt er dadurch mittig über dem
+   BLATT statt mittig im Fenster – bei offener Navigation ist das ein
+   sichtbarer Unterschied, und die richtigere Stelle. */
+.editor-col {
+  position: relative
+}
+
+.letzte-leer {
+  bottom: 24px
+}
+
+.count-bar {
+  flex: none;
+  display: flex;
+  align-items: center;
+  /* Dieselbe Farbe wie der Rollbereich darüber: die Zeile soll wie ein
+     Stück des dunklen Umfelds wirken, nicht wie ein eigener Balken. */
+  background: #1a1a24;
+  border-top: 1px solid var(--sb);
+  padding: 0 12px;
+  min-height: 24px
+}
+
+.count-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 0;
+  border: none;
+  background: none;
+  color: var(--md);
+  font-family: 'DM Mono', 'Consolas', 'Courier New', monospace;
+  font-size: 10.5px;
+  letter-spacing: .02em;
+  white-space: nowrap;
+  cursor: pointer;
+  opacity: .55;
+  transition: opacity .15s, color .15s
+}
+
+.count-badge:hover {
+  opacity: 1;
+  color: var(--hi)
+}
+
+.count-badge-sep {
+  color: var(--lo)
+}
+
+@media (max-width: 700px) {
+  .count-bar {
+    padding: 0 8px;
+    min-height: 22px
+  }
+
+  .count-badge {
+    font-size: 10px
+  }
+}
+
+/* ── Die Aufstellung in der Mitte ─────────────────────────────────── */
+.count-modal {
+  min-width: 340px;
+  max-width: 420px
+}
+
+.count-body {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  max-height: 60vh;
+  overflow-y: auto
+}
+
+.count-group {
+  font-size: 10px;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  color: var(--gd);
+  padding: 14px 0 6px
+}
+
+.count-group:first-child {
+  padding-top: 2px
+}
+
+.count-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 5px 0;
+  border-bottom: 1px solid var(--sb)
+}
+
+.count-row:last-child {
+  border-bottom: none
+}
+
+.count-row-name {
+  color: var(--md);
+  font-size: 13px
+}
+
+.count-row-val {
+  font-family: 'DM Mono', 'Consolas', 'Courier New', monospace;
+  font-size: 13px;
+  color: var(--hi);
+  font-variant-numeric: tabular-nums
+}
+
+/* Die drei, um die es meistens geht, etwas kräftiger */
+.count-row.stark .count-row-name {
+  color: var(--hi)
+}
+
+.count-row.stark .count-row-val {
+  color: var(--gold);
+  font-size: 15px
+}
+
+.count-empty {
+  color: var(--md);
+  font-size: 13px;
+  padding: 8px 0
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   DER CHAT  (ui/chat.js)
+
+   Gebaut wie die Kommentarleiste darüber: ein Flex-Kind, das von 0 auf
+   seine Breite wächst und damit das Blatt zur Seite schiebt, statt sich
+   darüberzulegen. Die Maße sind bewusst dieselben – die beiden Leisten
+   sitzen an derselben Kante und schließen einander aus, und dann darf
+   das Blatt beim Wechsel nicht springen.
+   ══════════════════════════════════════════════════════════════════════ */
+.chat-panel {
+  display: flex;
+  flex-shrink: 0;
+  background: var(--sp);
+  border-left: 1px solid var(--sb)
+}
+
+.chat-panel-inner {
+  width: 0;
+  overflow: hidden;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  transition: width .2s ease
+}
+
+.chat-panel.open .chat-panel-inner {
+  width: 268px
+}
+
+.chat-panel-head {
+  padding: 9px 10px 7px 12px;
+  border-bottom: 1px solid var(--sb);
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  min-width: 268px;
+  color: var(--md);
+  font-size: 12px;
+  letter-spacing: .04em;
+  text-transform: uppercase
+}
+
+.chat-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 10px;
+  min-width: 268px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--sb2) transparent
+}
+
+/* Ein Gespräch fängt UNTEN an. Bei drei Nachrichten klebten sie sonst
+   oben und der Rest war leer – das sieht aus wie eine Liste, nicht wie
+   ein Gespräch. Der leere Vorlauf schiebt sie nach unten und ist beim
+   Überlaufen von selbst weg (er hat keine eigene Höhe). */
+.chat-list::before {
+  content: '';
+  margin-top: auto
+}
+
+/* Der Chat darf nicht. Kein Toast, sondern ein Kasten IN der Leiste:
+   dort steht die Frage, dort gehoert die Antwort hin – und ein Toast
+   waere weg, bevor man ihn zu Ende gelesen hat. */
+.chat-gesperrt {
+  margin: auto 0 0;
+  padding: 9px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--sb2);
+  background: var(--sh2);
+  color: var(--md);
+  font-size: 12px;
+  line-height: 1.5
+}
+
+.chat-compose textarea:disabled,
+.chat-send:disabled {
+  opacity: .4;
+  cursor: not-allowed
+}
+
+.chat-send:disabled:hover {
+  background: var(--sh2);
+  border-color: var(--sb2);
+  color: var(--md)
+}
+
+.chat-leer {
+  color: var(--md);
+  font-size: 12px;
+  padding: 10px 4px;
+  opacity: .7
+}
+
+/* ── Eine Nachricht ──────────────────────────────────────────────────
+   Abzeichen links, Blase rechts. Die eigenen kehren die Reihenfolge um
+   und rücken nach rechts – das kennt jeder, und man erkennt seine
+   eigenen Zeilen, ohne den Namen zu lesen. */
+.chat-msg {
+  display: flex;
+  align-items: flex-end;
+  gap: 6px;
+  max-width: 100%
+}
+
+.chat-msg.selbst {
+  flex-direction: row-reverse
+}
+
+.chat-face {
+  width: 22px;
+  height: 22px;
+  flex: none;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-family: 'DM Mono', 'Consolas', 'Courier New', monospace;
+  font-size: 9px;
+  color: #fff;
+  border: 1.5px solid var(--sp);
+  user-select: none;
+  cursor: default
+}
+
+.chat-face.klein {
+  width: 18px;
+  height: 18px;
+  font-size: 8px;
+  margin-right: -6px
+}
+
+.chat-bubble {
+  background: var(--sh2);
+  border: 1px solid var(--sb);
+  border-radius: 10px 10px 10px 3px;
+  padding: 6px 9px 4px;
+  min-width: 0;
+  max-width: 190px
+}
+
+.chat-msg.selbst .chat-bubble {
+  background: var(--sb);
+  border-radius: 10px 10px 3px 10px
+}
+
+.chat-text {
+  color: var(--hi);
+  font-size: 13px;
+  line-height: 1.45;
+  /* Ein langes Wort ohne Leerzeichen (eine Adresse) sprengt die Blase
+     sonst über die Leistenbreite hinaus. */
+  overflow-wrap: anywhere;
+  white-space: pre-wrap
+}
+
+.chat-time {
+  display: block;
+  text-align: right;
+  margin-top: 1px;
+  font-family: 'DM Mono', 'Consolas', 'Courier New', monospace;
+  font-size: 9px;
+  color: var(--lo)
+}
+
+/* ── Das Zitat über einer Antwort ────────────────────────────────────
+   In der Blase, mit einem farbigen Strich links – dasselbe Bild wie in
+   jedem Nachrichtenprogramm. Ein Klick springt zur gemeinten Zeile;
+   deshalb ein <button> und kein <div>: er ist mit der Tastatur
+   erreichbar und sagt von sich aus, dass er etwas tut. */
+.chat-zitat {
+  display: block;
+  width: 100%;
+  text-align: left;
+  margin: 0 0 4px;
+  padding: 3px 6px;
+  background: rgba(255, 255, 255, .045);
+  border: none;
+  border-left: 2px solid var(--gold);
+  border-radius: 3px;
+  cursor: pointer;
+  font-family: inherit
+}
+
+.chat-zitat:hover {
+  background: rgba(255, 255, 255, .09)
+}
+
+.chat-zitat-wer {
+  display: block;
+  font-size: 10px;
+  color: var(--gold);
+  line-height: 1.4
+}
+
+.chat-zitat-text {
+  display: block;
+  font-size: 11px;
+  color: var(--md);
+  line-height: 1.35;
+  /* Zwei Zeilen reichen, um sie wiederzuerkennen. Der ganze Satz stünde
+     sonst zweimal da – einmal als Zitat und einmal weiter oben. */
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  overflow-wrap: anywhere
+}
+
+/* Kurz hervorgehoben, wenn ein Klick aufs Zitat hierher gesprungen ist */
+.chat-msg.gefunden .chat-bubble {
+  animation: chat-gefunden 1.6s ease-out
+}
+
+@keyframes chat-gefunden {
+  0%, 55% { box-shadow: 0 0 0 2px var(--gold) }
+  100% { box-shadow: 0 0 0 2px transparent }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chat-msg.gefunden .chat-bubble {
+    animation: none;
+    box-shadow: 0 0 0 2px var(--gold)
+  }
+}
+
+/* ── Antworten und Zurücknehmen ──────────────────────────────────────
+   Neben der Blase, nicht darin: sie gehören zur Zeile und nicht zum
+   Gesagten. Mit der Maus erscheinen sie beim Darüberfahren – in einem
+   Gespräch bedürfen die meisten Zeilen keiner Bedienung, und zwei
+   Knöpfe an jeder wären Lärm.
+
+   Sie nehmen ihren Platz IMMER ein (visibility statt display): sonst
+   spränge die Blase beim Darüberfahren zur Seite, und man träfe den
+   Knopf nicht, den man gerade ansteuert. */
+.chat-akt {
+  display: flex;
+  align-items: center;
+  gap: 1px;
+  flex: none;
+  visibility: hidden;
+  opacity: 0;
+  transition: opacity .12s
+}
+
+.chat-msg:hover .chat-akt,
+.chat-msg:focus-within .chat-akt {
+  visibility: visible;
+  opacity: 1
+}
+
+.chat-akt-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  background: transparent;
+  border: none;
+  border-radius: 5px;
+  color: var(--lo);
+  cursor: pointer
+}
+
+.chat-akt-btn:hover {
+  background: var(--sh2);
+  color: var(--hi)
+}
+
+.chat-akt-btn.gefahr:hover {
+  color: #d9534f
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   MIT DEM FINGER: WISCHEN UND LANGES DRÜCKEN
+
+   Ein Finger fährt nicht über etwas, ohne es zu berühren. Die Knöpfe
+   standen deshalb auf dem Tablet dauerhaft da – an jeder Zeile, also in
+   einem Gespräch von zwanzig Zeilen vierzig Knöpfe, die man nie braucht.
+
+   Stattdessen die zwei Gesten, die auf einem Telefon jeder kennt: nach
+   rechts wischen antwortet, langes Drücken öffnet das Menü. Die Handgriffe
+   dafür stehen in ui/chat.js.
+   ══════════════════════════════════════════════════════════════════════ */
+
+/* Senkrecht gehört der Liste, waagerecht der Geste. Ohne das macht der
+   Browser aus dem gezogenen Finger ein Rollen und bricht die Geste mit
+   pointercancel ab – dieselbe Falle wie beim Tabellenraster. */
+.chat-msg {
+  touch-action: pan-y;
+  position: relative
+}
+
+/* Federt zurück, wenn der Finger loslässt. Während der Bewegung ist der
+   Übergang aus: sonst liefe die Zeile dem Finger hinterher. */
+.chat-msg:not(.wischt) {
+  transition: transform .18s ease-out
+}
+
+/* Das Zeichen, das unter der weggeschobenen Zeile zum Vorschein kommt.
+   Blass, solange die Schwelle nicht erreicht ist, und golden, sobald ein
+   Loslassen wirklich antworten würde – so weiss man es VOR dem Loslassen. */
+.chat-msg::before {
+  content: '↩';
+  position: absolute;
+  left: -26px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 15px;
+  color: var(--lo);
+  opacity: 0;
+  transition: opacity .12s, color .12s;
+  pointer-events: none
+}
+
+.chat-msg.selbst::before {
+  /* Die eigenen Zeilen stehen rechts; das Zeichen gehört trotzdem an die
+     Seite, aus der gewischt wird. */
+  left: auto;
+  right: calc(100% + 8px)
+}
+
+.chat-msg.wischt::before {
+  opacity: 1
+}
+
+.chat-msg.reif::before {
+  color: var(--gold)
+}
+
+/* Die Knöpfe daneben gibt es mit dem Finger nicht – dort wischt und
+   drückt man. Sie bleiben für Maus und Trackpad. */
+@media (any-pointer: coarse) {
+  .chat-akt-btn {
+    width: 32px;
+    height: 32px
+  }
+}
+
+/* ── Worauf gerade geantwortet wird ──────────────────────────────────
+   Über dem Eingabefeld, damit es beim Rollen der Liste stehen bleibt –
+   dieselbe Stelle wie „wer gerade tippt". */
+.chat-antwort-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  min-width: 268px;
+  flex-shrink: 0;
+  border-top: 1px solid var(--sb);
+  background: var(--sh2)
+}
+
+.chat-antwort-marke {
+  width: 2px;
+  align-self: stretch;
+  border-radius: 1px;
+  background: var(--gold);
+  flex: none
+}
+
+.chat-antwort-inhalt {
+  min-width: 0;
+  flex: 1
+}
+
+.chat-antwort-wer {
+  display: block;
+  font-size: 10px;
+  color: var(--gold)
+}
+
+.chat-antwort-text {
+  display: block;
+  font-size: 11px;
+  color: var(--md);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis
+}
+
+.chat-antwort-weg {
+  flex: none;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  background: transparent;
+  border: none;
+  border-radius: 5px;
+  color: var(--lo);
+  font-size: 12px;
+  cursor: pointer
+}
+
+.chat-antwort-weg:hover {
+  background: var(--sb);
+  color: var(--hi)
+}
+
+@media (any-pointer: coarse) {
+  .chat-antwort-weg {
+    width: 32px;
+    height: 32px
+  }
+}
+
+/* ── Wer gerade tippt ────────────────────────────────────────────────
+   Über dem Eingabefeld und nicht in der Liste: die Liste rollt, und die
+   Anzeige soll immer zu sehen sein. */
+.chat-typing {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 12px 6px;
+  min-width: 268px;
+  flex-shrink: 0
+}
+
+.chat-typing-faces {
+  display: inline-flex;
+  align-items: center;
+  padding-right: 6px
+}
+
+.chat-dots {
+  display: inline-flex;
+  gap: 3px;
+  align-items: center
+}
+
+.chat-dots i {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--md);
+  animation: chat-dot 1.1s infinite ease-in-out
+}
+
+.chat-dots i:nth-child(2) {
+  animation-delay: .18s
+}
+
+.chat-dots i:nth-child(3) {
+  animation-delay: .36s
+}
+
+@keyframes chat-dot {
+  0%, 60%, 100% {
+    opacity: .25;
+    transform: translateY(0)
+  }
+  30% {
+    opacity: 1;
+    transform: translateY(-3px)
+  }
+}
+
+/* Wer die Bewegung im System abgestellt hat, bekommt sie auch hier
+   nicht. Die Punkte bleiben trotzdem stehen – sie SIND die Auskunft. */
+@media (prefers-reduced-motion: reduce) {
+  .chat-dots i {
+    animation: none;
+    opacity: .6
+  }
+}
+
+/* ── Das Eingabefeld ─────────────────────────────────────────────── */
+.chat-compose {
+  display: flex;
+  align-items: flex-end;
+  gap: 6px;
+  padding: 8px 10px 10px;
+  min-width: 268px;
+  flex-shrink: 0;
+  border-top: 1px solid var(--sb)
+}
+
+.chat-compose textarea {
+  flex: 1;
+  min-width: 0;
+  resize: none;
+  background: var(--sh2);
+  border: 1px solid var(--sb2);
+  border-radius: 8px;
+  padding: 7px 9px;
+  color: var(--hi);
+  font-family: 'Crimson Pro', serif;
+  font-size: 14px;
+  line-height: 1.4;
+  outline: none;
+  max-height: 120px
+}
+
+.chat-compose textarea:focus {
+  border-color: var(--gd)
+}
+
+.chat-send {
+  flex: none;
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  border: 1px solid var(--sb2);
+  background: var(--sh2);
+  color: var(--md);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background .15s, color .15s, border-color .15s
+}
+
+.chat-send:hover {
+  background: var(--gold);
+  border-color: transparent;
+  color: var(--sh)
+}
+
+/* ── Die Ikone in der Leiste über dem Dokument ─────────────────────
+   Neben den Abzeichen der Anwesenden, weil sie zu ihnen gehört: sie ist
+   nur da, wenn auch sie da sind. */
+.chat-open-btn {
+  position: relative;
+  flex: none;
+  width: 26px;
+  height: 26px;
+  border-radius: 7px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--md);
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background .15s, color .15s, border-color .15s
+}
+
+.chat-open-btn:hover {
+  color: var(--hi);
+  background: var(--sh2)
+}
+
+.chat-open-btn.aktiv {
+  color: var(--gold);
+  border-color: var(--gd);
+  background: var(--sh2)
+}
+
+/* Ungelesenes: ein Punkt, keine Zahl. Wie viele es sind, sagt einem im
+   Gespräch zu zweit nichts, was man nicht gleich selbst sieht. */
+.chat-open-dot {
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--gold);
+  border: 1.5px solid var(--bg)
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   DIE ANKREUZLISTE IST WIRKLICH ANZUKREUZEN
+
+   Vorher war das ✓ ein blosses Aufzaehlungszeichen (list-style-type):
+   es stand da, aber niemand konnte es setzen oder wegnehmen. Jetzt ist
+   das Kaestchen ein ::before am Punkt, und ein Klick darauf schaltet
+   `j-erledigt` um (core/lists.js).
+
+   Der Haken gehoert zum INHALT, nicht zur Anzeige: ob eine Aufgabe
+   erledigt ist, sollen alle sehen und das Heft soll es behalten.
+   Deshalb steht j-erledigt in der Erlaubnisliste von core/sanitize.js.
+   ══════════════════════════════════════════════════════════════════════ */
+.j-text ul.j-list-check {
+  list-style-type: none;
+  padding-left: 1.6em;
+}
+
+.j-text ul.j-list-check > li {
+  position: relative;
+}
+
+.j-text ul.j-list-check > li::before {
+  content: '';
+  position: absolute;
+  left: -1.35em;
+  top: calc((var(--lh, 32px) - 15px) / 2);
+  width: 13px;
+  height: 13px;
+  border: 1.5px solid #9a917f;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, .55);
+  /* Der Klick trifft das Kaestchen, nicht den Text daneben */
+  cursor: pointer;
+  pointer-events: auto;
+}
+
+.j-text ul.j-list-check > li.j-erledigt::before {
+  background: #2e8a46;
+  border-color: #2e8a46;
+}
+
+/* Der Haken selbst – ein gedrehtes Winkelstueck, damit keine Schrift
+   noetig ist, die auf einem anderen Rechner fehlen koennte. */
+.j-text ul.j-list-check > li.j-erledigt::after {
+  content: '';
+  position: absolute;
+  left: -1.02em;
+  top: calc((var(--lh, 32px) - 15px) / 2 + 2px);
+  width: 4px;
+  height: 8px;
+  border: solid #fff;
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+  pointer-events: none;
+}
+
+.j-text ul.j-list-check > li.j-erledigt {
+  color: #8b8578;
+  text-decoration: line-through;
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   DIE UNSICHTBARE TEXTEBENE ÜBER EINER FOLIE  ―  core/importExport.js
+
+   Eine Seite aus einem PDF-Import ist ein Bild. Der Text des PDF liegt
+   unsichtbar darueber, an genau der Stelle, an der er im Bild zu sehen
+   ist: die Suche findet ihn, markieren und kopieren geht, und gesehen
+   wird nichts davon.
+
+   >>> Warum transparent und nicht versteckt <<<
+   display:none oder visibility:hidden waere gar nicht auszuwaehlen –
+   und genau das Auswaehlen ist der Zweck. Transparente Schrift steht
+   im Layout, laesst sich markieren und kopieren, ist aber nicht zu
+   sehen. Die Auswahl selbst zeichnet der Browser trotzdem.
+   ══════════════════════════════════════════════════════════════════════ */
+/* Die negativen Masse sind genau die Einrueckungen von .j-text
+   (top 64, left 72, right 32, bottom 24) mit umgekehrtem Vorzeichen:
+   der Behaelter deckt damit das GANZE Blatt, nicht nur den Textbereich.
+
+   Das muss so sein, weil das Seitenbild ueber die volle Blattbreite
+   geht. Sonst liesse sich alles, was im linken Rand steht, gar nicht
+   ansteuern – dort waeren die Koordinaten negativ, und die Bereinigung
+   laesst nichts Negatives durch (istAbstand). Genau daran ist der erste
+   Anlauf gescheitert: von zwei Zeilen kam keine an.
+
+   Die Stellen darin sind deshalb in BLATT-Koordinaten gerechnet, so wie
+   das Bild auch (core/importExport.js, folienTextEbene). */
+.j-text .j-folie {
+  position: absolute;
+  left: -72px;
+  top: -64px;
+  right: -32px;
+  bottom: -24px;
+  /* Die Ebene selbst faengt nichts ab; nur ihre Stellen tun das. Sonst
+     laege ueber dem ganzen Blatt ein Fangnetz, und ein Klick daneben
+     setzte die Schreibmarke nicht mehr. */
+  pointer-events: none;
+  /* Hinter dem gewoehnlichen Text, vor dem Bild */
+  z-index: 1;
+}
+
+.j-text .j-folie .j-folie-z {
+  position: absolute;
+  white-space: pre;
+  color: transparent;
+  /* Auswaehlen ja – dafuer ist sie da */
+  pointer-events: auto;
+  cursor: text;
+  /* Die Zeile soll genau so hoch sein wie die Schrift, sonst sitzt der
+     Auswahlrahmen ueber oder unter dem Wort im Bild. */
+  line-height: 1;
+  font-family: 'Crimson Pro', Georgia, serif;
+  transform-origin: left top;
+}
+
+/* Beim Zeichnen kommt der Folientext nicht in die Quere: die
+   Zeichenflaeche liegt auf z-index 1100 und damit ueber dem Textfeld
+   (1000). Wer den Stift fuehrt, trifft sie und nicht die Ebene – dafuer
+   braucht es hier keine eigene Regel. */
+
+/* ══════════════════════════════════════════════════════════════════════
+   DER CODE-KASTEN  ―  core/code.js
+
+   Er steckt im Koerper eines Objekts und liegt damit auf dem Blatt wie
+   ein Bild: verschiebbar, zu vervielfaeltigen, zu loeschen. Dunkel ist
+   die Voreinstellung – wer programmiert, liest Code so am schnellsten;
+   `hell` macht daraus die helle Fassung, fuer den Ausdruck.
+
+   Die Farben sind Dark+ bzw. Light+ aus Visual Studio Code. Sie sind
+   bewusst nicht an die Papierfarben angeglichen: ein Codeblock IST ein
+   Fremdkoerper auf dem Blatt und soll auch so aussehen.
+   ══════════════════════════════════════════════════════════════════════ */
+.j-code-obj {
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border-radius: 6px;
+  background: #1e1e1e;
+  color: #d4d4d4;
+  border: 1px solid #2d2d2d;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, .18);
+  font-family: 'DM Mono', Consolas, 'Courier New', monospace;
+  font-size: 13px;
+  line-height: 19px;
+}
+
+.j-code-obj.hell {
+  background: #fbfaf6;
+  color: #2b2b2b;
+  border-color: #ded6c6;
+}
+
+/* Die schmale Leiste mit dem Sprachnamen – wie der Reiter einer Datei */
+.j-code-obj-kopf {
+  height: 24px;
+  flex: 0 0 24px;
+  display: flex;
+  align-items: center;
+  padding: 0 10px;
+  font-size: 10px;
+  letter-spacing: .6px;
+  text-transform: uppercase;
+  color: #8a8a8a;
+  background: #252526;
+  border-bottom: 1px solid #2d2d2d;
+}
+
+.j-code-obj.hell .j-code-obj-kopf {
+  color: #8b8578;
+  background: #f2efe7;
+  border-bottom-color: #e2dccd;
+}
+
+/* Der Kasten ist ein FENSTER auf den Code: was nicht hineinpasst, wird
+   darin geschoben – in beide Richtungen, wie in einer
+   Entwicklungsumgebung. Umbrechen waere schlechter, eine geknickte
+   Zeile verliert ihre Stufe, und bei Python ist die Stufe alles. */
+.j-code-obj-flaeche {
+  flex: 1 1 auto;
+  display: flex;
+  padding: 12px 12px 12px 0;
+  overflow: auto;
+}
+
+/* Die Zeilennummern, wie in einer Entwicklungsumgebung */
+.j-code-obj-nrn {
+  flex: 0 0 34px;
+  text-align: right;
+  padding-right: 10px;
+  white-space: pre;
+  color: #6e7681;
+  user-select: none;
+}
+
+.j-code-obj.hell .j-code-obj-nrn { color: #b3ab99 }
+
+/* Das Textfeld nimmt die ganze Breite: sonst reicht es nur so weit wie
+   die laengste Zeile, und ein Klick RECHTS daneben landet nicht darin.
+   Beim Schreiben heisst das, man kann das Zeilenende nicht anklicken. */
+.j-code-obj-text {
+  margin: 0;
+  flex: 1 1 auto;
+  min-width: 0;
+  white-space: pre;
+  font: inherit;
+  tab-size: 4;
+  -moz-tab-size: 4;
+}
+
+/* ── Die Farben, dunkel (VS Code Dark+) ──────────────────────────── */
+.j-code-obj .j-tok-key  { color: #569cd6 }
+.j-code-obj .j-tok-text { color: #ce9178 }
+.j-code-obj .j-tok-komm { color: #6a9955; font-style: italic }
+.j-code-obj .j-tok-zahl { color: #b5cea8 }
+.j-code-obj .j-tok-fn   { color: #dcdcaa }
+.j-code-obj .j-tok-typ  { color: #4ec9b0 }
+.j-code-obj .j-tok-attr { color: #9cdcfe }
+.j-code-obj .j-tok-satz { color: #808080 }
+
+/* ── ...und hell (VS Code Light+) ────────────────────────────────── */
+.j-code-obj.hell .j-tok-key  { color: #0000ff }
+.j-code-obj.hell .j-tok-text { color: #a31515 }
+.j-code-obj.hell .j-tok-komm { color: #008000 }
+.j-code-obj.hell .j-tok-zahl { color: #098658 }
+.j-code-obj.hell .j-tok-fn   { color: #795e26 }
+.j-code-obj.hell .j-tok-typ  { color: #267f99 }
+.j-code-obj.hell .j-tok-attr { color: #e50000 }
+.j-code-obj.hell .j-tok-satz { color: #808080 }
+
+/* Der Code, waehrend er beschrieben wird (core/code.js,
+   bearbeiteImKasten). Die Marke muss sichtbar sein, und ein Rahmen sagt,
+   dass hier gerade geschrieben wird und nicht geschoben. */
+.j-code-obj-text.schreibt {
+  outline: none;
+  caret-color: #d7ba7d;
+  cursor: text;
+}
+
+/* Waehrend geschrieben wird, faengt der Kasten die Zeigerereignisse
+   selbst ab – auch die Zeilennummern und die Luft daneben. Ohne das
+   nimmt das Verschieben sie weg (canvas/objects.js). */
+.obj-wrap.code-schreibt .obj-body,
+.obj-wrap.code-schreibt .j-code-obj,
+.obj-wrap.code-schreibt .j-code-obj-flaeche {
+  pointer-events: auto;
+  cursor: text;
+}
+
+.j-code-obj:has(.j-code-obj-text.schreibt) {
+  box-shadow: 0 0 0 2px var(--gold, #c8a96e), 0 2px 10px rgba(0, 0, 0, .18);
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   EIN BILD ZUSCHNEIDEN (canvas/zuschnitt.js)
+
+   Das ganze Bild liegt abgedunkelt da, darauf ein helles Fenster mit
+   acht Griffen. Was im Fenster steht, bleibt.
+
+   >>> Warum zwei Bilder übereinander <<<
+   Das untere ist das ganze, abgedunkelt; das obere zeigt durch das
+   Fenster hindurch denselben Ausschnitt in voller Helligkeit. Ein
+   einzelnes Bild mit einer Maske daneben wäre dasselbe Ergebnis mit mehr
+   Teilen – und die Maske müsste bei jedem Zug neu berechnet werden.
+   ════════════════════════════════════════════════════════════════════ */
+
+.zuschnitt {
+  position: absolute;
+  z-index: 12;
+  pointer-events: auto;
+  touch-action: none
+}
+
+.zuschnitt-voll {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  opacity: .3;
+  /* Kein object-fit: die Hülle hat schon genau die Form des Bildes */
+  user-select: none;
+  -webkit-user-drag: none
+}
+
+.zuschnitt-fenster {
+  position: absolute;
+  overflow: hidden;
+  outline: 1.5px solid var(--gold, #c8a96e);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, .35)
+}
+
+.zuschnitt-hell {
+  position: absolute;
+  display: block;
+  user-select: none;
+  -webkit-user-drag: none
+}
+
+/* Ein Drittelraster im Fenster – dieselbe Hilfe wie in jedem
+   Bildprogramm, wenn man einen Ausschnitt sucht. */
+.zuschnitt-fenster::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    linear-gradient(to right, transparent calc(33.33% - .5px), rgba(255,255,255,.34) calc(33.33% - .5px) calc(33.33% + .5px), transparent calc(33.33% + .5px)),
+    linear-gradient(to right, transparent calc(66.66% - .5px), rgba(255,255,255,.34) calc(66.66% - .5px) calc(66.66% + .5px), transparent calc(66.66% + .5px)),
+    linear-gradient(to bottom, transparent calc(33.33% - .5px), rgba(255,255,255,.34) calc(33.33% - .5px) calc(33.33% + .5px), transparent calc(33.33% + .5px)),
+    linear-gradient(to bottom, transparent calc(66.66% - .5px), rgba(255,255,255,.34) calc(66.66% - .5px) calc(66.66% + .5px), transparent calc(66.66% + .5px))
+}
+
+/* Die Griffe sitzen als kurze Winkel AUF der Kante, nicht als Punkte
+   daneben: so sieht man, welche Kante man anfasst. */
+.zuschnitt-griff {
+  position: absolute;
+  width: 14px;
+  height: 14px;
+  z-index: 3;
+  pointer-events: auto;
+  touch-action: none;
+  background: var(--gold, #c8a96e);
+  border-radius: 2px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, .4)
+}
+
+.zuschnitt-griff.tl { left: -3px;  top: -3px;    cursor: nwse-resize }
+.zuschnitt-griff.tr { right: -3px; top: -3px;    cursor: nesw-resize }
+.zuschnitt-griff.bl { left: -3px;  bottom: -3px; cursor: nesw-resize }
+.zuschnitt-griff.br { right: -3px; bottom: -3px; cursor: nwse-resize }
+
+.zuschnitt-griff.t { left: 50%; top: -3px;    transform: translateX(-50%); cursor: ns-resize }
+.zuschnitt-griff.b { left: 50%; bottom: -3px; transform: translateX(-50%); cursor: ns-resize }
+.zuschnitt-griff.l { top: 50%;  left: -3px;   transform: translateY(-50%); cursor: ew-resize }
+.zuschnitt-griff.r { top: 50%;  right: -3px;  transform: translateY(-50%); cursor: ew-resize }
+
+/* Die beiden Knöpfe hängen unter dem Bild – über ihm läge oft schon die
+   Leiste des Objekts. */
+.zuschnitt-leiste {
+  position: absolute;
+  left: 50%;
+  top: 100%;
+  transform: translateX(-50%);
+  margin-top: 8px;
+  display: flex;
+  gap: 6px;
+  padding: 4px;
+  border-radius: 8px;
+  background: var(--sp, #2a2a33);
+  border: 1px solid var(--sb, #3a3a44);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, .4)
+}
+
+.zuschnitt-knopf {
+  min-width: 30px;
+  min-height: 30px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text, #e8e4dc);
+  font-size: 15px;
+  cursor: pointer;
+  line-height: 1
+}
+
+.zuschnitt-knopf:hover {
+  background: var(--sh2, #3a3a44)
+}
+
+.zuschnitt-knopf.ja {
+  background: var(--gold, #c8a96e);
+  color: #201c16
+}
+
+.zuschnitt-knopf.ja:hover {
+  filter: brightness(1.1)
+}
+
+/* Solange geschnitten wird, stoeren die Griffe des Objekts nur – man
+   wuerde das Bild verschieben, statt den Ausschnitt zu waehlen. */
+.obj-wrap.schneidet .obj-handle,
+.obj-wrap.schneidet .obj-bar {
+  display: none !important
+}

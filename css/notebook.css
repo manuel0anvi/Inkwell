@@ -276,196 +276,23 @@
   transform-origin: top left;
 }
 
-.j-page {
-  position: relative;
-  width: 794px;
-  min-height: 1123px;
-  box-shadow: var(--shad);
-  flex-shrink: 0;
-  overflow: hidden;
-}
+/* ══════════════════════════════════════════════════════════════════════
+   DIE SEITE SELBST STEHT IN css/pages.css
 
-.j-page.bg-ruled,
-.j-page.bg-grid,
-.j-page.bg-dots {
-  background: var(--paper);
-}
+   Hier stand eine Abschrift der Seitenregeln aus der App – Papier, Kopf,
+   Text, Überschriften, Bilder. Sie war auf dem Stand von damals stehen
+   geblieben: Tabellen, Formeln, Formen, Code-Kästen, Aufzählungen,
+   Ankreuzlisten und Ausrichtung kamen nie an. Seither lädt die Website
+   die Regeln der App selbst (css/pages.css, erzeugt von
+   npm run sync-share), und hier bleibt nur, was es allein im Web gibt.
 
-.j-page.bg-blank {
-  background: #fff;
-}
+   Diese Datei wird NACH pages.css geladen und gewinnt bei Gleichstand.
+   Deshalb hier keine Seitenregel wieder hineinschreiben – sie überdeckte
+   die der App still.
+   ══════════════════════════════════════════════════════════════════════ */
 
-.j-page.bg-craft {
-  background: #f0e8d5;
-}
-
-.j-page.bg-ruled::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  z-index: 1;
-  background-image: repeating-linear-gradient(to bottom, transparent, transparent 31px, var(--pl) 31px, var(--pl) 32px);
-  background-position: 0 83px;
-}
-
-.j-page.bg-grid::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  z-index: 1;
-  background-image: linear-gradient(to bottom, var(--pg) 1px, transparent 1px), linear-gradient(to right, var(--pg) 1px, transparent 1px);
-  background-size: 24px 24px;
-  background-position: 0 75px, 0 0;
-}
-
-.j-page.bg-dots::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  z-index: 1;
-  background-image: radial-gradient(circle, var(--pg) 1.2px, transparent 1.2px);
-  background-size: 24px 24px;
-  background-position: 0 63px;
-}
-
-.j-page.bg-ruled::after {
-  content: '';
-  position: absolute;
-  left: 64px;
-  top: 0;
-  bottom: 0;
-  width: 1px;
-  background: var(--pm);
-  pointer-events: none;
-  z-index: 1;
-}
-
-.j-page-hdr {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 56px;
-  border-bottom: 2px solid var(--pl);
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0 72px;
-  z-index: 1300;
-  pointer-events: none;
-}
-
-.j-page-num,
-.j-page-date {
-  font-family: 'DM Mono', 'Consolas', 'Courier New', monospace;
-  font-size: 9px;
-  color: #b0a898;
-  letter-spacing: .5px;
-}
-
-.j-canvas {
-  position: absolute;
-  top: 0;
-  left: 0;
-  z-index: 1100;
-  display: block;
-}
-
-.j-text {
-  position: absolute;
-  top: 64px;
-  left: 72px;
-  right: 32px;
-  bottom: 24px;
-  z-index: 1000;
-  outline: none;
-  font-family: 'Crimson Pro', Georgia, 'Times New Roman', serif;
-  font-size: 17px;
-  line-height: 32px;
-  padding-top: 19px;
-  color: var(--ptx);
-  word-break: break-word;
-  overflow: visible;
-  pointer-events: none;
-  margin: 0;
-  white-space: pre-wrap;
-  overflow-wrap: break-word;
-  text-align: left;
-}
-
-.j-text * {
-  line-height: inherit;
-}
-
-.j-text h1,
-.j-text p.j-title-1 {
-  font-family: 'Cormorant Garamond', 'Crimson Pro', Georgia, serif;
-  font-weight: 400;
-  font-style: italic;
-  color: #2a1f14;
-  display: block;
-  line-height: inherit;
-  margin: 0;
-  padding: 0;
-  border-bottom: 1px solid var(--pl);
-}
-
-.j-text h2,
-.j-text p.j-title-2 {
-  font-family: 'Crimson Pro', serif;
-  font-weight: 600;
-  color: #2a1f14;
-  display: block;
-  line-height: inherit;
-  margin: 0;
-  padding: 0;
-}
-
-.j-text h3,
-.j-text p.j-title-3 {
-  font-family: 'Crimson Pro', serif;
-  font-weight: 600;
-  font-style: italic;
-  color: #3a2e22;
-  display: block;
-  line-height: inherit;
-  margin: 0;
-  padding: 0;
-}
-
-/* Kein eigenes z-index: nur so kann ein Bild hinter den Text (1000)
-   rutschen. Die Zahl steht am einzelnen .obj-wrap – wie in der App,
-   siehe die Staffelung in src/css/pages.css. */
-.j-objects {
-  position: absolute;
-  inset: 0;
-  z-index: auto;
-  pointer-events: none;
-}
-
-.obj-wrap {
-  position: absolute;
-  z-index: 2000;
-  user-select: none;
-}
-
-/* obj.layer === 'back': hinter Text und Handschrift */
-.obj-wrap.behind {
-  z-index: 100;
-}
-
-.obj-wrap img {
-  display: block;
-  width: 100%;
-  height: 100%;
-  object-fit: contain;
-  border-radius: 2px;
-}
-
-/* Seiten-Hintergrundbild (z. B. importierte PDF-Seite) */
+/* Seiten-Hintergrundbild (z. B. importierte PDF-Seite). Die App setzt
+   dasselbe als style (src/app.js, BGIMG_STIL). */
 .j-page-bgimg {
   position: absolute;
   top: 56px;

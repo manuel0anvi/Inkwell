@@ -15,9 +15,18 @@
 
    Portiert aus:
      src/app.js             -> buildPageElement()  (appendPageDOM)
+     src/canvas/objects.js  -> buildObjectElement() (placeObject)
      src/canvas/drawing.js  -> redrawStrokes() / drawStroke()
      src/core/data.js       -> getNotebookPages()  (pagesOfSec)
      src/core/state.js      -> CFG / BG_STYLE
+
+   NICHT portiert, sondern dieselben Dateien wie in der App (erzeugt von
+   npm run sync-share, geladen vor dieser Datei):
+     js/formula.js   renderFormula / renderFormulaBody   Formeln
+     js/shapes.js    renderShapeBody                     Formen
+     js/code.js      renderCodeBody                      Code-Kästen
+     js/pdfSeiten.js PdfSeiten                           Seiten aus einem PDF
+     css/pages.css   wie eine Seite aussieht
 
    Braucht aus i18n.js: t() und die Variable lang.
    ══════════════════════════════════════════════════════════════════════ */
@@ -33,6 +42,14 @@ const BG_STYLE = {
   blank: 'background:#fff',
   craft: 'background:#f0e8d5'
 };
+
+/* Wo die Website liegt – für pdf.js, das erst bei Bedarf geholt wird.
+   Aus der Adresse DIESES Skripts und nicht aus der der Seite: s/ und
+   dashboard/ liegen zwar gleich tief, aber eine dritte Seite muss daran
+   dann nicht denken. */
+const VIEWER_BASIS = (document.currentScript && document.currentScript.src)
+  ? new URL('..', document.currentScript.src).href
+  : new URL('../', window.location.href).href;
 
 // src/canvas/text.js
 const lhForBg = (bg) => (bg === 'grid' || bg === 'dots') ? 24 : 32;
@@ -281,6 +298,165 @@ function redrawStrokes(canvas, rawStrokes, dpr) {
   }
 }
 
+/* ══════════════════════════════════════════════════════════════════════
+   EINGEFÜGTE OBJEKTE  ―  Portierung von canvas/objects.js: placeObject()
+
+   Hier stand lange nur das Bild: jedes Objekt ohne obj.src wurde
+   übersprungen. Formeln, Formen und Code-Kästen sind in der App aber
+   eigene Objekte OHNE src (core/formula.js, canvas/shapes.js,
+   core/code.js) – auf der Website fehlten sie deshalb ersatzlos.
+   Gemeldet als „mathematische Formeln werden nicht angezeigt".
+
+   Gezeichnet wird mit DENSELBEN Funktionen wie in der App. Fehlt eine
+   davon (Skript nicht geladen), bleibt nur diese eine Stelle leer und
+   nicht die ganze Seite.
+
+   Aufbau und Staffelung wie dort: die Hülle trägt nur Lage und Größe,
+   Zahl und Drehung stehen am Körper. Sonst machte die Hülle einen eigenen
+   Stapel auf, und ein Bild „hinter dem Text" läge doch davor.
+   ══════════════════════════════════════════════════════════════════════ */
+const OBJ_Z = { back: 100, front: 2000 };
+const OBJ_Z_SPAN = 700;
+
+function buildObjectElement(obj, index) {
+  if (!obj || typeof obj !== 'object') return null;
+  // Bilder aus sehr alten Heften tragen noch keine Art, nur ihr src
+  const kind = obj.kind || (obj.src ? 'image' : 'datei');
+
+  const wrap = document.createElement('div');
+  wrap.className = 'obj-wrap';
+  wrap.style.left = (Number(obj.x) || 0) + 'px';
+  wrap.style.top = (Number(obj.y) || 0) + 'px';
+  wrap.style.width = (Number(obj.w) || 200) + 'px';
+  wrap.style.height = (Number(obj.h) || 200) + 'px';
+
+  const body = document.createElement('div');
+  body.className = 'obj-body';
+  body.dataset.kind = kind;
+  // Nur ansehen: nichts auf der Seite soll Klicks abfangen
+  body.style.pointerEvents = 'none';
+  body.style.zIndex = OBJ_Z[obj.layer === 'back' ? 'back' : 'front'] + Math.min(index, OBJ_Z_SPAN - 1);
+  if (obj.rot) body.style.transform = 'rotate(' + (Number(obj.rot) || 0) + 'deg)';
+
+  try {
+    if (kind === 'image') {
+      if (!obj.src) return null;
+      const img = document.createElement('img');
+      img.alt = obj.name || '';
+      img.draggable = false;
+      // Wörtlich wie in der App, damit ein Bild hier nicht anders sitzt
+      img.style.cssText = 'display:block;width:100%;height:100%;object-fit:contain;border-radius:2px';
+      // Bilder kommen erst nach dem Layout an; ohne erneutes Messen bliebe
+      // der Skalierungs-Wrapper bei seiner vorläufigen Höhe
+      img.addEventListener('load', rescaleAllPages);
+      img.addEventListener('error', () => {
+        console.warn('[Viewer] Bild nicht darstellbar:', obj.id || obj.name || '(ohne Namen)');
+      });
+      img.src = obj.src;
+      body.appendChild(img);
+    } else if (kind === 'shape') {
+      if (typeof renderShapeBody !== 'function') return null;
+      body.innerHTML = renderShapeBody(obj);
+    } else if (kind === 'formula') {
+      if (typeof renderFormulaBody !== 'function') return null;
+      body.innerHTML = renderFormulaBody(obj);
+    } else if (kind === 'code') {
+      if (typeof renderCodeBody !== 'function') return null;
+      body.innerHTML = renderCodeBody(obj);
+    } else {
+      // Angehängte Datei. Der Name kommt von außen – deshalb als Text und
+      // nicht wie in der App ins HTML gesetzt
+      const chip = document.createElement('div');
+      chip.style.cssText = 'background:#ede8dc;border:1px solid #cfc5b0;border-radius:6px;padding:8px 14px;'
+        + 'font-size:13px;color:#4a3d2e;height:100%;display:flex;align-items:center;gap:8px';
+      chip.textContent = '📎 ' + (obj.name || 'Datei');
+      body.appendChild(chip);
+    }
+  } catch (err) {
+    console.warn('[Viewer] Objekt nicht darstellbar:', obj.id || kind, err);
+    return null;
+  }
+
+  wrap.appendChild(body);
+  return wrap;
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   FORMELN IM TEXT  ―  Hefte von vor den Formel-Objekten
+
+   Dort steht die Formel als <span class="j-formula" data-latex="…"> mit
+   dem fertigen KaTeX-HTML darin. Heil durch die Bereinigung kommt das
+   nicht: von jedem style bleibt dort nur die Farbe, und KaTeX setzt
+   Höhen und Versätze genau so – ein Bruch fiele in sich zusammen.
+
+   Der Quelltext steht aber daneben. Aus ihm wird hier neu gesetzt; was
+   dann im Span steht, ist KaTeX' eigene Ausgabe aus einer Zeichenkette
+   und kein fremdes HTML (ohne trust lässt KaTeX weder \href noch
+   \htmlClass zu).
+   ══════════════════════════════════════════════════════════════════════ */
+function renderTextFormulas(textDiv) {
+  if (typeof renderFormula !== 'function') return;
+  textDiv.querySelectorAll('.j-formula[data-latex]').forEach(span => {
+    const { html } = renderFormula(span.getAttribute('data-latex'), !!span.closest('.j-formula-block'));
+    if (html) span.innerHTML = html;
+  });
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   PDF-SEITEN  ―  core/pdfSeiten.js
+
+   Seit das PDF selbst im Heft liegt, trägt eine solche Seite kein Bild
+   mehr, sondern nur page.pdfRef. Eine Freigabe bekommt das Bild vorher
+   beigelegt (materialisiere) – ein Heft, das das Dashboard aus Drive oder
+   OneDrive holt, aber nicht. Dort blieb die Seite weiß.
+
+   pdf.js ist gut 1,3 MB groß und wird deshalb erst geholt, wenn eine
+   solche Seite wirklich vorkommt. Gerechnet wird eine Seite nach der
+   anderen: ein Skript mit 300 Seiten auf einmal legte den Tab lahm.
+   ══════════════════════════════════════════════════════════════════════ */
+let pdfJsBereit = null;
+let pdfWarteschlange = Promise.resolve();
+
+function ladePdfJs() {
+  if (typeof pdfjsLib !== 'undefined') return Promise.resolve();
+  if (!pdfJsBereit) {
+    pdfJsBereit = new Promise((resolve, reject) => {
+      const s = document.createElement('script');
+      s.src = VIEWER_BASIS + 'lib/pdf.min.js';
+      s.onload = () => {
+        pdfjsLib.GlobalWorkerOptions.workerSrc = VIEWER_BASIS + 'lib/pdf.worker.min.js';
+        resolve();
+      };
+      s.onerror = () => {
+        pdfJsBereit = null;   // beim nächsten Heft noch einmal versuchen
+        reject(new Error('pdf.js nicht ladbar'));
+      };
+      document.head.appendChild(s);
+    });
+  }
+  return pdfJsBereit;
+}
+
+function zeichnePdfSeite(notebook, page, imgEl) {
+  if (typeof PdfSeiten === 'undefined') return;
+  pdfWarteschlange = pdfWarteschlange.then(async () => {
+    // Inzwischen ein anderes Heft offen: diese Seite sieht niemand mehr
+    if (!imgEl.isConnected) return;
+    try {
+      await ladePdfJs();
+      const url = await PdfSeiten.bild(notebook, page, PdfSeiten.FREIGABE_FEINHEIT);
+      if (!url) return;
+      /* Am Heft behalten: der Word-Export (js/docx.js) liest page.bgImg,
+         und beim Neuzeichnen nach einem Sprachwechsel muss nichts noch
+         einmal gerechnet werden. */
+      page.bgImg = url;
+      imgEl.src = url;
+    } catch (err) {
+      console.warn('[Viewer] PDF-Seite nicht darstellbar:', page.id, err?.message || err);
+    }
+  });
+}
+
 /* Portierung von src/app.js: appendPageDOM() – nur Darstellung,
    ohne Eingabe-, Undo- und Auto-Paging-Logik. */
 function buildPageElement(notebook, page, index) {
@@ -312,8 +488,9 @@ function buildPageElement(notebook, page, index) {
   hdr.append(num, date);
   div.appendChild(hdr);
 
-  // Hintergrundbild (z. B. importierte PDF-Seite)
-  if (page.bgImg) {
+  // Hintergrundbild: importierte PDF-Seite, als Bild oder als Verweis
+  const pdfVerweis = !page.bgImg && page.pdfRef && page.pdfRef.datei;
+  if (page.bgImg || pdfVerweis) {
     const bgImgEl = document.createElement('img');
     bgImgEl.className = 'j-page-bgimg';
     bgImgEl.alt = '';
@@ -325,7 +502,8 @@ function buildPageElement(notebook, page, index) {
     bgImgEl.addEventListener('error', () => {
       console.warn('[Viewer] Seiten-Hintergrundbild nicht darstellbar:', page.id);
     });
-    bgImgEl.src = page.bgImg;
+    if (page.bgImg) bgImgEl.src = page.bgImg;
+    else zeichnePdfSeite(notebook, page, bgImgEl);
     div.style.backgroundImage = 'none';
     div.style.backgroundColor = '#fff';
     div.appendChild(bgImgEl);
@@ -346,37 +524,22 @@ function buildPageElement(notebook, page, index) {
   ctx.imageSmoothingQuality = 'high';
   div.appendChild(canvas);
 
-  // Eingefügte Bilder / Objekte
+  // Eingefügte Objekte: Bilder, Formen, Formeln, Code-Kästen
   const objLayer = document.createElement('div');
   objLayer.className = 'j-objects';
-  for (const obj of (page.objects || [])) {
-    if (!obj || !obj.src) continue;
-    const wrap = document.createElement('div');
-    // 'back' = hinter Text und Handschrift, so wie es in der App gesetzt wurde
-    wrap.className = obj.layer === 'back' ? 'obj-wrap behind' : 'obj-wrap';
-    wrap.style.left = (obj.x || 0) + 'px';
-    wrap.style.top = (obj.y || 0) + 'px';
-    wrap.style.width = (obj.w || 200) + 'px';
-    wrap.style.height = (obj.h || 200) + 'px';
-    if (obj.rot) wrap.style.transform = `rotate(${obj.rot}deg)`;
-    const img = document.createElement('img');
-    img.alt = obj.name || '';
-    img.draggable = false;
-    img.addEventListener('load', rescaleAllPages);
-    img.addEventListener('error', () => {
-      console.warn('[Viewer] Bild nicht darstellbar:', obj.id || obj.name || '(ohne Namen)');
-    });
-    img.src = obj.src;
-    wrap.appendChild(img);
-    objLayer.appendChild(wrap);
-  }
+  (page.objects || []).forEach((obj, i) => {
+    const wrap = buildObjectElement(obj, i);
+    if (wrap) objLayer.appendChild(wrap);
+  });
   div.appendChild(objLayer);
 
   // Text
   const textDiv = document.createElement('div');
   textDiv.className = 'j-text';
+  // --lh wie in der App: Tabellenzeilen und die Kästchen der
+  // Ankreuzliste richten sich danach (css/pages.css)
   textDiv.style.cssText =
-    `font-size:17px;line-height:${lh}px;padding-top:${pt}px;`
+    `font-size:17px;--lh:${lh}px;line-height:${lh}px;padding-top:${pt}px;`
     + `top:64px;left:72px;right:${rightPad}px;bottom:24px;`
     + 'white-space:pre-wrap;word-wrap:break-word;overflow-wrap:break-word';
   // Fremdes Heft: der Text geht durch die Bereinigung (js/sanitize.js)
@@ -389,6 +552,16 @@ function buildPageElement(notebook, page, index) {
     p.className = 'j-title-' + level;
     p.innerHTML = h.innerHTML;
     h.replaceWith(p);
+  });
+
+  renderTextFormulas(textDiv);
+
+  /* Eine frei gesetzte Tabelle trägt ihre Lage als x/y und nicht im
+     style – die Bereinigung liesse davon nichts übrig. Übertragen wie in
+     core/tables.js (stelleTabellenAus); sonst stünde sie oben links. */
+  textDiv.querySelectorAll('table.j-table[x]').forEach(tbl => {
+    tbl.style.left = (parseInt(tbl.getAttribute('x'), 10) || 0) + 'px';
+    tbl.style.top = (parseInt(tbl.getAttribute('y'), 10) || 0) + 'px';
   });
 
   // Überschriftengrößen hängen an der Zeilenhöhe des Hintergrunds
