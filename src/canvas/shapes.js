@@ -278,6 +278,27 @@ window.insertShape = insertShape;
 
 /* ── Form-Objekt rendern (für placeObject) ──────────────────────────── */
 
+/* ══════════════════════════════════════════════════════════════════════
+   FARBE UND STRICH KOMMEN VON AUSSEN
+
+   buildShapeSvg setzt fill, stroke und stroke-width wörtlich zwischen
+   Anführungszeichen ins SVG, und das SVG geht per innerHTML auf die
+   Seite. Eine Form kann aber aus einem geteilten Heft stammen – und dann
+   genügte ein fill wie  "><img src=x onerror=…>  und fremder Code liefe.
+   In der App wie auf inkwells.me, wo seit der Web-Ansicht der Formen
+   dieselbe Datei zeichnet (js/shapes.js, erzeugt von sync-share).
+
+   Durch kommt deshalb nur, was wie eine Farbe aussieht – dieselbe Prüfung
+   wie istFarbe() in core/sanitize.js – und als Strich nur eine Zahl.
+   Alles andere fällt auf den Standard zurück: eine Form in Schwarz ist
+   besser als eine, die etwas ausführt. */
+function formFarbe(wert, ersatz) {
+  const roh = typeof wert === 'string' ? wert.trim() : '';
+  return roh.length <= 64
+    && /^(#[0-9a-f]{3,8}|rgba?\([\d\s.,%/]+\)|hsla?\([\d\s.,%/]+\)|[a-z]{3,20})$/i.test(roh)
+    ? roh : ersatz;
+}
+
 /**
  * Baut das innere HTML für ein Form-Objekt.
  *
@@ -286,11 +307,12 @@ window.insertShape = insertShape;
  */
 function renderShapeBody(obj) {
   const type = obj.shapeType || 'rect';
-  const w = obj.w || 100;
-  const h = obj.h || 100;
-  const fill = obj.fill || 'none';
-  const stroke = obj.stroke || '#1a1510';
-  const strokeWidth = obj.strokeWidth || 2;
+  const w = Number(obj.w) || 100;
+  const h = Number(obj.h) || 100;
+  const fill = formFarbe(obj.fill, 'none');
+  const stroke = formFarbe(obj.stroke, SHAPE_DEFAULTS.stroke);
+  const strich = Number(obj.strokeWidth);
+  const strokeWidth = isFinite(strich) && strich > 0 ? strich : SHAPE_DEFAULTS.strokeWidth;
 
   return buildShapeSvg(type, w, h, fill, stroke, strokeWidth, obj);
 }
