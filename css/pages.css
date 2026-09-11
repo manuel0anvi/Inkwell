@@ -1151,7 +1151,19 @@ body.touch-input .obj-body[data-kind="shape"]::after {
   box-shadow: 0 1px 3px rgba(0, 0, 0, .35);
   z-index: 10;
   touch-action: none;
-  transition: transform .1s ease
+  transition: transform .1s ease;
+  /* ── Der Griff wächst mit dem Objekt ────────────────────────────────
+     Die Masse oben (und für den Finger in responsive.css) sind feste
+     Pixel. An einer kleinen Formel oder Form war ein Griff damit so gross
+     wie das Ding selbst und deckte es zu – gemeldet genau so.
+     canvas/objects.js setzt --griff-k nach der kleineren Seite des
+     Objekts (stelleGriffGroesse).
+
+     Über die Eigenschaft scale und nicht über transform: die trägt schon
+     das Vergrössern beim Überfahren und beim Drehgriff das Mitteln, und
+     scale wirkt zusätzlich. Die Mitte bleibt dabei stehen – ein Eckgriff
+     sitzt also weiter genau auf der Ecke. */
+  scale: var(--griff-k, 1)
 }
 
 .obj-handle:hover {

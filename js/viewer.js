@@ -333,8 +333,11 @@ function buildObjectElement(obj, index) {
   const body = document.createElement('div');
   body.className = 'obj-body';
   body.dataset.kind = kind;
-  // Nur ansehen: nichts auf der Seite soll Klicks abfangen
-  body.style.pointerEvents = 'none';
+  /* Nur ansehen: nichts auf der Seite soll Klicks abfangen – bis auf den
+     Code-Kasten. Er ist ein Fenster auf den Code, und was nicht
+     hineinpasst, wird darin geschoben (css/pages.css). Ohne Zeiger
+     liess er sich hier weder nach unten noch zur Seite rollen. */
+  body.style.pointerEvents = kind === 'code' ? 'auto' : 'none';
   body.style.zIndex = OBJ_Z[obj.layer === 'back' ? 'back' : 'front'] + Math.min(index, OBJ_Z_SPAN - 1);
   if (obj.rot) body.style.transform = 'rotate(' + (Number(obj.rot) || 0) + 'deg)';
 
@@ -517,6 +520,9 @@ function buildPageElement(notebook, page, index) {
   canvas.height = Math.round(targetH * dpr);
   canvas.style.width = targetW + 'px';
   canvas.style.height = targetH + 'px';
+  // Liegt über einem Code-Kasten „hinter dem Text" und nähme ihm sonst
+  // das Rollen weg – gezeichnet wird hier ohnehin nicht
+  canvas.style.pointerEvents = 'none';
   const ctx = canvas.getContext('2d');
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   ctx.scale(dpr, dpr);
